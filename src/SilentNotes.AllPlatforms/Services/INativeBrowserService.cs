@@ -19,6 +19,14 @@ namespace SilentNotes.Services
         void OpenWebsite(string url);
 
         /// <summary>
+        /// Opens a website in a new tab of the external browser. This is used for text-fragment
+        /// urls, because an existing tab would restore its old scroll position and cancel the
+        /// scroll-to-text behavior.
+        /// </summary>
+        /// <param name="url">Url to the website.</param>
+        void OpenWebsiteInNewTab(string url);
+
+        /// <summary>
         /// Opens a website using the external browser inside the app if possible.
         /// </summary>
         /// <remarks>

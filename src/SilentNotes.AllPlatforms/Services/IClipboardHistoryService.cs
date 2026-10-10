@@ -80,5 +80,21 @@ namespace SilentNotes.Services
         /// <param name="fileName">The file name stored in <see cref="ClipboardItemModel.ImageFileName"/>.</param>
         /// <returns>Absolute file path, or null.</returns>
         string GetThumbImagePath(string fileName);
+
+        /// <summary>
+        /// Writes the image files (full size and thumbnail) of an item to the local device. Used
+        /// when images are materialized from a synchronized clipboard item.
+        /// </summary>
+        /// <param name="id">Id of the item, used to derive the file names.</param>
+        /// <param name="fullImage">The encoded full size image (PNG).</param>
+        /// <param name="thumbnail">The encoded thumbnail image (PNG), may be null.</param>
+        void WriteImageFiles(Guid id, byte[] fullImage, byte[] thumbnail);
+
+        /// <summary>
+        /// Gets a fingerprint of the current clipboard history, which can be used to determine
+        /// whether it changed since the last synchronization.
+        /// </summary>
+        /// <returns>A fingerprint representing the modification state.</returns>
+        long GetModificationFingerprint();
     }
 }

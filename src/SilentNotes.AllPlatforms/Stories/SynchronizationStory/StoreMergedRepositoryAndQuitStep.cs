@@ -3,6 +3,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+using System;
+using System.Collections.Generic;
 using SilentNotes.Models;
 using SilentNotes.Services;
 using SilentNotes.Workers;
@@ -29,6 +31,7 @@ namespace SilentNotes.Stories.SynchronizationStory
                 var languageService = serviceProvider.GetService<ILanguageService>();
                 var cryptoRandomService = serviceProvider.GetService<ICryptoRandomService>();
                 var cloudStorageClientFactory = serviceProvider.GetService<ICloudStorageClientFactory>();
+                var clipboardSyncService = serviceProvider.GetService<IClipboardSyncService>();
 
                 repositoryStorageService.LoadRepositoryOrDefault(out NoteRepositoryModel localRepository);
                 SettingsModel settings = settingsService.LoadSettingsOrDefault();
@@ -37,17 +40,26 @@ namespace SilentNotes.Stories.SynchronizationStory
                 NoteRepositoryMerger merger = new NoteRepositoryMerger();
                 NoteRepositoryModel mergedRepository = merger.Merge(localRepository, model.CloudRepository);
 
+                // Merge the clipboard history with the downloaded clipboard and write it back to
+                // the local device. The transfer collection is not persisted locally.
+                IReadOnlyList<ClipboardTransferItemModel> mergedClipboard = clipboardSyncService.MergeAndImport(model.CloudRepository.Clipboard);
+
+                bool repositoryChanged = !RepositoriesAreEqual(mergedRepository, localRepository);
+                bool clipboardChanged = GetClipboardFingerprint(mergedClipboard) != GetClipboardFingerprint(model.CloudRepository.Clipboard);
+
                 // Store merged repository locally when different
-                if (!RepositoriesAreEqual(mergedRepository, localRepository))
+                if (repositoryChanged)
                 {
                     repositoryStorageService.TrySaveRepository(mergedRepository);
                 }
 
                 // Store merged repository to the cloud when different, otherwise spare the slow upload
-                if (!RepositoriesAreEqual(mergedRepository, model.CloudRepository))
+                if (repositoryChanged || clipboardChanged)
                 {
+                    mergedRepository.Clipboard = new ClipboardTransferListModel(mergedClipboard);
                     byte[] encryptedRepository = EncryptRepository(
                         mergedRepository, settings.TransferCode, cryptoRandomService, settings.SelectedEncryptionAlgorithm, settings.SelectedKdfAlgorithm);
+                    clipboardSyncService.ClearTransfer(mergedRepository);
 
                     ICloudStorageClient cloudStorageClient = cloudStorageClientFactory.GetByKey(model.Credentials.CloudStorageId);
                     await cloudStorageClient.UploadFileAsync(NoteRepositoryModel.RepositoryFileName, encryptedRepository, model.Credentials);
@@ -65,6 +77,18 @@ namespace SilentNotes.Stories.SynchronizationStory
         private static bool RepositoriesAreEqual(NoteRepositoryModel repository1, NoteRepositoryModel repository2)
         {
             return repository1.GetModificationFingerprint() == repository2.GetModificationFingerprint();
+        }
+
+        private static long GetClipboardFingerprint(IEnumerable<ClipboardTransferItemModel> items)
+        {
+            var hashCodes = new List<long>();
+            foreach (ClipboardTransferItemModel item in items)
+            {
+                hashCodes.Add(item.Id.GetHashCode());
+                hashCodes.Add(item.ModifiedUtc.GetHashCode());
+                hashCodes.Add(item.IsDeleted.GetHashCode());
+            }
+            return ModificationDetector.CombineHashCodes(hashCodes);
         }
     }
 }

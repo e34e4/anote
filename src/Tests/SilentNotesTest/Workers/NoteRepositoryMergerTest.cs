@@ -464,5 +464,29 @@ namespace SilentNotesTest.Workers
             Assert.AreEqual(note202.Id, result.Notes[2].Id);
             Assert.AreEqual(note203.Id, result.Notes[3].Id);
         }
+
+        [TestMethod]
+        public void MergeContactsKeepsBothAndNewestWins()
+        {
+            ContactModel contact1 = new ContactModel { Name = "old", ModifiedAt = new DateTime(2000, 01, 01) };
+            ContactModel contact2 = new ContactModel { Name = "onlyLocal" };
+            NoteRepositoryModel clientRepo = new NoteRepositoryModel();
+            clientRepo.Contacts.Add(contact1);
+            clientRepo.Contacts.Add(contact2);
+
+            ContactModel contact3 = new ContactModel { Name = "new", Id = contact1.Id, ModifiedAt = new DateTime(2000, 01, 08) }; // newer wins
+            ContactModel contact4 = new ContactModel { Name = "onlyRemote" };
+            NoteRepositoryModel serverRepo = new NoteRepositoryModel();
+            serverRepo.Contacts.Add(contact3);
+            serverRepo.Contacts.Add(contact4);
+
+            NoteRepositoryMerger merger = new NoteRepositoryMerger();
+            NoteRepositoryModel result = merger.Merge(clientRepo, serverRepo);
+
+            Assert.AreEqual(3, result.Contacts.Count);
+            Assert.AreEqual("new", result.Contacts.FindById(contact1.Id).Name);
+            Assert.IsTrue(result.Contacts.ContainsById(contact2.Id));
+            Assert.IsTrue(result.Contacts.ContainsById(contact4.Id));
+        }
     }
 }

@@ -150,6 +150,28 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Message to inform the note repository page that a new bookmark draft should be created.
+    /// It is sent when text was selected in a browser (PROCESS_TEXT) or a page was shared.
+    /// </summary>
+    public class AddBookmarkDraftMessage
+    {
+        /// <summary>
+        /// Gets or sets the url of the page, or null if unknown.
+        /// </summary>
+        public string Url { get; set; }
+
+        /// <summary>
+        /// Gets or sets the title of the page, or null.
+        /// </summary>
+        public string Title { get; set; }
+
+        /// <summary>
+        /// Gets or sets the selected text quote, or null.
+        /// </summary>
+        public string Quote { get; set; }
+    }
+
+    /// <summary>
     /// Enumeration of possible sources of a sent message.
     /// </summary>
     public enum MessageSender

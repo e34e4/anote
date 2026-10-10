@@ -107,6 +107,8 @@ public static class MauiProgram
         services.AddSingleton<IVersionService>((serviceProvider) => new VersionService());
         services.AddSingleton<ICloudStorageClientFactory>((serviceProvider) => new CloudStorageClientFactory());
         services.AddSingleton<IClipboardService>((serviceProvider) => new ClipboardService());
+        services.AddSingleton<IClipboardSyncService>((serviceProvider) => new ClipboardSyncService(
+            serviceProvider.GetService<IClipboardHistoryService>()));
         services.AddSingleton<IInternetStateService>((serviceProvider) => new InternetStateService());
         services.AddSingleton<ISafeKeyService>((serviceProvider) => new SafeKeyService());
         services.AddSingleton<IFontService>((serviceProvider) => new FontService());

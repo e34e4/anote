@@ -26,6 +26,21 @@ namespace SilentNotes.Models
         public DateTime CreatedUtc { get; set; }
 
         /// <summary>
+        /// Gets or sets the time in UTC, when the item was last modified (e.g. promoted to the top,
+        /// marked as favorite or deleted). Used to resolve merge conflicts during synchronization.
+        /// </summary>
+        [XmlAttribute("modified_utc")]
+        public DateTime ModifiedUtc { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the item was deleted. Deleted items are kept as
+        /// tombstones until they are purged, so a deletion can be synchronized without the item
+        /// being resurrected by another device.
+        /// </summary>
+        [XmlAttribute("deleted")]
+        public bool IsDeleted { get; set; }
+
+        /// <summary>
         /// Gets or sets a value indicating whether the item is marked as favorite. Favorite items
         /// are never removed by the history size limit.
         /// </summary>
@@ -56,6 +71,15 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlAttribute("hash")]
         public string ContentHash { get; set; }
+
+        /// <summary>
+        /// Makes a deep copy of the item.
+        /// </summary>
+        /// <returns>Copy of the item.</returns>
+        public ClipboardItemModel Clone()
+        {
+            return (ClipboardItemModel)MemberwiseClone();
+        }
     }
 
     /// <summary>

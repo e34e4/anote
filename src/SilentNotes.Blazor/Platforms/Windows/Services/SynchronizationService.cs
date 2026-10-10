@@ -44,13 +44,14 @@ namespace SilentNotes.Platforms.Services
                 IInternetStateService internetStateService = serviceProvider.GetService<IInternetStateService>();
                 ISettingsService settingsService = serviceProvider.GetService<ISettingsService>();
                 IRepositoryStorageService repositoryStorageService = serviceProvider.GetService<IRepositoryStorageService>();
+                IClipboardSyncService clipboardSyncService = serviceProvider.GetService<IClipboardSyncService>();
 
                 if (!ShouldSynchronize(internetStateService, settingsService))
                     return;
 
                 // If there are no modifications since the last synchronization, we can spare this step
                 repositoryStorageService.LoadRepositoryOrDefault(out NoteRepositoryModel localRepository);
-                long currentFingerprint = localRepository.GetModificationFingerprint();
+                long currentFingerprint = GetLocalContentFingerprint(localRepository, clipboardSyncService);
                 if (currentFingerprint == LastSynchronizationFingerprint)
                     return;
 
@@ -62,7 +63,8 @@ namespace SilentNotes.Platforms.Services
                     serviceProvider.GetService<ICloudStorageClientFactory>(),
                     serviceProvider.GetService<ICryptoRandomService>(),
                     serviceProvider.GetService<IRepositoryStorageService>(),
-                    serviceProvider.GetService<INoteRepositoryUpdater>());
+                    serviceProvider.GetService<INoteRepositoryUpdater>(),
+                    serviceProvider.GetService<IClipboardSyncService>());
 
                 if ((result != null) && (!result.HasError))
                     _synchronizationState.UpdateLastFinishedSynchronization();

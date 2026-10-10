@@ -37,6 +37,17 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
+        public void OpenWebsiteInNewTab(string url)
+        {
+            Uri webpage = Uri.Parse(url);
+            Intent intent = new Intent(Intent.ActionView, webpage);
+            intent.AddCategory(Intent.CategoryBrowsable);
+            intent.PutExtra(global::Android.Provider.Browser.ExtraApplicationId, _appContext.Context.PackageName);
+            intent.PutExtra(global::Android.Provider.Browser.ExtraCreateNewTab, true);
+            _appContext.RootActivity.StartActivity(intent);
+        }
+
+        /// <inheritdoc/>
         public void OpenWebsiteInApp(string url)
         {
             // Use the Android custom tabs to display the webpage inside the app.

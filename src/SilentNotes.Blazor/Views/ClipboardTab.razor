@@ -26,6 +26,9 @@
 		max-width: 100%;
 		border-radius: 4px;
 	}
+	.theme-dark .clipboard-card {
+		background-color: #000000;
+	}
 </style>
 
 <div class="pa-2">
@@ -40,7 +43,7 @@
 				<div class="clipboard-list">
 					@foreach (var item in ViewModel.AllItems)
 					{
-						<MudPaper Elevation="1" Class="pa-2 my-2 d-flex align-start">
+						<MudPaper Elevation="1" Class="pa-2 my-2 clipboard-card d-flex align-start">
 							<div class="flex-grow-1 overflow-hidden">
 								@if (item.IsImage)
 								{
@@ -71,7 +74,7 @@
 					{
 						@foreach (var item in ViewModel.FavoriteItems)
 						{
-							<MudPaper Elevation="1" Class="pa-2 my-2 d-flex align-start">
+							<MudPaper Elevation="1" Class="pa-2 my-2 clipboard-card d-flex align-start">
 								<div class="flex-grow-1 overflow-hidden">
 									@if (item.IsImage)
 									{

@@ -4,10 +4,13 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Android.AccessibilityServices;
 using Android.App;
 using Android.Content;
 using Android.Graphics;
+using Android.Net;
 using Android.Runtime;
 using Android.Views;
 using Android.Views.Accessibility;
@@ -15,6 +18,7 @@ using Android.Widget;
 using Microsoft.Extensions.DependencyInjection;
 using SilentNotes.Platforms.Services;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.Platforms
 {
@@ -42,9 +46,35 @@ namespace SilentNotes.Platforms
         private const string LogTag = "aNoteFloating";
         private const float TouchSlop = 10f;
 
+        private static readonly string[] BrowserPackages = new[]
+        {
+            "com.brave.browser",
+            "com.brave.browser_beta",
+            "com.brave.browser_nightly",
+            "com.android.chrome",
+            "com.chrome.beta",
+            "com.chrome.dev",
+            "com.microsoft.emmx",
+            "com.opera.browser",
+            "com.vivaldi.browser",
+            "org.mozilla.firefox",
+            "org.mozilla.firefox_beta",
+        };
+
+        private static readonly string[] UrlViewIds = new[]
+        {
+            "url_bar",
+            "url_bar_title",
+            "search_box_text",
+            "omnibox_url_bar",
+            "mozac_browser_toolbar_url_view",
+            "toolbar_url_bar",
+        };
+
         private IWindowManager _windowManager;
         private ImageView _overlayView;
         private WindowManagerLayoutParams _overlayParams;
+        private bool _captureEnabled;
 
         /// <summary>
         /// Gets the currently connected instance of the service, or null if the service is not
@@ -59,8 +89,26 @@ namespace SilentNotes.Platforms
             Instance = this;
             _windowManager = ResolveWindowManager();
 
+            _captureEnabled = ShouldCaptureBrowserUrl();
+            BrowserUrlTracker.ServiceEnabled = true;
+            BrowserUrlTracker.CaptureEnabled = _captureEnabled;
+
             if (ShouldShowFloatingButton())
                 ShowOverlay();
+
+            if (_captureEnabled)
+                RefreshFromActiveWindow();
+        }
+
+        /// <summary>
+        /// Enables or disables the capture of the browser url. Called when the user changes the
+        /// setting while the service is already connected.
+        /// </summary>
+        /// <param name="enabled">True to capture the browser url.</param>
+        internal void SetCaptureEnabled(bool enabled)
+        {
+            _captureEnabled = enabled;
+            BrowserUrlTracker.CaptureEnabled = enabled;
         }
 
         /// <summary>
@@ -91,8 +139,17 @@ namespace SilentNotes.Platforms
         /// <inheritdoc/>
         public override void OnAccessibilityEvent(AccessibilityEvent e)
         {
-            // The service does not react on accessibility events, it is only used to draw the
-            // floating button.
+            // Besides drawing the floating button, the service can remember the url of the page
+            // which is currently open in a supported browser, so it can be used as the default url
+            // when a bookmark is created.
+            if (!_captureEnabled || (e == null))
+                return;
+
+            string packageName = e.PackageName?.ToString();
+            if (string.IsNullOrEmpty(packageName) || !BrowserPackages.Contains(packageName))
+                return;
+
+            RefreshFromPackage(packageName);
         }
 
         /// <inheritdoc/>
@@ -105,6 +162,8 @@ namespace SilentNotes.Platforms
         {
             HideOverlay();
             Instance = null;
+            BrowserUrlTracker.ServiceEnabled = false;
+            BrowserUrlTracker.CaptureEnabled = false;
             return base.OnUnbind(intent);
         }
 
@@ -113,7 +172,138 @@ namespace SilentNotes.Platforms
         {
             HideOverlay();
             Instance = null;
+            BrowserUrlTracker.ServiceEnabled = false;
+            BrowserUrlTracker.CaptureEnabled = false;
             base.OnDestroy();
+        }
+
+        private void RefreshFromActiveWindow()
+        {
+            string packageName = RootInActiveWindow?.PackageName?.ToString();
+            if (!string.IsNullOrEmpty(packageName) && BrowserPackages.Contains(packageName))
+                RefreshFromPackage(packageName);
+        }
+
+        private void RefreshFromPackage(string packageName)
+        {
+            var roots = new List<AccessibilityNodeInfo>();
+            AccessibilityNodeInfo activeRoot = RootInActiveWindow;
+            if (activeRoot != null)
+                roots.Add(activeRoot);
+
+            IList<AccessibilityWindowInfo> windows = Windows;
+            if (windows != null)
+            {
+                foreach (AccessibilityWindowInfo window in windows)
+                {
+                    if (window?.Root != null)
+                        roots.Add(window.Root);
+                }
+            }
+
+            foreach (AccessibilityNodeInfo root in roots)
+            {
+                string url = FindUrl(root, packageName);
+                if (!string.IsNullOrEmpty(url))
+                {
+                    BrowserUrlTracker.Update(url, packageName);
+                    return;
+                }
+            }
+        }
+
+        private string FindUrl(AccessibilityNodeInfo root, string packageName)
+        {
+            foreach (string viewId in UrlViewIds)
+            {
+                IList<AccessibilityNodeInfo> nodes = root.FindAccessibilityNodeInfosByViewId(packageName + ":id/" + viewId);
+                if (nodes == null)
+                    continue;
+                foreach (AccessibilityNodeInfo node in nodes)
+                {
+                    string url = ExtractUrl(node);
+                    if (!string.IsNullOrEmpty(url))
+                        return url;
+                }
+            }
+            return WalkForUrl(root, 0);
+        }
+
+        private static string ExtractUrl(AccessibilityNodeInfo node)
+        {
+            var candidates = new List<string>();
+            if (node.Text != null)
+                candidates.Add(node.Text.ToString());
+            if (node.ContentDescription != null)
+                candidates.Add(node.ContentDescription.ToString());
+            if (global::Android.OS.Build.VERSION.SdkInt >= global::Android.OS.BuildVersionCodes.O)
+            {
+                string hint = node.HintText?.ToString();
+                if (!string.IsNullOrEmpty(hint))
+                    candidates.Add(hint);
+            }
+
+            foreach (string candidate in candidates)
+            {
+                string normalized = NormalizeOmnibox(candidate);
+                string url = BookyUrlUtils.FirstUrl(normalized);
+                if (!string.IsNullOrEmpty(url))
+                    return url;
+
+                // The omnibox sometimes shows the host without a scheme while browsing https.
+                if (LooksLikeHostPath(normalized))
+                    return "https://" + normalized;
+            }
+            return null;
+        }
+
+        private static string WalkForUrl(AccessibilityNodeInfo node, int depth)
+        {
+            if ((node == null) || (depth > 12))
+                return null;
+
+            string url = ExtractUrl(node);
+            if (!string.IsNullOrEmpty(url))
+                return url;
+
+            for (int index = 0; index < node.ChildCount; index++)
+            {
+                AccessibilityNodeInfo child = node.GetChild(index);
+                if (child == null)
+                    continue;
+                string childUrl = WalkForUrl(child, depth + 1);
+                if (!string.IsNullOrEmpty(childUrl))
+                    return childUrl;
+            }
+            return null;
+        }
+
+        private static string NormalizeOmnibox(string raw)
+        {
+            string result = (raw ?? string.Empty).Trim();
+            if (result.StartsWith("Secure", StringComparison.Ordinal))
+                result = result.Substring("Secure".Length).Trim();
+            if (result.StartsWith("www.", StringComparison.OrdinalIgnoreCase) && !result.Contains("://"))
+                result = "https://" + result;
+            return result;
+        }
+
+        private static bool LooksLikeHostPath(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || value.Contains(' ') || value.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (!value.Contains('.'))
+                return false;
+
+            try
+            {
+                System.Uri uri = new System.Uri("https://" + value);
+                return !string.IsNullOrEmpty(uri.Host);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -201,6 +391,29 @@ namespace SilentNotes.Platforms
                 ServiceProvider serviceProvider = services.BuildServiceProvider();
                 serviceProvider.GetService<IAppContextService>().InitializeWithContextOnly(this);
                 return serviceProvider.GetService<ISettingsService>().LoadSettingsOrDefault().ShowFloatingButton;
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not read the settings: " + ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Reads the persisted setting, whether the browser url should be captured. The service can
+        /// run independently of the application, so it builds its own service provider.
+        /// </summary>
+        /// <returns>True if the browser url should be captured.</returns>
+        private bool ShouldCaptureBrowserUrl()
+        {
+            try
+            {
+                ServiceCollection services = new ServiceCollection();
+                MauiProgram.RegisterSharedServices(services);
+                MauiProgram.RegisterPlatformServices(services);
+                ServiceProvider serviceProvider = services.BuildServiceProvider();
+                serviceProvider.GetService<IAppContextService>().InitializeWithContextOnly(this);
+                return serviceProvider.GetService<ISettingsService>().LoadSettingsOrDefault().BookyUrlCaptureEnabled;
             }
             catch (Exception ex)
             {

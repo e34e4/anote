@@ -53,5 +53,11 @@ namespace SilentNotes.Platforms.Services
         {
             get { return null; }
         }
+
+        /// <inheritdoc/>
+        public IBrowserUrlProvider BrowserUrl
+        {
+            get { return null; }
+        }
     }
 }

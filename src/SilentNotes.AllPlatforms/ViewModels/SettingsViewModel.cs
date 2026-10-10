@@ -135,6 +135,7 @@ namespace SilentNotes.ViewModels
                 settings.ClipboardMonitoringEnabled.GetHashCode(),
                 settings.ClipboardHistorySize.GetHashCode(),
                 settings.ClipboardPollIntervalMs.GetHashCode(),
+                settings.BookyUrlCaptureEnabled.GetHashCode(),
                 (settings.Credentials == null).GetHashCode(),
             });
         }
@@ -582,6 +583,40 @@ namespace SilentNotes.ViewModels
         {
             get { return Model.ClipboardPollIntervalMs / 1000; }
             set { SetProperty(Model.ClipboardPollIntervalMs / 1000, value, (int v) => Model.ClipboardPollIntervalMs = v * 1000); }
+        }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the url of the page currently open in a browser
+        /// should be captured, so it can be used as the default url when creating a bookmark. This
+        /// is only supported on Android.
+        /// </summary>
+        public bool BookyUrlCaptureEnabled
+        {
+            get { return Model.BookyUrlCaptureEnabled; }
+            set
+            {
+                if (SetProperty(Model.BookyUrlCaptureEnabled, value, (bool v) => Model.BookyUrlCaptureEnabled = v))
+                {
+                    _environmentService.BrowserUrl?.SetCaptureEnabled(value);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether the operating system supports capturing the browser url.
+        /// </summary>
+        public bool CanCaptureBrowserUrl
+        {
+            get { return _environmentService.BrowserUrl != null; }
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether the accessibility service is running and url capture is
+        /// currently active.
+        /// </summary>
+        public bool IsBrowserUrlCaptureActive
+        {
+            get { return _environmentService.BrowserUrl?.IsCaptureActive ?? false; }
         }
 
         /// <summary>

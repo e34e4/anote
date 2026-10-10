@@ -19,7 +19,7 @@ namespace SilentNotes.Platforms.Services
     /// <summary>
     /// Implementation of the <see cref="IEnvironmentService"/> for the Android platform.
     /// </summary>
-    internal class EnvironmentService : IEnvironmentService, IKeepScreenOn, IScreenshots, IFloatingButtonService, IClipboardMonitorService
+    internal class EnvironmentService : IEnvironmentService, IKeepScreenOn, IScreenshots, IFloatingButtonService, IClipboardMonitorService, IBrowserUrlProvider
     {
         private const int NotificationPermissionRequestCode = 0x0A17;
 
@@ -152,6 +152,31 @@ namespace SilentNotes.Platforms.Services
             var intent = new Intent(global::Android.Provider.Settings.ActionAccessibilitySettings);
             intent.AddFlags(ActivityFlags.NewTask);
             _appContext.Context.StartActivity(intent);
+        }
+
+        /// <inheritdoc/>
+        public IBrowserUrlProvider BrowserUrl
+        {
+            get { return this; }
+        }
+
+        /// <inheritdoc/>
+        string IBrowserUrlProvider.LastBrowserUrl()
+        {
+            return BrowserUrlTracker.CaptureEnabled ? BrowserUrlTracker.LastBrowserUrl() : null;
+        }
+
+        /// <inheritdoc/>
+        bool IBrowserUrlProvider.IsCaptureActive
+        {
+            get { return BrowserUrlTracker.ServiceEnabled && BrowserUrlTracker.CaptureEnabled; }
+        }
+
+        /// <inheritdoc/>
+        void IBrowserUrlProvider.SetCaptureEnabled(bool enabled)
+        {
+            BrowserUrlTracker.CaptureEnabled = enabled;
+            FloatingButtonAccessibilityService.Instance?.SetCaptureEnabled(enabled);
         }
 
         /// <inheritdoc/>

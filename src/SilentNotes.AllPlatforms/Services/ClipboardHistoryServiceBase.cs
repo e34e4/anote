@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -25,6 +26,7 @@ namespace SilentNotes.Services
     public abstract class ClipboardHistoryServiceBase : IClipboardHistoryService
     {
         private const string ImageSubFolder = "clipboard_images";
+        private const int DeletedRetentionDays = 30;
         private static readonly object SyncRoot = new object();
 
         /// <summary>Gets the injected dependency to an xml file service.</summary>
@@ -90,6 +92,7 @@ namespace SilentNotes.Services
                     {
                         Id = Guid.NewGuid(),
                         CreatedUtc = DateTime.UtcNow,
+                        ModifiedUtc = DateTime.UtcNow,
                         Kind = ClipboardItemKind.Text,
                         Text = text,
                         ContentHash = hash,
@@ -97,6 +100,7 @@ namespace SilentNotes.Services
                     model.Items.Insert(0, item);
                 }
                 TrimToLimit(model, maxNonFavoriteItems);
+                PurgeExpiredDeleted(model);
                 TrySaveHistory(model);
                 return item;
             }
@@ -120,15 +124,16 @@ namespace SilentNotes.Services
                     {
                         Id = id,
                         CreatedUtc = DateTime.UtcNow,
+                        ModifiedUtc = DateTime.UtcNow,
                         Kind = ClipboardItemKind.Image,
                         ContentHash = hash,
                         ImageFileName = id.ToString("N") + ".png",
                     };
                     model.Items.Insert(0, item);
                 }
-                WriteImageFile(item.ImageFileName, fullImage);
-                WriteImageFile(GetThumbFileName(item.ImageFileName), (thumbnail != null && thumbnail.Length > 0) ? thumbnail : fullImage);
+                WriteImageFiles(item.Id, fullImage, (thumbnail != null && thumbnail.Length > 0) ? thumbnail : fullImage);
                 TrimToLimit(model, maxNonFavoriteItems);
+                PurgeExpiredDeleted(model);
                 TrySaveHistory(model);
                 return item;
             }
@@ -150,8 +155,9 @@ namespace SilentNotes.Services
                 if (item == null)
                     return;
 
-                model.Items.Remove(item);
-                DeleteImageFiles(item);
+                item.IsDeleted = true;
+                item.ModifiedUtc = DateTime.UtcNow;
+                PurgeExpiredDeleted(model);
                 TrySaveHistory(model);
             }
         }
@@ -162,9 +168,9 @@ namespace SilentNotes.Services
             lock (SyncRoot)
             {
                 ClipboardHistoryModel model = LoadHistoryOrDefault();
-                foreach (ClipboardItemModel item in model.Items.Where(i => !i.IsFavorite).ToList())
-                    DeleteImageFiles(item);
-                model.Items.RemoveAll(i => !i.IsFavorite);
+                foreach (ClipboardItemModel item in model.Items.Where(i => !i.IsFavorite && !i.IsDeleted))
+                    MarkDeleted(item);
+                PurgeExpiredDeleted(model);
                 TrySaveHistory(model);
             }
         }
@@ -175,9 +181,9 @@ namespace SilentNotes.Services
             lock (SyncRoot)
             {
                 ClipboardHistoryModel model = LoadHistoryOrDefault();
-                foreach (ClipboardItemModel item in model.Items)
-                    DeleteImageFiles(item);
-                model.Items.Clear();
+                foreach (ClipboardItemModel item in model.Items.Where(i => !i.IsDeleted))
+                    MarkDeleted(item);
+                PurgeExpiredDeleted(model);
                 TrySaveHistory(model);
             }
         }
@@ -214,6 +220,7 @@ namespace SilentNotes.Services
                     return;
 
                 modify(item);
+                item.ModifiedUtc = DateTime.UtcNow;
                 TrySaveHistory(model);
             }
         }
@@ -224,6 +231,8 @@ namespace SilentNotes.Services
             if (existing != null)
             {
                 existing.CreatedUtc = DateTime.UtcNow;
+                existing.ModifiedUtc = DateTime.UtcNow;
+                existing.IsDeleted = false;
                 model.Items.Remove(existing);
                 model.Items.Insert(0, existing);
             }
@@ -235,16 +244,36 @@ namespace SilentNotes.Services
             if (maxNonFavoriteItems < 0)
                 return;
 
-            int nonFavorites = model.Items.Count(i => !i.IsFavorite);
+            int nonFavorites = model.Items.Count(i => !i.IsFavorite && !i.IsDeleted);
             for (int index = model.Items.Count - 1; (index >= 0) && (nonFavorites > maxNonFavoriteItems); index--)
             {
                 ClipboardItemModel item = model.Items[index];
-                if (item.IsFavorite)
+                if (item.IsFavorite || item.IsDeleted)
                     continue;
 
-                model.Items.RemoveAt(index);
-                DeleteImageFiles(item);
+                MarkDeleted(item);
                 nonFavorites--;
+            }
+        }
+
+        private static void MarkDeleted(ClipboardItemModel item)
+        {
+            item.IsDeleted = true;
+            item.ModifiedUtc = DateTime.UtcNow;
+        }
+
+        /// <summary>
+        /// Removes tombstones and their image files after a retention period, so the history file
+        /// stays bounded even though deletions are kept for synchronization.
+        /// </summary>
+        /// <param name="model">The history to clean up.</param>
+        private void PurgeExpiredDeleted(ClipboardHistoryModel model)
+        {
+            DateTime threshold = DateTime.UtcNow.AddDays(-DeletedRetentionDays);
+            foreach (ClipboardItemModel item in model.Items.Where(i => i.IsDeleted && i.ModifiedUtc < threshold).ToList())
+            {
+                model.Items.Remove(item);
+                DeleteImageFiles(item);
             }
         }
 
@@ -263,6 +292,33 @@ namespace SilentNotes.Services
             catch (Exception)
             {
             }
+        }
+
+        /// <inheritdoc/>
+        public void WriteImageFiles(Guid id, byte[] fullImage, byte[] thumbnail)
+        {
+            if (fullImage == null || fullImage.Length == 0)
+                return;
+
+            string fileName = id.ToString("N") + ".png";
+            WriteImageFile(fileName, fullImage);
+            WriteImageFile(GetThumbFileName(fileName), (thumbnail != null && thumbnail.Length > 0) ? thumbnail : fullImage);
+        }
+
+        /// <inheritdoc/>
+        public long GetModificationFingerprint()
+        {
+            ClipboardHistoryModel model = LoadHistoryOrDefault();
+            var hashCodes = new List<long>();
+            foreach (ClipboardItemModel item in model.Items)
+            {
+                hashCodes.Add(item.Id.GetHashCode());
+                hashCodes.Add(item.ModifiedUtc.GetHashCode());
+                hashCodes.Add(item.IsDeleted.GetHashCode());
+                hashCodes.Add(string.GetHashCode(item.ContentHash));
+                hashCodes.Add(string.GetHashCode(item.Text));
+            }
+            return ModificationDetector.CombineHashCodes(hashCodes);
         }
 
         private void DeleteImageFiles(ClipboardItemModel item)

@@ -31,6 +31,7 @@ namespace SilentNotes.Stories.SynchronizationStory
                 var settingsService = serviceProvider.GetService<ISettingsService>();
                 var cryptoRandomService = serviceProvider.GetService<ICryptoRandomService>();
                 var languageService = serviceProvider.GetService<ILanguageService>();
+                var clipboardSyncService = serviceProvider.GetService<IClipboardSyncService>();
 
                 SerializeableCloudStorageCredentials credentials = model.Credentials;
                 repositoryStorageService.LoadRepositoryOrDefault(out NoteRepositoryModel localRepository);
@@ -41,8 +42,17 @@ namespace SilentNotes.Stories.SynchronizationStory
                 if (needsNewTransferCode)
                     transferCode = TransferCode.GenerateCode(cryptoRandomService);
 
-                byte[] encryptedRepository = EncryptRepository(
-                    localRepository, transferCode, cryptoRandomService, settings.SelectedEncryptionAlgorithm, settings.SelectedKdfAlgorithm);
+                byte[] encryptedRepository;
+                try
+                {
+                    clipboardSyncService.Export(localRepository);
+                    encryptedRepository = EncryptRepository(
+                        localRepository, transferCode, cryptoRandomService, settings.SelectedEncryptionAlgorithm, settings.SelectedKdfAlgorithm);
+                }
+                finally
+                {
+                    clipboardSyncService.ClearTransfer(localRepository);
+                }
 
                 ICloudStorageClient cloudStorageClient = cloudStorageClientFactory.GetByKey(credentials.CloudStorageId);
                 await cloudStorageClient.UploadFileAsync(NoteRepositoryModel.RepositoryFileName, encryptedRepository, credentials);

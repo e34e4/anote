@@ -60,6 +60,7 @@ namespace SilentNotes.Models
             ClipboardMonitoringEnabled = false;
             ClipboardHistorySize = 500;
             ClipboardPollIntervalMs = 2500;
+            BookyUrlCaptureEnabled = false;
         }
 
         /// <summary>
@@ -341,6 +342,14 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("clipboard_poll_interval_ms")]
         public int ClipboardPollIntervalMs { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the url of the page currently open in a browser
+        /// should be captured, so it can be used as the default url when creating a bookmark. This
+        /// is only supported on Android by an accessibility service.
+        /// </summary>
+        [XmlElement("booky_url_capture")]
+        public bool BookyUrlCaptureEnabled { get; set; }
 
         /// <summary>
         /// Gets a value indicating whether a cloud storage is set.

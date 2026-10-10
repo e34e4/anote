@@ -315,6 +315,23 @@
 							Min="1" Max="10" Step="1" Color="Color.Tertiary"></MudSlider>
 					</div>
 				}
+
+				@* Booky browser url capture (Android accessibility service) *@
+				@if (ViewModel.CanCaptureBrowserUrl)
+				{
+					<div><MudIcon Icon="@Icons.Material.Filled.BookmarkBorder" Color="Color.Secondary" /></div>
+					<div>
+						<MudSwitch @bind-Value="@ViewModel.BookyUrlCaptureEnabled"
+							Label="@LanguageService["gui_booky_url_capture"]" Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
+						@if (!ViewModel.IsBrowserUrlCaptureActive)
+						{
+							<MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AccessibilityNew"
+								OnClick="@(() => ViewModel.OpenAccessibilitySettingsCommand.Execute(null))">
+								@LanguageService["gui_open_accessibility_settings"]
+							</MudButton>
+						}
+					</div>
+				}
 			</div>
 
 

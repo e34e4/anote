@@ -20,7 +20,7 @@ namespace SilentNotes.Platforms.Services
         private Windows.Storage.IStorageFile _pickedFile;
 
         /// <inheritdoc/>
-        public async Task<bool> PickFile(IEnumerable<string> extensions = null)
+        public async Task<bool> PickFile(IEnumerable<string> extensions = null, string mimeType = null)
         {
             FileOpenPicker filePicker = new FileOpenPicker();
             filePicker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Desktop;

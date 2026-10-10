@@ -28,7 +28,11 @@ namespace SilentNotes.Stories.SynchronizationStory
             {
                 var repositoryStorageService = serviceProvider.GetService<IRepositoryStorageService>();
                 var languageService = serviceProvider.GetService<ILanguageService>();
+                var clipboardSyncService = serviceProvider.GetService<IClipboardSyncService>();
 
+                // Merge the downloaded clipboard into the local history before storing the repository.
+                clipboardSyncService.MergeAndImport(model.CloudRepository.Clipboard);
+                clipboardSyncService.ClearTransfer(model.CloudRepository);
                 repositoryStorageService.TrySaveRepository(model.CloudRepository);
                 return ToTask(ToResult(new StopAndShowRepositoryStep(), languageService["sync_success"], null));
             }

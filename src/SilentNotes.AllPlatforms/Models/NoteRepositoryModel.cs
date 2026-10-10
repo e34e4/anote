@@ -24,13 +24,13 @@ namespace SilentNotes.Models
         /// <summary>The current revision which is used to store a repository. This revision is
         /// increased whenever deserialization of the model becomes incompatible with previous
         /// versions.</summary>
-        public const int CurrentSavingRevision = 9;
+        public const int CurrentSavingRevision = 10;
 
         /// <summary>The highest revision of the repository which can be handled by this application.
         /// This revision can be higher than <see cref="CurrentSavingRevision"/>, so we can make
         /// the app ready for a new feature, but delay the introduction to a later version. Multiple
         /// installations across platforms will then already be ready for this feature.</summary>
-        public const int NewestSupportedRevision = 9;
+        public const int NewestSupportedRevision = 10;
 
 #if (DEBUG)
         public readonly string InstanceId = Guid.NewGuid().ToString();
@@ -53,6 +53,9 @@ namespace SilentNotes.Models
         private NoteListModel _notes;
         private DeletedNoteListModel _deletedNotes;
         private SafeListModel _safes;
+        private BookmarkListModel _bookmarks;
+        private ContactListModel _contacts;
+        private ClipboardTransferListModel _clipboard;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NoteRepositoryModel"/> class.
@@ -128,6 +131,44 @@ namespace SilentNotes.Models
         }
 
         /// <summary>
+        /// Gets or sets a list of Booky bookmarks. Bookmarks are a regular part of the repository,
+        /// they are stored locally and synchronized like notes.
+        /// </summary>
+        [XmlArray("bookmarks")]
+        [XmlArrayItem("bookmark")]
+        public BookmarkListModel Bookmarks
+        {
+            get { return _bookmarks ?? (_bookmarks = new BookmarkListModel()); }
+            set { _bookmarks = value; }
+        }
+
+        /// <summary>
+        /// Gets or sets a list of phone contacts. Contacts are a regular part of the repository,
+        /// they are stored locally and synchronized like notes.
+        /// </summary>
+        [XmlArray("contacts")]
+        [XmlArrayItem("contact")]
+        public ContactListModel Contacts
+        {
+            get { return _contacts ?? (_contacts = new ContactListModel()); }
+            set { _contacts = value; }
+        }
+
+        /// <summary>
+        /// Gets or sets a transient transfer copy of the clipboard history, which is only populated
+        /// while a repository is encrypted for upload or merged after a download. It is always
+        /// cleared before the repository is persisted to the local device, so the local clipboard
+        /// history file remains the single source of truth on the device.
+        /// </summary>
+        [XmlArray("clipboard")]
+        [XmlArrayItem("item")]
+        public ClipboardTransferListModel Clipboard
+        {
+            get { return _clipboard ?? (_clipboard = new ClipboardTransferListModel()); }
+            set { _clipboard = value; }
+        }
+
+        /// <summary>
         /// Creates a distinct and sorted list of all tags of all notes in the repository.
         /// Tags from notes in the recycle bin are ignored.
         /// </summary>
@@ -183,6 +224,14 @@ namespace SilentNotes.Models
                 hashCodes.Add(safe.ModifiedAt.GetHashCode());
                 if (safe.MaintainedAt != null)
                     hashCodes.Add(safe.MaintainedAt.GetHashCode());
+            }
+            foreach (BookmarkModel bookmark in Bookmarks)
+            {
+                hashCodes.Add(bookmark.ModifiedAt.GetHashCode());
+            }
+            foreach (ContactModel contact in Contacts)
+            {
+                hashCodes.Add(contact.ModifiedAt.GetHashCode());
             }
 
             return ModificationDetector.CombineHashCodes(hashCodes);

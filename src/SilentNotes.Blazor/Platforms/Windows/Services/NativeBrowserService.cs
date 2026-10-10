@@ -19,6 +19,12 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
+        public void OpenWebsiteInNewTab(string url)
+        {
+            OpenWebsite(url);
+        }
+
+        /// <inheritdoc/>
         public void OpenWebsiteInApp(string url)
         {
             OpenWebsite(url);

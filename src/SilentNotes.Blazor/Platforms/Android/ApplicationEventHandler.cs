@@ -24,6 +24,10 @@ namespace SilentNotes.Platforms
     {
         private string _actionSendParameter;
         private NoteModel _newNoteFromActionSend;
+        private string _pendingBookmarkUrl;
+        private string _pendingBookmarkTitle;
+        private string _pendingBookmarkQuote;
+        private bool _mainLayoutReady;
         private DateTime? _lastPauseTime; // The (UTC) time the application was sent to the background the last time.
 
         internal void OnCreate(Activity activity)
@@ -47,6 +51,7 @@ namespace SilentNotes.Platforms
 
             // Check for arguments passed by the ActionSendActivity.
             ConsumeActionSendIntentParameter(activity.Intent);
+            ConsumeBookmarkIntentParameter(activity.Intent);
 
             // Prevent notes from being visible in list of recent apps and screenshots
             ISettingsService settingsService = Ioc.Instance.GetService<ISettingsService>();
@@ -62,6 +67,53 @@ namespace SilentNotes.Platforms
             // the old intent running. This is called if the app was closed with the back key and
             // was not completely closed.
             ConsumeActionSendIntentParameter(intent);
+            ConsumeBookmarkIntentParameter(intent);
+        }
+
+        /// <summary>
+        /// Checks whether the intent was created by a <see cref="ProcessTextActivity"/> or a
+        /// <see cref="BookySendActivity"/>, and stores its parameters so a bookmark draft can be
+        /// opened in the booky tab.
+        /// </summary>
+        /// <param name="intent">The active intent.</param>
+        private void ConsumeBookmarkIntentParameter(Intent intent)
+        {
+            string url = intent.GetStringExtra(ProcessTextActivity.UrlParam);
+            string title = intent.GetStringExtra(ProcessTextActivity.TitleParam);
+            string quote = intent.GetStringExtra(ProcessTextActivity.QuoteParam);
+            if (string.IsNullOrEmpty(url) && string.IsNullOrEmpty(title) && string.IsNullOrEmpty(quote))
+                return;
+
+            _pendingBookmarkUrl = url;
+            _pendingBookmarkTitle = title;
+            _pendingBookmarkQuote = quote;
+
+            intent.RemoveExtra(ProcessTextActivity.UrlParam);
+            intent.RemoveExtra(ProcessTextActivity.TitleParam);
+            intent.RemoveExtra(ProcessTextActivity.QuoteParam);
+        }
+
+        /// <summary>
+        /// Publishes a pending bookmark draft to the note repository page, which opens the
+        /// add-bookmark dialog. On a cold start the page is not yet listening when the activity
+        /// resumes, so the draft is published once the main layout is ready.
+        /// </summary>
+        private void PublishPendingBookmarkDraft()
+        {
+            if (string.IsNullOrEmpty(_pendingBookmarkUrl) && string.IsNullOrEmpty(_pendingBookmarkTitle) && string.IsNullOrEmpty(_pendingBookmarkQuote))
+                return;
+
+            var messenger = Ioc.Instance.GetService<IMessengerService>();
+            messenger.Send(new AddBookmarkDraftMessage
+            {
+                Url = _pendingBookmarkUrl,
+                Title = _pendingBookmarkTitle,
+                Quote = _pendingBookmarkQuote,
+            });
+
+            _pendingBookmarkUrl = null;
+            _pendingBookmarkTitle = null;
+            _pendingBookmarkQuote = null;
         }
 
         /// <summary>
@@ -122,6 +174,11 @@ namespace SilentNotes.Platforms
                     messenger.Send(new AfterResumeMessage { SafesClosed = safesClosed });
                 }
             }
+
+            // On a warm start the note repository page is already listening, so the draft can be
+            // published immediately. On a cold start it is published by OnMainLayoutReady().
+            if (_mainLayoutReady)
+                PublishPendingBookmarkDraft();
         }
 
         private bool CloseSafesWhenTimeoutReached()
@@ -190,12 +247,16 @@ namespace SilentNotes.Platforms
 
         public void OnMainLayoutReady()
         {
+            _mainLayoutReady = true;
+
             if (_newNoteFromActionSend != null)
             {
                 var messenger = Ioc.Instance.GetService<IMessengerService>();
                 messenger.Send(new BringNoteIntoViewMessage(_newNoteFromActionSend.Id, false));
                 _newNoteFromActionSend = null;
             }
+
+            PublishPendingBookmarkDraft();
         }
 
         private static string GetId(Activity activity)

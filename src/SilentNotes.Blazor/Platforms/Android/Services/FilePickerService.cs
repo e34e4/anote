@@ -35,12 +35,12 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
-        public async Task<bool> PickFile(IEnumerable<string> extensions = null)
+        public async Task<bool> PickFile(IEnumerable<string> extensions = null, string mimeType = null)
         {
             Intent filePickerIntent = new Intent(Intent.ActionOpenDocument);
             filePickerIntent.AddFlags(ActivityFlags.GrantReadUriPermission);
             filePickerIntent.AddCategory(Intent.CategoryOpenable);
-            filePickerIntent.SetType("application/*");
+            filePickerIntent.SetType(string.IsNullOrEmpty(mimeType) ? "application/*" : mimeType);
 
             var activityResult = await _activityResultAwaiter.StartActivityAndWaitForResult(
                 _appContext.RootActivity, filePickerIntent);

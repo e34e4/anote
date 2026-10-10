@@ -48,6 +48,12 @@ namespace SilentNotes.Services
         /// This property can be null, if the OS doesn't support this functionality.
         /// </summary>
         IClipboardMonitorService ClipboardMonitor { get; }
+
+        /// <summary>
+        /// Gets an interface which can be used to read the url of the page currently open in a
+        /// browser. This property can be null, if the OS doesn't support this functionality.
+        /// </summary>
+        IBrowserUrlProvider BrowserUrl { get; }
     }
 
     /// <summary>

@@ -91,8 +91,9 @@ namespace SilentNotes.Services
             _synchronizationState.UpdateLastFinishedSynchronization();
 
             var repositoryStorageService = serviceProvider.GetService<IRepositoryStorageService>();
+            var clipboardSyncService = serviceProvider.GetService<IClipboardSyncService>();
             if (repositoryStorageService.LoadRepositoryOrDefault(out NoteRepositoryModel repositoryModel) == RepositoryStorageLoadResult.SuccessfullyLoaded)
-                LastSynchronizationFingerprint = repositoryModel.GetModificationFingerprint();
+                LastSynchronizationFingerprint = GetLocalContentFingerprint(repositoryModel, clipboardSyncService);
         }
 
         /// <inheritdoc/>
@@ -114,6 +115,7 @@ namespace SilentNotes.Services
                 ICryptoRandomService cryptoRandomService = serviceProvider.GetService<ICryptoRandomService>();
                 INoteRepositoryUpdater noteRepositoryUpdater = serviceProvider.GetService<INoteRepositoryUpdater>();
                 INavigationService navigation = serviceProvider.GetService<INavigationService>();
+                IClipboardSyncService clipboardSyncService = serviceProvider.GetService<IClipboardSyncService>();
 
                 // Check whether the synchronization should be done at all
                 if (repositoryStorageService.LoadRepositoryOrDefault(out NoteRepositoryModel localRepository) != RepositoryStorageLoadResult.SuccessfullyLoaded)
@@ -124,17 +126,17 @@ namespace SilentNotes.Services
                 System.Diagnostics.Debug.WriteLine("*** SynchronizationService.SynchronizeAtStartup() start");
 
                 // Do the synchronization with the cloud storage in a background thread
-                long oldFingerprint = localRepository.GetModificationFingerprint();
+                long oldFingerprint = GetLocalContentFingerprint(localRepository, clipboardSyncService);
                 var stepResult = await Task.Run(async () =>
                 {
-                    return await RunSilent(settingsService, languageService, cloudStorageFactory, cryptoRandomService, repositoryStorageService, noteRepositoryUpdater);
+                    return await RunSilent(settingsService, languageService, cloudStorageFactory, cryptoRandomService, repositoryStorageService, noteRepositoryUpdater, clipboardSyncService);
                 }).ConfigureAwait(true); // Come back to the UI thread
 
                 // Memorize fingerprint of the synchronized respository
                 if (stepResult != null)
                 {
                     repositoryStorageService.LoadRepositoryOrDefault(out localRepository);
-                    long newFingerprint = localRepository.GetModificationFingerprint();
+                    long newFingerprint = GetLocalContentFingerprint(localRepository, clipboardSyncService);
                     LastSynchronizationFingerprint = newFingerprint;
                     _synchronizationState.UpdateLastFinishedSynchronization();
 
@@ -177,6 +179,20 @@ namespace SilentNotes.Services
         protected long LastSynchronizationFingerprint { get; set; }
 
         /// <summary>
+        /// Calculates a fingerprint of all locally stored content which takes part in the
+        /// synchronization (notes, bookmarks and the clipboard history).
+        /// </summary>
+        /// <param name="repository">The local repository.</param>
+        /// <param name="clipboardSyncService">The clipboard sync service, may be null.</param>
+        /// <returns>A combined fingerprint.</returns>
+        protected static long GetLocalContentFingerprint(NoteRepositoryModel repository, IClipboardSyncService clipboardSyncService)
+        {
+            long repositoryFingerprint = repository.GetModificationFingerprint();
+            long clipboardFingerprint = clipboardSyncService?.GetLocalFingerprint() ?? 0;
+            return ModificationDetector.CombineHashCodes(new[] { repositoryFingerprint, clipboardFingerprint });
+        }
+
+        /// <summary>
         /// Checks whether the synchronization should and can be done or not.
         /// </summary>
         /// <param name="internetStateService">An internet state service.</param>
@@ -217,7 +233,8 @@ namespace SilentNotes.Services
             ICloudStorageClientFactory cloudStorageFactory,
             ICryptoRandomService cryptoRandomService,
             IRepositoryStorageService repositoryStorageService,
-            INoteRepositoryUpdater noteRepositoryUpdater)
+            INoteRepositoryUpdater noteRepositoryUpdater,
+            IClipboardSyncService clipboardSyncService)
         {
             StoryStepResult<SynchronizationStoryModel> result;
             var model = new SynchronizationStoryModel { StoryMode = StoryMode.Silent };
@@ -231,6 +248,7 @@ namespace SilentNotes.Services
             services.AddSingleton(cryptoRandomService);
             services.AddSingleton(repositoryStorageService);
             services.AddSingleton(noteRepositoryUpdater);
+            services.AddSingleton(clipboardSyncService);
             services.AddSingleton((IFeedbackService)(new DummyFeedbackService()));
             services.AddSingleton((INavigationService)(new DummyNavigationService()));
             IServiceProvider serviceProvider = services.BuildServiceProvider();

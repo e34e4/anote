@@ -1,0 +1,117 @@
+@using MudBlazor
+@using SilentNotes.Models
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+
+@inject ILanguageService LanguageService
+
+<style type="text/css">
+	.booky-list {
+		overflow-y: auto;
+		max-height: calc(100vh - 260px);
+	}
+	.booky-title {
+		font-weight: 600;
+		word-break: break-word;
+	}
+	.booky-quote {
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+	.booky-host {
+		word-break: break-all;
+	}
+	.booky-draft-overlay {
+		z-index: 1300;
+	}
+</style>
+
+<div class="pa-2">
+	<div class="d-flex align-center my-2">
+		<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Elevation="0">
+			<MudInput @bind-Value="ViewModel.Filter"
+				Class="filter-input ml-2 mr-1 my-0"
+				Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+				Immediate="true" Clearable="true" Placeholder="@LanguageService["booky_search"]" />
+		</MudPaper>
+		<MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(() => ViewModel.StartAddCommand.Execute(null))" title="@LanguageService["booky_add"]" />
+	</div>
+
+	@if (ViewModel.IsEmpty)
+	{
+		<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["booky_empty"]</MudText>
+	}
+	else
+	{
+		<div class="booky-list">
+			@if (ViewModel.IsGrouped)
+			{
+				<MudExpansionPanels Elevation="0" Dense="true">
+					@foreach (var group in ViewModel.Groups)
+					{
+						<MudExpansionPanel Text="@($"{group.Host} ({group.Count})")">
+							@foreach (var bookmark in group.Items)
+							{
+								@RenderBookmark(bookmark)
+							}
+						</MudExpansionPanel>
+					}
+				</MudExpansionPanels>
+			}
+			else
+			{
+				@foreach (var bookmark in ViewModel.FilteredBookmarks)
+				{
+					@RenderBookmark(bookmark)
+				}
+			}
+		</div>
+	}
+</div>
+
+@if (ViewModel.IsDraftVisible)
+{
+	<MudOverlay Visible="true" Class="booky-draft-overlay" DarkBackground="true" />
+	<div class="pa-4" style="position:fixed; z-index:1400; top:15%; left:0; right:0;">
+		<MudPaper Elevation="4" Class="pa-4 mx-auto" MaxWidth="480px">
+			<MudText Typo="Typo.h6" Class="mb-3">@LanguageService["booky_add"]</MudText>
+			<MudTextField @bind-Value="ViewModel.DraftUrl" Label="@LanguageService["booky_url"]" Variant="Variant.Outlined" Class="mb-3" />
+			<MudTextField @bind-Value="ViewModel.DraftTitle" Label="@LanguageService["booky_title"]" Variant="Variant.Outlined" Class="mb-3" />
+			<MudTextField @bind-Value="ViewModel.DraftQuote" Label="@LanguageService["booky_quote"]" Variant="Variant.Outlined" Lines="3" Class="mb-3" />
+			@if (!string.IsNullOrEmpty(ViewModel.DraftError))
+			{
+				<MudText Color="Color.Error" Class="mb-3">@ViewModel.DraftError</MudText>
+			}
+			<MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+				<MudButton Variant="Variant.Text" OnClick="@(() => ViewModel.CancelDraftCommand.Execute(null))">@LanguageService["cancel"]</MudButton>
+				<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => ViewModel.SaveDraftCommand.Execute(null))">@LanguageService["booky_save"]</MudButton>
+			</MudStack>
+		</MudPaper>
+	</div>
+}
+
+@code {
+	/// <summary>
+	/// Gets or sets the view model of the booky tab.
+	/// </summary>
+	[Parameter]
+	public BookyViewModel ViewModel { get; set; }
+
+	private RenderFragment RenderBookmark(BookmarkItemViewModel bookmark)
+	{
+		return @<MudPaper Elevation="1" Class="pa-2 my-2 d-flex align-start">
+			<div class="flex-grow-1 overflow-hidden" style="cursor:pointer" @onclick="() => ViewModel.OpenCommand.Execute(bookmark)">
+				<MudText Class="booky-title">@bookmark.Title</MudText>
+				@if (!string.IsNullOrWhiteSpace(bookmark.Quote))
+				{
+					<MudText Class="booky-quote mud-text-secondary mt-1">@bookmark.Quote</MudText>
+				}
+				<MudText Typo="Typo.caption" Class="booky-host mud-text-secondary mt-1">@bookmark.Url</MudText>
+			</div>
+			<MudStack Row="true" Spacing="0" Class="flex-shrink-0">
+				<MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" OnClick="@(() => ViewModel.OpenCommand.Execute(bookmark))" title="@LanguageService["booky_open"]" />
+				<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ViewModel.DeleteCommand.Execute(bookmark))" title="@LanguageService["booky_delete"]" />
+			</MudStack>
+		</MudPaper>;
+	}
+}

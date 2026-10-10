@@ -25,6 +25,8 @@
 @inject ISynchronizationState SynchronizationState
 @inject ISafeKeyService SafeKeyService
 @inject IMessengerService MessengerService
+@inject INativeBrowserService NativeBrowserService
+@inject IClipboardService ClipboardService
 
 <style type="text/css">
 	.mud-main-content {
@@ -46,14 +48,19 @@
 		flex: 0 0 auto;
 		width: auto;
 	}
-	.appbar-tabs .mud-tabs-toolbar {
-		background-color: transparent;
+	.appbar-tabs {
+		background-color: #000000 !important;
+	}
+	.appbar-tabs .mud-tabs-tabbar,
+	.appbar-tabs .mud-tabs-tabbar-content {
+		background-color: transparent !important;
 		box-shadow: none;
 	}
 	.appbar-tabs .mud-tab {
 		color: var(--mud-palette-appbar-text);
 		text-transform: none;
 		min-width: auto;
+		padding: 0 10px;
 	}
 	.appbar-tabs .mud-tab.mud-tab-active {
 		color: var(--mud-palette-appbar-text);
@@ -68,9 +75,11 @@
 
 @* Main menu with the Notes / Clipboard tabs *@
 <MudAppBar Class="flex-none appbar-tabs" Fixed="true" Dense="true" WrapContent="false">
-	<MudTabs @bind-ActivePanelIndex="_activeTab" Elevation="0" Rounded="false" ApplyEffectsToContainer="false" Class="appbar-tabs-inner">
+	<MudTabs @bind-ActivePanelIndex="_activeTab" Elevation="0" Rounded="false" ApplyEffectsToContainer="false" MinimumTabWidth="0" Class="appbar-tabs-inner">
 		<MudTabPanel Text="@LanguageService["tab_notes"]" />
 		<MudTabPanel Text="@LanguageService["tab_clipboard"]" />
+		<MudTabPanel Text="@LanguageService["tab_booky"]" />
+		<MudTabPanel Text="@LanguageService["tab_phone"]" />
 	</MudTabs>
 
 	<MudSpacer />
@@ -251,10 +260,20 @@
 			</ChildContent>
 		</MudMenu>
 	}
-	else
+	else if (_activeTab == 1)
 	{
 		@* Clipboard history *@
 		<ClipboardTab />
+	}
+	else if (_activeTab == 2)
+	{
+		@* Booky bookmarks *@
+		<BookyTab ViewModel="_bookyViewModel" />
+	}
+	else
+	{
+		@* Phone contacts *@
+		<ContactsTab ViewModel="_contactsViewModel" />
 	}
 </MudMainContent>
 
@@ -295,6 +314,8 @@
 	private BringNoteIntoViewMessage _pendingScrollIntoView;
 	private MudTreeItemWrapper _tagsRootNode;
 	private int _activeTab = 0;
+	private BookyViewModel _bookyViewModel;
+	private ContactsViewModel _contactsViewModel;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="NoteRepositoryPage"/> class.
@@ -323,8 +344,26 @@
 		await ViewModel.InitializeTagTree();
 		_tagsRootNode = new MudTreeItemWrapper(ViewModel.TagsRootNode, null);
 
+		_bookyViewModel = new BookyViewModel(
+			noteRepositoryModel,
+			LanguageService,
+			RepositoryStorageService,
+			NativeBrowserService,
+			EnvironmentService);
+
+		_contactsViewModel = new ContactsViewModel(
+			noteRepositoryModel,
+			LanguageService,
+			RepositoryStorageService,
+			ClipboardService,
+			NativeBrowserService,
+			FilePickerService,
+			FeedbackService);
+
 		MessengerService.Register<BringNoteIntoViewMessage>(
 			this, (recipient, message) => _pendingScrollIntoView = message);
+		MessengerService.Register<AddBookmarkDraftMessage>(
+			this, (recipient, message) => OnAddBookmarkDraft(message));
 		MessengerService.Register<SynchronizationIsRunningChangedMessage>(
 			this, (recipient, message) => InvokeAsync(StateHasChanged));
 
@@ -379,6 +418,18 @@
 		base.OnClosingPage();
 		MessengerService.Unregister<SynchronizationIsRunningChangedMessage>(this);
 		MessengerService.Unregister<BringNoteIntoViewMessage>(this);
+		MessengerService.Unregister<AddBookmarkDraftMessage>(this);
+	}
+
+	/// <summary>
+	/// Switches to the booky tab and opens the add-bookmark dialog with the received draft.
+	/// </summary>
+	/// <param name="message">The draft with the url, title and quote.</param>
+	private void OnAddBookmarkDraft(AddBookmarkDraftMessage message)
+	{
+		_activeTab = 2;
+		_bookyViewModel?.ShowDraft(message.Url, message.Title, message.Quote);
+		InvokeAsync(StateHasChanged);
 	}
 
 	/// <inheritdoc/>

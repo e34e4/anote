@@ -1,0 +1,110 @@
+@using MudBlazor
+@using SilentNotes.Models
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+
+@inject ILanguageService LanguageService
+
+<style type="text/css">
+	.contacts-list {
+		overflow-y: auto;
+		max-height: calc(100vh - 300px);
+	}
+	.contact-index {
+		grid-area: num;
+		color: var(--mud-palette-text-secondary);
+		font-variant-numeric: tabular-nums;
+		min-width: 2.2rem;
+		text-align: right;
+	}
+	.contact-phone {
+		font-family: ui-monospace, "Cascadia Code", monospace;
+		text-transform: none;
+	}
+	.contact-empty-number {
+		color: var(--mud-palette-text-secondary);
+	}
+	.theme-dark .contact-card {
+		background-color: #000000;
+	}
+</style>
+
+<div class="pa-2">
+	<div class="d-flex align-center my-2">
+		<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Elevation="0">
+			<MudInput @bind-Value="ViewModel.Filter"
+				Class="filter-input ml-2 mr-1 my-0"
+				Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+				Immediate="true" Clearable="true" Placeholder="@LanguageService["contact_search"]" />
+		</MudPaper>
+		<MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.FileUpload" OnClick="@(() => ViewModel.ImportCommand.Execute(null))" title="@LanguageService["contact_import"]" />
+		<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(() => ViewModel.AddCommand.Execute(null))" title="@LanguageService["contact_add"]" />
+	</div>
+
+	<MudText Typo="Typo.caption" Class="contact-empty-number mb-1">@ViewModel.CountText</MudText>
+
+	@if (ViewModel.IsEmpty)
+	{
+		<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["contact_empty"]</MudText>
+	}
+	else if (ViewModel.HasNoMatches)
+	{
+		<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["contact_no_matches"]</MudText>
+	}
+	else
+	{
+		<div class="contacts-list">
+			@foreach (var contact in ViewModel.FilteredContacts)
+			{
+				<MudPaper Elevation="1" Class="pa-2 my-2 contact-card" @key="contact.Id">
+					<div class="d-flex align-center">
+						<MudText Class="contact-index mr-2">@contact.Index</MudText>
+						<MudTextField @bind-Value="contact.Name"
+							Variant="Variant.Text" Margin="Margin.Dense" Class="flex-grow-1"
+							Placeholder="@LanguageService["contact_name"]" />
+						<MudStack Row="true" Spacing="0" Class="flex-shrink-0">
+							<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => ViewModel.StartEditNumbersCommand.Execute(contact))" title="@LanguageService["contact_edit"]" />
+							<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ViewModel.DeleteCommand.Execute(contact))" title="@LanguageService["contact_delete"]" />
+						</MudStack>
+					</div>
+
+					<div class="d-flex align-center pl-2 flex-wrap">
+						@if (ViewModel.IsEditingNumbersOf(contact))
+						{
+							<MudTextField @bind-Value="ViewModel.DraftNumbers"
+								Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1"
+								Placeholder="@LanguageService["contact_numbers"]" />
+							<MudIconButton Icon="@Icons.Material.Filled.Save" Size="Size.Small" Color="Color.Primary" OnClick="@(() => ViewModel.SaveNumbersCommand.Execute(null))" title="@LanguageService["contact_save"]" />
+							<MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => ViewModel.CancelEditNumbersCommand.Execute(null))" title="@LanguageService["cancel"]" />
+						}
+						else if (contact.Phones.Count > 0)
+						{
+							@foreach (var phone in contact.Phones)
+							{
+								<div class="d-flex align-center mr-3">
+									<MudButton Variant="Variant.Text" Size="Size.Small" Class="contact-phone"
+										OnClick="@(() => ViewModel.CopyCommand.Execute(phone))" title="@LanguageService["contact_copy"]">@phone</MudButton>
+									<MudIconButton Icon="@Icons.Material.Filled.Phone" Size="Size.Small" OnClick="@(() => ViewModel.CallCommand.Execute(phone))" title="@LanguageService["contact_call"]" />
+									<MudIconButton Icon="@Icons.Material.Filled.Message" Size="Size.Small" OnClick="@(() => ViewModel.SmsCommand.Execute(phone))" title="@LanguageService["contact_sms"]" />
+									<MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" OnClick="@(() => ViewModel.TelegramCommand.Execute(phone))" title="@LanguageService["contact_telegram"]" />
+								</div>
+							}
+						}
+						else
+						{
+							<MudText Class="contact-empty-number">@LanguageService["contact_no_number"]</MudText>
+						}
+					</div>
+				</MudPaper>
+			}
+		</div>
+	}
+</div>
+
+@code {
+	/// <summary>
+	/// Gets or sets the view model of the phone tab.
+	/// </summary>
+	[Parameter]
+	public ContactsViewModel ViewModel { get; set; }
+}

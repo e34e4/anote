@@ -22,9 +22,11 @@ namespace SilentNotes.Services
         /// </summary>
         /// <param name="extensions">An optional list of file extensions. The extenstions should
         /// include the point separator e.g. ".txt"</param>
+        /// <param name="mimeType">An optional mime type to filter the offered files, e.g.
+        /// "text/html". If not set, a generic filter is used.</param>
         /// <returns>Returns true if the user picked a file, false if the pick dialog was
         /// canceled.</returns>
-        Task<bool> PickFile(IEnumerable<string> extensions = null);
+        Task<bool> PickFile(IEnumerable<string> extensions = null, string mimeType = null);
 
         /// <summary>
         /// Lets the user pick an image file for reading with a system dialog. This filters the

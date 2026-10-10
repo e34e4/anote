@@ -79,7 +79,7 @@ namespace SilentNotes.ViewModels
         public void Reload()
         {
             ClipboardHistoryModel model = _historyService.LoadHistoryOrDefault();
-            _items = model.Items.Select(item => new ClipboardItemViewModel(item, _historyService)).ToList();
+            _items = model.Items.Where(item => !item.IsDeleted).Select(item => new ClipboardItemViewModel(item, _historyService)).ToList();
 
             OnPropertyChanged(nameof(AllItems));
             OnPropertyChanged(nameof(FavoriteItems));

@@ -38,6 +38,8 @@ namespace SilentNotes.Workers
             result.Id = remoteRepository.Id;
             result.DeletedNotes = deletedNotes;
             result.Safes = BuildMergedListOfSafes(remoteRepository.Safes, localRepository.Safes);
+            result.Bookmarks = BuildMergedListOfBookmarks(remoteRepository.Bookmarks, localRepository.Bookmarks);
+            result.Contacts = BuildMergedListOfContacts(remoteRepository.Contacts, localRepository.Contacts);
 
             bool orderInLocalRepo = localRepository.OrderModifiedAt > remoteRepository.OrderModifiedAt;
             if (orderInLocalRepo)
@@ -181,6 +183,74 @@ namespace SilentNotes.Workers
                 {
                     // Take the more recent
                     SafeModel lastModifiedItem = ChooseLastModified(
+                        pair.Item1, pair.Item2, item => item.ModifiedAt, null);
+                    result.Add(lastModifiedItem.Clone());
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Build a merged list of bookmarks.
+        /// </summary>
+        /// <param name="leftItems">List of bookmarks from the repository whose order has precedence.</param>
+        /// <param name="rightItems">List of bookmarks from the other repository.</param>
+        /// <returns>List of bookmarks for the new merged repository.</returns>
+        private static BookmarkListModel BuildMergedListOfBookmarks(BookmarkListModel leftItems, BookmarkListModel rightItems)
+        {
+            BookmarkListModel result = new BookmarkListModel();
+
+            var map = OuterJoin(leftItems, rightItems, item => item.Id);
+            foreach (Tuple<BookmarkModel, BookmarkModel> pair in map)
+            {
+                if (pair.Item1 == null)
+                {
+                    // Only available on the right side
+                    result.Add(pair.Item2.Clone());
+                }
+                else if (pair.Item2 == null)
+                {
+                    // Only available on the left side
+                    result.Add(pair.Item1.Clone());
+                }
+                else
+                {
+                    // Take the more recent
+                    BookmarkModel lastModifiedItem = ChooseLastModified(
+                        pair.Item1, pair.Item2, item => item.ModifiedAt, null);
+                    result.Add(lastModifiedItem.Clone());
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Build a merged list of contacts.
+        /// </summary>
+        /// <param name="leftItems">List of contacts from the repository whose order has precedence.</param>
+        /// <param name="rightItems">List of contacts from the other repository.</param>
+        /// <returns>List of contacts for the new merged repository.</returns>
+        private static ContactListModel BuildMergedListOfContacts(ContactListModel leftItems, ContactListModel rightItems)
+        {
+            ContactListModel result = new ContactListModel();
+
+            var map = OuterJoin(leftItems, rightItems, item => item.Id);
+            foreach (Tuple<ContactModel, ContactModel> pair in map)
+            {
+                if (pair.Item1 == null)
+                {
+                    // Only available on the right side
+                    result.Add(pair.Item2.Clone());
+                }
+                else if (pair.Item2 == null)
+                {
+                    // Only available on the left side
+                    result.Add(pair.Item1.Clone());
+                }
+                else
+                {
+                    // Take the more recent
+                    ContactModel lastModifiedItem = ChooseLastModified(
                         pair.Item1, pair.Item2, item => item.ModifiedAt, null);
                     result.Add(lastModifiedItem.Clone());
                 }
