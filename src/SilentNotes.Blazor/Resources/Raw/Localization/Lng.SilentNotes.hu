@@ -58,6 +58,7 @@ feedback_note_to_recycle = A jegyzet a kukába került, és onnan visszaállíth
 note_pin = Jegyzet rögzítése
 note_open_link = Hivatkozás megnyitása
 note_horizontal_rule = Vízszintes elválasztóvonal
+note_image = Kép
 note_show_info = Információk a jegyzetről
 note_share_subject = Jegyzet a SilentNotes alkalmazásból
 
@@ -207,3 +208,5 @@ gui_remember_last_tag_filter = Keresési címke megjegyzése a következő indí
 gui_hide_closed_safe_notes = A bezárt széf jegyzeteinek elrejtése
 gui_always_english = Always display in English
 gui_localization_test = Új nyelvi fájl tesztelése
+gui_show_floating_button = Lebegő jegyzet gomb
+gui_open_accessibility_settings = Android kisegítő beállítások megnyitása

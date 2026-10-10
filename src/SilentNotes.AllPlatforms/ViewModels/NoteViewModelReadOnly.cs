@@ -118,6 +118,7 @@ namespace SilentNotes.ViewModels
                 shortener.WantedLength = 600; // Should be enough even for settings with
                 shortener.WantedTagNumber = 20; // small font and very height notes.
 
+                result = shortener.RemoveImages(result);
                 result = shortener.Shorten(result);
                 result = shortener.DisableLinks(result);
             }

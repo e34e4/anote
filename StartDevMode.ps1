@@ -1,8 +1,8 @@
 Write-Host "Modifies the csproj and the appxmanifest, so that debugging wont interference with the installed original version."
 
 $Project = ".\src\SilentNotes.Blazor\SilentNotes.csproj"
-$Search  = "<ApplicationId>ch.martinstoeckli.silentnotes</ApplicationId>"
-$Replace = "<ApplicationId>dev.martinstoeckli.silentnotes</ApplicationId>"
+$Search  = "<ApplicationId>app.anote</ApplicationId>"
+$Replace = "<ApplicationId>dev.anote</ApplicationId>"
 
 (Get-Content $Project) -replace $Search, $Replace | Set-Content -Path $Project -Encoding UTF8
 

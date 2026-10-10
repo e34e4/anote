@@ -27,6 +27,14 @@ namespace SilentNotes.Services
         Task<bool> PickFile(IEnumerable<string> extensions = null);
 
         /// <summary>
+        /// Lets the user pick an image file for reading with a system dialog. This filters the
+        /// offered files to common image formats.
+        /// </summary>
+        /// <returns>Returns true if the user picked a file, false if the pick dialog was
+        /// canceled.</returns>
+        Task<bool> PickImage();
+
+        /// <summary>
         /// Tries to read a formerly picked file, call this method only after <see cref="PickFile"/>
         /// returned true.
         /// </summary>

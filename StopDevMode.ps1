@@ -1,8 +1,8 @@
 Write-Host "Reverses the modifications done with StartDevMode.ps1"
 
 $Project = ".\src\SilentNotes.Blazor\SilentNotes.csproj"
-$Search  = "<ApplicationId>dev.martinstoeckli.silentnotes</ApplicationId>"
-$Replace = "<ApplicationId>ch.martinstoeckli.silentnotes</ApplicationId>"
+$Search  = "<ApplicationId>dev.anote</ApplicationId>"
+$Replace = "<ApplicationId>app.anote</ApplicationId>"
 
 (Get-Content $Project) -replace $Search, $Replace | Set-Content -Path $Project -Encoding UTF8
 

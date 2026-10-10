@@ -12,7 +12,7 @@ using static Android.Views.ViewTreeObserver;
 namespace SilentNotes
 {
     [Activity(
-        Label = "SilentNotes",
+        Label = "aNote",
         Theme = "@style/Maui.SplashTheme",
         MainLauncher = true,
         LaunchMode = LaunchMode.SingleTask,

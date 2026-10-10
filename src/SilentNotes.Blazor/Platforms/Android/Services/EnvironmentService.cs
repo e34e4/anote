@@ -6,6 +6,7 @@
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Android.Content;
 using Android.Content.Res;
 using Android.Views;
 using SilentNotes.Services;
@@ -15,7 +16,7 @@ namespace SilentNotes.Platforms.Services
     /// <summary>
     /// Implementation of the <see cref="IEnvironmentService"/> for the Android platform.
     /// </summary>
-    internal class EnvironmentService : IEnvironmentService, IKeepScreenOn, IScreenshots
+    internal class EnvironmentService : IEnvironmentService, IKeepScreenOn, IScreenshots, IFloatingButtonService
     {
         private readonly IAppContextService _appContext;
         private readonly IMessengerService _messengerService;
@@ -123,6 +124,29 @@ namespace SilentNotes.Platforms.Services
                 else
                     _appContext.RootActivity.Window.ClearFlags(WindowManagerFlags.Secure);
             }
+        }
+
+        /// <inheritdoc/>
+        public IFloatingButtonService FloatingButton
+        {
+            get { return this; }
+        }
+
+        /// <inheritdoc/>
+        void IFloatingButtonService.SetFloatingButtonVisible(bool visible)
+        {
+            if (visible)
+                FloatingButtonAccessibilityService.Instance?.ShowOverlay();
+            else
+                FloatingButtonAccessibilityService.Instance?.HideOverlay();
+        }
+
+        /// <inheritdoc/>
+        void IFloatingButtonService.OpenAccessibilitySettings()
+        {
+            var intent = new Intent(global::Android.Provider.Settings.ActionAccessibilitySettings);
+            intent.AddFlags(ActivityFlags.NewTask);
+            _appContext.Context.StartActivity(intent);
         }
     }
 }

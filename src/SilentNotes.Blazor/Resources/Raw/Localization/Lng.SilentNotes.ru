@@ -58,6 +58,7 @@ feedback_note_to_recycle = Заметка перемещена в корзину
 note_pin = Закрепить заметку
 note_open_link = Открыть ссылку
 note_horizontal_rule = Horizontal rule
+note_image = Изображение
 note_show_info = Информация о заметке
 note_share_subject = Note from SilentNotes
 
@@ -207,3 +208,5 @@ gui_remember_last_tag_filter = Remember search tag for next launch
 gui_hide_closed_safe_notes = Скрыть заметки закрытого сейфа
 gui_always_english = Always display in English
 gui_localization_test = Тестировать новый языковой файл
+gui_show_floating_button = Плавающая кнопка заметки
+gui_open_accessibility_settings = Открыть настройки специальных возможностей Android

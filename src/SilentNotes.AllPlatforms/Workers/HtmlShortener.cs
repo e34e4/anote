@@ -80,6 +80,19 @@ namespace SilentNotes.Workers
             return result;
         }
 
+        /// <summary>
+        /// Removes all image tags from the HTML content. This is useful for overviews, so that
+        /// inlined (base64 encoded) pictures do not bloat the preview or count towards the length.
+        /// </summary>
+        /// <param name="content">Html content to clean.</param>
+        /// <returns>Html content without image tags.</returns>
+        public string RemoveImages(string content)
+        {
+            if (string.IsNullOrEmpty(content))
+                return content;
+            return Regex.Replace(content, "<img\\b[^>]*>", string.Empty, RegexOptions.IgnoreCase);
+        }
+
         public string DisableLinks(string content)
         {
             if (content == null)

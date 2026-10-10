@@ -55,6 +55,7 @@ namespace SilentNotes.Models
             UseWallpaper = true;
             RememberLastTagFilter = false;
             AlwaysEnglish = false;
+            ShowFloatingButton = false;
         }
 
         /// <summary>
@@ -300,6 +301,13 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("always_english")]
         public bool AlwaysEnglish {  get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether a floating button should be shown, which opens
+        /// the application. This is only supported on Android by an accessibility service.
+        /// </summary>
+        [XmlElement("show_floating_button")]
+        public bool ShowFloatingButton { get; set; }
 
         /// <summary>
         /// Gets a value indicating whether a cloud storage is set.

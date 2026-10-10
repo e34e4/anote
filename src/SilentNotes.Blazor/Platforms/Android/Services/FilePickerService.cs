@@ -54,6 +54,25 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
+        public async Task<bool> PickImage()
+        {
+            Intent imagePickerIntent = new Intent(Intent.ActionOpenDocument);
+            imagePickerIntent.AddFlags(ActivityFlags.GrantReadUriPermission);
+            imagePickerIntent.AddCategory(Intent.CategoryOpenable);
+            imagePickerIntent.SetType("image/*");
+
+            var activityResult = await _activityResultAwaiter.StartActivityAndWaitForResult(
+                _appContext.RootActivity, imagePickerIntent);
+
+            if (activityResult.ResultCode == Result.Ok)
+            {
+                _pickedUri = activityResult.Data?.Data;
+                return true;
+            }
+            return false;
+        }
+
+        /// <inheritdoc/>
         public async Task<byte[]> ReadPickedFile()
         {
             if (_pickedUri == null)

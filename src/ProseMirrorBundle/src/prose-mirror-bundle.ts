@@ -8,6 +8,7 @@ import Document from '@tiptap/extension-document'
 import HardBreak from '@tiptap/extension-hard-break'
 import History from '@tiptap/extension-history'
 import HorizontalRule from '@tiptap/extension-horizontal-rule'
+import Image from '@tiptap/extension-image'
 import Italic from '@tiptap/extension-italic'
 import Paragraph from '@tiptap/extension-paragraph'
 import Strike from '@tiptap/extension-strike'
@@ -61,6 +62,10 @@ export function initializeEditor(editorElement: HTMLElement): any {
           depth: 200,
         }),        
         HorizontalRule,
+        Image.configure({
+          inline: false,
+          allowBase64: true,
+        }),
         Italic,
         CustomLink.configure({
           autolink: false,

@@ -58,6 +58,7 @@ feedback_note_to_recycle = Poznámka byla přesunuta do koše, odkud ji lze obno
 note_pin = Připnout poznámku
 note_open_link = Otevřít odkaz
 note_horizontal_rule = Horizontální pravidlo
+note_image = Obrázek
 note_show_info = Informace o poznámce
 note_share_subject = Poznámka od SilentNotes
 
@@ -207,3 +208,5 @@ gui_remember_last_tag_filter = Zapamatovat vyhledávání pro další spuštěn�
 gui_hide_closed_safe_notes = Skrýt poznámky uzamčeného trezoru
 gui_always_english = Always display in English
 gui_localization_test = Vyzkoušet soubor s překladem
+gui_show_floating_button = Plovoucí tlačítko poznámky
+gui_open_accessibility_settings = Otevřít nastavení přístupnosti Androidu

@@ -58,6 +58,7 @@ feedback_note_to_recycle = The note has been moved to the recycle bin and can be
 note_pin = Pin note
 note_open_link = Open link
 note_horizontal_rule = Horizontal rule
+note_image = Image
 note_show_info = Note information
 note_share_subject = Note from SilentNotes
 
@@ -207,3 +208,5 @@ gui_remember_last_tag_filter = Remember search tag for next launch
 gui_hide_closed_safe_notes = Hide notes of closed safe
 gui_always_english = Always display in English
 gui_localization_test = Test new language file
+gui_show_floating_button = Floating note button
+gui_open_accessibility_settings = Open Android accessibility settings

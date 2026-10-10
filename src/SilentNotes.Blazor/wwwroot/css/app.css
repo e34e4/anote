@@ -189,6 +189,13 @@ td { word-wrap: anywhere; } /* table should not exceed device width */
 .note-viewer a { text-decoration: none !important; }
 .note-viewer a:hover { text-decoration: underline !important; }
 .note-viewer hr { margin-top: 1em; margin-bottom: 1em }
+.note-viewer img {
+	max-width: 100%;
+	height: auto;
+}
+.note-viewer img.ProseMirror-selectednode {
+	outline: 2px solid rgba(128, 128, 128, 0.6);
+}
 
 /* Checklist in overview. The svg content: url() is set in view with the IconService. */
 

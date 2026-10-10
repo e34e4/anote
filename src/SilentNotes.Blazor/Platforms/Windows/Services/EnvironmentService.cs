@@ -41,5 +41,11 @@ namespace SilentNotes.Platforms.Services
         {
             get { return null; }
         }
+
+        /// <inheritdoc/>
+        public IFloatingButtonService FloatingButton
+        {
+            get { return null; }
+        }
     }
 }

@@ -131,6 +131,17 @@ export class TiptapHelper {
     }
 
     /**
+     * Inserts an image at the current position.
+     * Requires an editor with the '@tiptap/extension-image' extension.
+     * @param editor - A TipTap editor instance.
+     * @param src - The image source, usually a data URL.
+     * @param alt - Optional alternative text for the image.
+     */
+    public static insertImage(editor: Editor, src: string, alt: string = null): void {
+        editor.chain().focus().setImage({ src: src, alt: alt }).run();
+    }
+
+    /**
      * Searches for all occurences of a given text in the note and highlights the findings.
      * @param {Editor}  editor - A TipTap editor instance.
      * @param {string}  needle - The text to search for.

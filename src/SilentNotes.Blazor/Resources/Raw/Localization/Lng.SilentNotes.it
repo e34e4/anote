@@ -58,6 +58,7 @@ feedback_note_to_recycle = L'appunto è stato spostato nel Cestino e può essere
 note_pin = Appunto in evidenza
 note_open_link = Apri collegamenti
 note_horizontal_rule = Righello orizzontale
+note_image = Immagine
 note_show_info = Informazioni sull'appunto
 note_share_subject = Appunto da SilentNotes
 
@@ -207,3 +208,5 @@ gui_remember_last_tag_filter = Ricorda la ricerca delle etichette per il prossim
 gui_hide_closed_safe_notes = Nascondi gli appunti della cassaforte chiusa
 gui_always_english = Always display in English
 gui_localization_test = Prova il nuovo file della lingua
+gui_show_floating_button = Pulsante nota fluttuante
+gui_open_accessibility_settings = Apri le impostazioni di accessibilità di Android

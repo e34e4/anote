@@ -253,6 +253,20 @@
 							Min="1" Max="30" Step="1" Color="Color.Tertiary"></MudSlider>
 					</div>
 				}
+
+				@* Floating note button, which opens the app (Android accessibility service) *@
+				@if (ViewModel.CanShowFloatingButton)
+				{
+					<div><MudIcon Icon="@Icons.Material.Filled.TouchApp" Color="Color.Secondary" /></div>
+					<div>
+						<MudSwitch @bind-Value="@ViewModel.ShowFloatingButton"
+							Label="@LanguageService["gui_show_floating_button"]" Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
+						<MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AccessibilityNew"
+							OnClick="@(() => ViewModel.OpenAccessibilitySettingsCommand.Execute(null))">
+							@LanguageService["gui_open_accessibility_settings"]
+						</MudButton>
+					</div>
+				}
 			</div>
 
 

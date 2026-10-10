@@ -58,6 +58,7 @@ feedback_note_to_recycle = Not geri dönüşüm kutusuna taşındı.
 note_pin = Notu sabitle
 note_open_link = Bağlantıyı aç
 note_horizontal_rule = Horizontal rule
+note_image = Resim
 note_show_info = Not bilgileri
 note_share_subject = SilentNotes üzerinden paylaşıldı
 
@@ -207,3 +208,5 @@ gui_remember_last_tag_filter = Uygulamayı bir sonraki başlatışımda arama et
 gui_hide_closed_safe_notes = Kasa kilitlenince korunan notları gizle
 gui_always_english = Always display in English
 gui_localization_test = Yeni bir dil dosyasını dene
+gui_show_floating_button = Yüzen not düğmesi
+gui_open_accessibility_settings = Android erişilebilirlik ayarlarını aç

@@ -58,6 +58,7 @@ feedback_note_to_recycle = 笔记已移至回收站，可以从那里恢复。
 note_pin = 置顶笔记
 note_open_link = 打开链接
 note_horizontal_rule = 水平分隔线
+note_image = 图片
 note_show_info = 笔记信息
 note_share_subject = 来自 SilentNotes 的笔记
 
@@ -207,3 +208,5 @@ gui_remember_last_tag_filter = 下次启动时记住筛选标签
 gui_hide_closed_safe_notes = 保险箱关闭时隐藏其中的笔记
 gui_always_english = Always display in English
 gui_localization_test = 测试新的语言文件
+gui_show_floating_button = 悬浮笔记按钮
+gui_open_accessibility_settings = 打开 Android 无障碍设置

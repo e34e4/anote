@@ -86,6 +86,7 @@ namespace SilentNotes.ViewModels
             ChangeCloudSettingsCommand = new RelayCommand(ChangeCloudSettings);
             ClearCloudSettingsCommand = new RelayCommand(ClearCloudSettings);
             TestNewLocalizationCommand = new RelayCommand(TestNewLocalization);
+            OpenAccessibilitySettingsCommand = new RelayCommand(OpenAccessibilitySettings);
         }
 
         /// <summary>
@@ -127,6 +128,7 @@ namespace SilentNotes.ViewModels
                 settings.AutoSyncMode.GetHashCode(),
                 settings.PreventScreenshots.GetHashCode(),
                 settings.AlwaysEnglish.GetHashCode(),
+                settings.ShowFloatingButton.GetHashCode(),
                 (settings.Credentials == null).GetHashCode(),
             });
         }
@@ -474,6 +476,30 @@ namespace SilentNotes.ViewModels
         }
 
         /// <summary>
+        /// Gets or sets a value indicating whether a floating button should be shown, which opens
+        /// the application. This is only supported on Android.
+        /// </summary>
+        public bool ShowFloatingButton
+        {
+            get { return Model.ShowFloatingButton; }
+            set
+            {
+                if (SetProperty(Model.ShowFloatingButton, value, (bool v) => Model.ShowFloatingButton = v))
+                {
+                    _environmentService.FloatingButton?.SetFloatingButtonVisible(value);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether the operating system supports the floating button.
+        /// </summary>
+        public bool CanShowFloatingButton
+        {
+            get { return _environmentService.FloatingButton != null; }
+        }
+
+        /// <summary>
         /// Gets or sets the auto sync mode selected by the user.
         /// </summary>
         public string SelectedAutoSyncMode
@@ -571,6 +597,17 @@ namespace SilentNotes.ViewModels
                     return (MarkupString)string.Join("<br>", lines);
                 }
             }
+        }
+
+        /// <summary>
+        /// Gets the command to open the accessibility settings of the operating system, where the
+        /// user can enable or disable the floating button.
+        /// </summary>
+        public ICommand OpenAccessibilitySettingsCommand { get; private set; }
+
+        private void OpenAccessibilitySettings()
+        {
+            _environmentService.FloatingButton?.OpenAccessibilitySettings();
         }
 
         /// <summary>

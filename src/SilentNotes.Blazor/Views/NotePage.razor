@@ -161,6 +161,10 @@
 				Icon="@IconService.GetSvgLink(IconNames.Minus)"
 				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_horizontal_rule"]</MudMenuItem>
 
+			<MudMenuItem OnClick="@(() => InsertImage())"
+				Icon="@IconService.GetSvgLink(IconNames.ImagePlus)"
+				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_image"]</MudMenuItem>
+
 			<MudDivider/>
 
 			<MudMenuItem OnClick="@(() => ShareNote())"
@@ -295,6 +299,7 @@
 		IconNames.Pin,
 		IconNames.Magnify,
 		IconNames.Minus,
+		IconNames.ImagePlus,
 		IconNames.Close,
 		IconNames.Delete,
 		IconNames.TagOutline,
@@ -561,6 +566,25 @@
 	private async Task InsertHorizontalRule()
 	{
 		await _jsModule.InvokeVoidAsync("callInsertHorizontalRule");
+	}
+
+	/// <summary>
+	/// Lets the user pick a picture and inserts it into the note.
+	/// </summary>
+	/// <returns>Task for async call.</returns>
+	private async Task InsertImage()
+	{
+		if (ViewModel.ShoppingModeActive)
+			return;
+
+		if (!await FilePickerService.PickImage())
+			return;
+
+		byte[] bytes = await FilePickerService.ReadPickedFile();
+		if ((bytes == null) || (bytes.Length == 0))
+			return;
+
+		await _jsModule.InvokeVoidAsync("insertImageFromBase64", Convert.ToBase64String(bytes));
 	}
 
 	private async Task ShareNote()

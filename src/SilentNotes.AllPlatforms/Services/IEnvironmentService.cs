@@ -36,6 +36,12 @@ namespace SilentNotes.Services
         /// if the OS doesn't support/need this functionality.
         /// </summary>
         IScreenshots Screenshots { get; }
+
+        /// <summary>
+        /// Gets an interface which can be used to show a floating button which opens the app. This
+        /// property can be null, if the OS doesn't support this functionality.
+        /// </summary>
+        IFloatingButtonService FloatingButton { get; }
     }
 
     /// <summary>

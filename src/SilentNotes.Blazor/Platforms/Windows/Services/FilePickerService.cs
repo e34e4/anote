@@ -42,6 +42,25 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
+        public async Task<bool> PickImage()
+        {
+            FileOpenPicker filePicker = new FileOpenPicker();
+            filePicker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.PicturesLibrary;
+            filePicker.SettingsIdentifier = "oiwurei223i4u";
+            filePicker.FileTypeFilter.Add(".jpg");
+            filePicker.FileTypeFilter.Add(".jpeg");
+            filePicker.FileTypeFilter.Add(".png");
+            filePicker.FileTypeFilter.Add(".gif");
+            filePicker.FileTypeFilter.Add(".bmp");
+            filePicker.FileTypeFilter.Add(".webp");
+
+            WinRT.Interop.InitializeWithWindow.Initialize(filePicker, GetMainWindowHandle());
+
+            _pickedFile = await filePicker.PickSingleFileAsync();
+            return _pickedFile != null;
+        }
+
+        /// <inheritdoc/>
         public async Task<byte[]> ReadPickedFile()
         {
             if (_pickedFile == null)

@@ -58,6 +58,7 @@ feedback_note_to_recycle = Die Notiz ist in den Papierkorb verschoben worden und
 note_pin = Notiz anheften
 note_open_link = Link öffnen
 note_horizontal_rule = Horizontale Linie
+note_image = Bild
 note_show_info = Notizinformationen
 note_share_subject = Notiz von SilentNotes
 
@@ -207,3 +208,5 @@ gui_remember_last_tag_filter = Schlagwortsuche für nächsten Start merken
 gui_hide_closed_safe_notes = Notizen von geschlossenem Tresor ausblenden
 gui_always_english = Immer auf Englisch anzeigen
 gui_localization_test = Neue Sprachdatei testen
+gui_show_floating_button = Schwebende Notiz-Schaltfläche
+gui_open_accessibility_settings = Android-Bedienungshilfen öffnen

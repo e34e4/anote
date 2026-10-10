@@ -75,6 +75,92 @@ export function callInsertHorizontalRule() {
     TiptapHelper.insertHorizontalRule(_page.editor);
 }
 
+const MAX_IMAGE_EDGE = 1600;
+
+// Inserts a picture, which was picked by the user, at the current position. The picture is
+// downscaled in the webview to keep the note (and therefore the synchronized repository) small.
+export async function insertImageFromBase64(base64) {
+    if (!IsInitialized() || !base64) return;
+
+    const bytes = base64ToBytes(base64);
+    const mime = detectImageMime(bytes);
+    const originalDataUrl = 'data:' + mime + ';base64,' + base64;
+
+    try {
+        const blob = new Blob([bytes], { type: mime });
+        const { image, url } = await loadImageElement(blob);
+        try {
+            TiptapHelper.insertImage(_page.editor, downscaleImage(image, mime));
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
+    catch (ex) {
+        // Never lose the picked picture, insert it unmodified as a fallback.
+        TiptapHelper.insertImage(_page.editor, originalDataUrl);
+    }
+}
+
+function base64ToBytes(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++)
+        bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
+
+function detectImageMime(bytes) {
+    if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47)
+        return 'image/png';
+    if (bytes.length >= 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF)
+        return 'image/jpeg';
+    if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46)
+        return 'image/gif';
+    if (bytes.length >= 12 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50)
+        return 'image/webp';
+    if (bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4D)
+        return 'image/bmp';
+    return 'image/png';
+}
+
+function loadImageElement(blob) {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(blob);
+        const image = new Image();
+        image.onload = () => resolve({ image: image, url: url });
+        image.onerror = (error) => {
+            URL.revokeObjectURL(url);
+            reject(error);
+        };
+        image.src = url;
+    });
+}
+
+function downscaleImage(image, mime) {
+    let width = image.naturalWidth || image.width;
+    let height = image.naturalHeight || image.height;
+    const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(width, height));
+    if (scale < 1) {
+        width = Math.max(1, Math.round(width * scale));
+        height = Math.max(1, Math.round(height * scale));
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+
+    // Keep lossless formats (which can have transparency) as PNG, recompress pictures as JPEG.
+    const keepPng = (mime === 'image/png' || mime === 'image/gif');
+    if (!keepPng) {
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, width, height);
+    }
+    context.drawImage(image, 0, 0, width, height);
+
+    return keepPng ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.85);
+}
+
 function onActiveFormatStateChanged() {
     if (!IsInitialized()) return;
 

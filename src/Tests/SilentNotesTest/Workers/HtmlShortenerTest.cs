@@ -158,5 +158,30 @@ namespace SilentNotesTest.Workers
             result = shortener.DisableLinks("<a href='#'><img src=''/></a>");
             Assert.AreEqual("<span href='#'><img src=''/></span>", result);
         }
+
+        [TestMethod]
+        public void RemoveImages_RemovesImageTags()
+        {
+            HtmlShortener shortener = new HtmlShortener();
+
+            // Self closing image with a base64 data URI
+            string result = shortener.RemoveImages("<p>aaa</p><img src='data:image/png;base64,AAAA' /><p>bbb</p>");
+            Assert.AreEqual("<p>aaa</p><p>bbb</p>", result);
+
+            // Image without closing slash and with several attributes
+            result = shortener.RemoveImages("<p>aaa</p><img class='x' src='data:image/jpeg;base64,BBBB' alt='hi'><p>bbb</p>");
+            Assert.AreEqual("<p>aaa</p><p>bbb</p>", result);
+        }
+
+        [TestMethod]
+        public void RemoveImages_WorksWithMissingContent()
+        {
+            HtmlShortener shortener = new HtmlShortener();
+            Assert.IsNull(shortener.RemoveImages(null));
+            Assert.AreEqual(string.Empty, shortener.RemoveImages(string.Empty));
+
+            // A tag which merely starts with "img" must be kept
+            Assert.AreEqual("<image>x</image>", shortener.RemoveImages("<image>x</image>"));
+        }
     }
 }
