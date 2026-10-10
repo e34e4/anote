@@ -78,7 +78,7 @@
         <!-- App Icon -->
         <MauiIcon Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" Include="Resources\AppIcon\appiconfg.svg" BaseSize="55,55" />
 
-        <MauiIcon Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'" Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="0.66" Color="#64a7dd" BaseSize="55,55" />
+        <MauiIcon Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'" Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="0.66" Color="#000000" BaseSize="55,55" />
 
         <!-- Splash Screen, shown from the application start until the MainPage is shown (Windows not yet supported) -->
         <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#000000" BaseSize="55,55" />
