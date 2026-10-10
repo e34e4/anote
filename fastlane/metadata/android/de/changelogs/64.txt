@@ -1,3 +1,0 @@
-SilentNotes version 7.3.2
-
-* Zielversion auf Android 13 erhoeht, um die neuesten Anforderungen von Android zu erfuellen. (nur Android)

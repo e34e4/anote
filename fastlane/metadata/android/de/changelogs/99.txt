@@ -1,5 +1,0 @@
-SilentNotes version 8.8.3
-
-* Problem der Notizsuche mit Sonderzeichen gelöst.
-* Verwendung der async Funktionen von FluentFTP.
-* Löschen von Speicher nach Verschlüsselung mit XChaCha20. 

@@ -1,4 +1,0 @@
-SilentNotes version 8.7.1
-
-* Potentielles Problem mit dem Menu nach einfügen einer horizontalen Linie behoben.
-* Problem mit fehlendem content-type für WebDav 'propfind' requests behoben, um die Kompatibilität zu WebDav Servern zu verbessern.

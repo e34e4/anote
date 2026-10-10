@@ -1,3 +1,0 @@
-SilentNotes version 8.8.5
-
-* Behebt die teilweise verdeckte Popup-Toolbar zum durchsuchen und sortieren von Notizen.

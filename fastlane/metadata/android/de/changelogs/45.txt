@@ -1,3 +1,0 @@
-SilentNotes version 5.8.1
-
-* Implementierung einer ausfallsicheren Dateispeicherung unter Android, auch wenn der Process während des Schreibens beendet wird.

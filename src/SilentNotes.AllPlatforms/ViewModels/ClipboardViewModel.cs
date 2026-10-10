@@ -22,22 +22,52 @@ namespace SilentNotes.ViewModels
     {
         private readonly IClipboardHistoryService _historyService;
         private readonly IClipboardService _clipboardService;
+        private readonly ISettingsService _settingsService;
         private List<ClipboardItemViewModel> _items = new List<ClipboardItemViewModel>();
+        private string _newItemText;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ClipboardViewModel"/> class.
         /// </summary>
-        public ClipboardViewModel(IClipboardHistoryService historyService, IClipboardService clipboardService)
+        public ClipboardViewModel(IClipboardHistoryService historyService, IClipboardService clipboardService, ISettingsService settingsService)
         {
             _historyService = historyService;
             _clipboardService = clipboardService;
+            _settingsService = settingsService;
 
             CopyCommand = new AsyncRelayCommand<ClipboardItemViewModel>(CopyAsync);
             ToggleFavoriteCommand = new RelayCommand<ClipboardItemViewModel>(ToggleFavorite);
             DeleteCommand = new RelayCommand<ClipboardItemViewModel>(Delete);
             ClearAllCommand = new RelayCommand(ClearAll);
             ClearNonFavoritesCommand = new RelayCommand(ClearNonFavorites);
+            AddTextCommand = new RelayCommand(AddText);
 
+            Reload();
+        }
+
+        /// <summary>
+        /// Gets or sets the text which should be added to the clipboard history.
+        /// </summary>
+        public string NewItemText
+        {
+            get { return _newItemText; }
+            set { SetProperty(ref _newItemText, value); }
+        }
+
+        /// <summary>
+        /// Gets the command to add the entered text to the clipboard history.
+        /// </summary>
+        public ICommand AddTextCommand { get; }
+
+        private void AddText()
+        {
+            string text = _newItemText?.Trim();
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            int limit = _settingsService?.LoadSettingsOrDefault()?.ClipboardHistorySize ?? 500;
+            _historyService.AddText(text, limit);
+            NewItemText = null;
             Reload();
         }
 

@@ -114,6 +114,15 @@
 		<MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ViewModel.ClearNonFavoritesCommand.Execute(null))" Disabled="@(!ViewModel.HasNonFavorites)">@LanguageService["clipboard_clear_unfavorites"]</MudButton>
 		<MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => ViewModel.ClearAllCommand.Execute(null))" Disabled="@ViewModel.IsEmpty">@LanguageService["clipboard_clear_all"]</MudButton>
 	</MudStack>
+
+	<MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-2 mb-4" Spacing="2">
+		<MudTextField @bind-Value="ViewModel.NewItemText"
+			Class="flex-grow-1" Margin="Margin.Dense" Variant="Variant.Outlined"
+			Immediate="true" Placeholder="@LanguageService["clipboard_add_placeholder"]" />
+		<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+			Disabled="@(string.IsNullOrWhiteSpace(ViewModel.NewItemText))"
+			OnClick="@(() => ViewModel.AddTextCommand.Execute(null))">@LanguageService["clipboard_add"]</MudButton>
+	</MudStack>
 </div>
 
 @code {
@@ -141,7 +150,7 @@
 
 	protected override void OnInitialized()
 	{
-		ViewModel = new ClipboardViewModel(ClipboardHistoryService, ClipboardService);
+		ViewModel = new ClipboardViewModel(ClipboardHistoryService, ClipboardService, SettingsService);
 		MessengerService.Register<ClipboardChangedMessage>(this, (recipient, message) => InvokeAsync(Reload));
 		MessengerService.Register<AfterResumeMessage>(this, (recipient, message) => InvokeAsync(Reload));
 	}

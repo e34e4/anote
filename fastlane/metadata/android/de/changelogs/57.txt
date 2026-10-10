@@ -1,3 +1,0 @@
-SilentNotes version 7.0.1
-
-* Problem behoben, dass die hoch/runter Pfeiltasten nicht reagiert haben, wenn der Cursor in einer Liste positioniert war.

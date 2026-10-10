@@ -1,3 +1,0 @@
-SilentNotes version 5.5.1
-
-* Berechtigung für Windows Applikation um auf lokale NextCloud Instanz im NAS zuzugreifen.

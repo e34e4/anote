@@ -1,4 +1,0 @@
-SilentNotes version 8.0.3
-
-* Problem korrigiert, dass manchmal Benutzeränderungen an einer Notiz nicht gespeichert wurden (nur Android).
-

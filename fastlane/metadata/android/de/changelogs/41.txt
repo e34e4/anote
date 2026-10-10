@@ -1,4 +1,0 @@
-SilentNotes version 5.5.2
-
-* Problem mit abgeschnittenen Notizen behoben, wenn grosse Notizen zum Safe hinzugefügt wurden.
-* Option hinzugefügt um unsichere Zertifikate für FTP über SSL zu akzeptieren.

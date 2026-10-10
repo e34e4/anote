@@ -1,3 +1,0 @@
-SilentNotes version 6.1.5
-
-* Wiederherstellungsfunktion für ungültige Repositories hinzugefügt, die erstellt wurden bevor der AtomicFileWriter dies verhindern konnte.

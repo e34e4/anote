@@ -1,1 +1,0 @@
-Uçtan uca şifreleme ve bilgisayara eşitleme destekli not alma uygulaması.

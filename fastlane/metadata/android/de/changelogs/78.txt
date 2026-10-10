@@ -1,5 +1,0 @@
-SilentNotes version 8.3.0
-
-* Support für pCloud.com Online-Speicher hinzugefügt
-* Problem mit Zugriff auf OneDrive behoben
-* Sichert ungespeicherte Änderungen wenn die Anwendung minimiert wird (nur Windows)

@@ -1,1 +1,0 @@
-Notizenapp mit optionaler Ende-zu-Ende verschlüsselter Synchronisation zu PC.

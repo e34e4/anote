@@ -1,3 +1,0 @@
-SilentNotes version 8.8.2
-
-* Fehlendes speichern beim schliessen des Tresors behoben, wenn Notizen in/aus dem Tresor bewegt wurden.
