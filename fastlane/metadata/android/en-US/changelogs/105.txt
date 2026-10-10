@@ -1,0 +1,14 @@
+aNote version 1.2
+
+* Clipboard history no longer disturbs the keyboard: the flickering overlay which
+  periodically stole the window focus was removed. The clipboard is now captured
+  when aNote comes to the foreground.
+* The clipboard tab has a new text field, to add typed or pasted text to the history.
+* Long-press the floating button to save the text selected in any app, including
+  web pages, to the clipboard history.
+* Selecting or sharing text with "aNote" now stores it in the clipboard history.
+  The extra "aNote bookmark" entry was removed.
+* Booky: bookmarks can be synchronized with the shared Booky bookmarks file over
+  WebDAV, so the browser extension and aNote keep the same bookmarks.
+* Plain black cards for the clipboard, phone and bookmark lists.
+* The app is English only now.
