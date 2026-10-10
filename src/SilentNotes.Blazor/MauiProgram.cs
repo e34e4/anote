@@ -25,6 +25,10 @@ public static class MauiProgram
     // is not used in the shutdown thread).
     private static ISynchronizationState _synchronizationState;
 
+    // Shared between the app container and the container built by the accessibility service, so
+    // the clipboard monitor and the UI work on the same instance (they run in the same process).
+    private static IClipboardHistoryService _clipboardHistory;
+
     /// <summary>
     /// Initializes the application and its IOC.
     /// </summary>
@@ -128,6 +132,8 @@ public static class MauiProgram
         services.AddSingleton<IDataProtectionService>((serviceProvider) => new DataProtectionService());
         services.AddSingleton<IXmlFileService>((serviceProvider) => new XmlFileService());
         services.AddSingleton<IEnvironmentService>((serviceProvider) => new EnvironmentService());
+        services.AddSingleton<IClipboardHistoryService>((serviceProvider) => _clipboardHistory ??= new ClipboardHistoryService(
+            serviceProvider.GetService<IXmlFileService>()));
         services.AddSingleton<IRepositoryStorageService>((serviceProvider) => new RepositoryStorageService(
             serviceProvider.GetService<IXmlFileService>(),
             serviceProvider.GetService<ILanguageService>()));
@@ -158,6 +164,9 @@ public static class MauiProgram
         services.AddSingleton<IEnvironmentService>((serviceProvider) => new EnvironmentService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IMessengerService>()));
+        services.AddSingleton<IClipboardHistoryService>((serviceProvider) => _clipboardHistory ??= new ClipboardHistoryService(
+            serviceProvider.GetService<IAppContextService>(),
+            serviceProvider.GetService<IXmlFileService>()));
         services.AddSingleton<IRepositoryStorageService>((serviceProvider) => new RepositoryStorageService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IXmlFileService>(),

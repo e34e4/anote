@@ -87,6 +87,8 @@ namespace SilentNotes.ViewModels
             ClearCloudSettingsCommand = new RelayCommand(ClearCloudSettings);
             TestNewLocalizationCommand = new RelayCommand(TestNewLocalization);
             OpenAccessibilitySettingsCommand = new RelayCommand(OpenAccessibilitySettings);
+            GrantOverlayPermissionCommand = new RelayCommand(GrantOverlayPermission);
+            OpenOverlayPermissionSettingsCommand = new RelayCommand(OpenOverlayPermissionSettings);
         }
 
         /// <summary>
@@ -114,6 +116,7 @@ namespace SilentNotes.ViewModels
                 settings.UseWallpaper.GetHashCode(),
                 settings.UseSolidColorTheme.GetHashCode(),
                 string.GetHashCode(settings.ColorForSolidTheme),
+                string.GetHashCode(settings.BackgroundColorHex),
                 settings.ThemeMode.GetHashCode(),
                 settings.UseColorForAllNotesInDarkMode.GetHashCode(),
                 string.GetHashCode(settings.ColorForAllNotesInDarkModeHex),
@@ -129,6 +132,9 @@ namespace SilentNotes.ViewModels
                 settings.PreventScreenshots.GetHashCode(),
                 settings.AlwaysEnglish.GetHashCode(),
                 settings.ShowFloatingButton.GetHashCode(),
+                settings.ClipboardMonitoringEnabled.GetHashCode(),
+                settings.ClipboardHistorySize.GetHashCode(),
+                settings.ClipboardPollIntervalMs.GetHashCode(),
                 (settings.Credentials == null).GetHashCode(),
             });
         }
@@ -140,6 +146,7 @@ namespace SilentNotes.ViewModels
             {
                 _settingsService.TrySaveSettingsToLocalDevice(Model);
                 Modifications.MemorizeCurrentState();
+                _environmentService.ClipboardMonitor?.RefreshSettings();
             }
         }
 
@@ -279,6 +286,20 @@ namespace SilentNotes.ViewModels
         {
             get { return Model.ColorForSolidTheme; }
             set { SetProperty(Model.ColorForSolidTheme, value, (string v) => Model.ColorForSolidTheme = v); }
+        }
+
+        /// <summary>
+        /// Gets or sets the background color of the application itself, this is the color behind
+        /// the pages, e.g. the settings page.
+        /// </summary>
+        public string BackgroundColorHex
+        {
+            get { return Model.BackgroundColorHex; }
+            set
+            {
+                if (SetProperty(Model.BackgroundColorHex, value, (string v) => Model.BackgroundColorHex = v))
+                    _messengerService.Send(new RedrawMainPageMessage());
+            }
         }
 
         /// <summary>
@@ -500,6 +521,70 @@ namespace SilentNotes.ViewModels
         }
 
         /// <summary>
+        /// Gets or sets a value indicating whether the system clipboard should be monitored in the
+        /// background. This is only supported on Android.
+        /// </summary>
+        public bool ClipboardMonitoringEnabled
+        {
+            get { return Model.ClipboardMonitoringEnabled; }
+            set
+            {
+                if (SetProperty(Model.ClipboardMonitoringEnabled, value, (bool v) => Model.ClipboardMonitoringEnabled = v))
+                {
+                    IClipboardMonitorService monitor = _environmentService.ClipboardMonitor;
+                    if (monitor == null)
+                        return;
+                    if (value && !monitor.HasOverlayPermission)
+                        monitor.RequestOverlayPermission();
+                    monitor.SetMonitoringEnabled(value);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether the operating system supports monitoring the clipboard.
+        /// </summary>
+        public bool CanMonitorClipboard
+        {
+            get { return _environmentService.ClipboardMonitor != null; }
+        }
+
+        /// <summary>
+        /// Gets or sets the maximum number of non-favorite clipboard items to keep.
+        /// </summary>
+        public int ClipboardHistorySize
+        {
+            get { return Model.ClipboardHistorySize; }
+            set { SetProperty(Model.ClipboardHistorySize, value, (int v) => Model.ClipboardHistorySize = v); }
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether the permission to draw the overlay window is granted.
+        /// </summary>
+        public bool HasOverlayPermission
+        {
+            get { return _environmentService.ClipboardMonitor?.HasOverlayPermission ?? false; }
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether the background monitor is currently running.
+        /// </summary>
+        public bool IsClipboardMonitoringActive
+        {
+            get { return _environmentService.ClipboardMonitor?.IsMonitoringActive ?? false; }
+        }
+
+        /// <summary>
+        /// Gets or sets the interval in seconds, in which the background monitor checks the
+        /// clipboard for changes.
+        /// </summary>
+        public int ClipboardPollIntervalSeconds
+        {
+            get { return Model.ClipboardPollIntervalMs / 1000; }
+            set { SetProperty(Model.ClipboardPollIntervalMs / 1000, value, (int v) => Model.ClipboardPollIntervalMs = v * 1000); }
+        }
+
+        /// <summary>
         /// Gets or sets the auto sync mode selected by the user.
         /// </summary>
         public string SelectedAutoSyncMode
@@ -608,6 +693,28 @@ namespace SilentNotes.ViewModels
         private void OpenAccessibilitySettings()
         {
             _environmentService.FloatingButton?.OpenAccessibilitySettings();
+        }
+
+        /// <summary>
+        /// Gets the command to open the accessibility settings, where the user can enable the
+        /// service which monitors the clipboard.
+        /// </summary>
+        public ICommand GrantOverlayPermissionCommand { get; private set; }
+
+        private void GrantOverlayPermission()
+        {
+            _environmentService.ClipboardMonitor?.RequestOverlayPermission();
+        }
+
+        /// <summary>
+        /// Gets the command to open the system settings, where the overlay permission can be
+        /// granted manually.
+        /// </summary>
+        public ICommand OpenOverlayPermissionSettingsCommand { get; private set; }
+
+        private void OpenOverlayPermissionSettings()
+        {
+            _environmentService.ClipboardMonitor?.OpenOverlayPermissionSettings();
         }
 
         /// <summary>

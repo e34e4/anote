@@ -144,6 +144,26 @@
 					</MudStack>
 				</div>
 
+				@* Application background color *@
+				<div></div>
+				<div>
+					<label for="BackgroundColorHex">@LanguageService["gui_theme_background_color"]</label>
+					<MudStack Row="true" AlignItems="AlignItems.Center">
+						<MudColorPicker id="BackgroundColorHex" @ref="_clpBackgroundColor" @bind-Text="@ViewModel.BackgroundColorHex"
+							ShowToolbar="false" ShowAlpha="false"
+							Variant="Variant.Outlined"
+							ColorPickerMode="ColorPickerMode.HEX"
+							AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
+
+						<MudButton
+							Class="color-swatch inline-flex"
+							Style="@GetBackgroundColorStyle(ViewModel.BackgroundColorHex)"
+								   OnClick="@(() => _clpBackgroundColor.OpenAsync())">
+							<MudIcon Icon="@Icons.Material.Filled.ColorLens" Class="@ViewModel.GetDarkClass(ViewModel.BackgroundColorHex)" />
+						</MudButton>
+					</MudStack>
+				</div>
+
 				<div></div>
 				<div>
 					<label for="ColorForAllNotesInDarkModeHex">@LanguageService["gui_theme_color_all_dark"]</label>
@@ -267,6 +287,34 @@
 						</MudButton>
 					</div>
 				}
+				@* Clipboard monitoring (Android overlay service) *@
+				@if (ViewModel.CanMonitorClipboard)
+				{
+					<div><MudIcon Icon="@Icons.Material.Filled.ContentPaste" Color="Color.Secondary" /></div>
+					<div>
+						<MudSwitch @bind-Value="@ViewModel.ClipboardMonitoringEnabled"
+							Label="@LanguageService["gui_clipboard_monitoring"]" Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
+						@if (!ViewModel.HasOverlayPermission)
+						{
+							<MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Layers"
+								OnClick="@(() => ViewModel.GrantOverlayPermissionCommand.Execute(null))">
+								@LanguageService["gui_clipboard_grant_overlay"]
+							</MudButton>
+						}
+					</div>
+					<div><MudIcon Icon="@Icons.Material.Filled.History" Color="Color.Secondary" /></div>
+					<div>
+						<label for="ClipboardHistorySize">@LanguageService["gui_clipboard_history_size"]</label>
+						<MudSlider id="ClipboardHistorySize" @bind-Value="ViewModel.ClipboardHistorySize"
+							Min="50" Max="2000" Step="50" Color="Color.Tertiary"></MudSlider>
+					</div>
+					<div><MudIcon Icon="@Icons.Material.Filled.Timer" Color="Color.Secondary" /></div>
+					<div>
+						<label for="ClipboardPollIntervalSeconds">@LanguageService["gui_clipboard_poll_interval"]</label>
+						<MudSlider id="ClipboardPollIntervalSeconds" @bind-Value="ViewModel.ClipboardPollIntervalSeconds"
+							Min="1" Max="10" Step="1" Color="Color.Tertiary"></MudSlider>
+					</div>
+				}
 			</div>
 
 
@@ -355,6 +403,7 @@
 @code {
 	private bool _isOverflowMenuOpen;
 	private MudColorPicker _clpSolidTheme;
+	private MudColorPicker _clpBackgroundColor;
 	private MudColorPicker _clpAllNotesInDarkMode;
 	private MudColorPicker _clpDefaultNoteColor;
 

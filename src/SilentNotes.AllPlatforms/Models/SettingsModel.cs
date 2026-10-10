@@ -46,6 +46,7 @@ namespace SilentNotes.Models
             FontScale = 1.0;
             UseSolidColorTheme = false;
             ColorForSolidTheme = "#3e3e3e";
+            BackgroundColorHex = "#000000";
             DefaultNoteColorHex = StartDefaultNoteColorHex;
             NoteMaxHeightScale = 1.0;
             DefaultNoteInsertion = NoteInsertionMode.AtTop;
@@ -56,6 +57,9 @@ namespace SilentNotes.Models
             RememberLastTagFilter = false;
             AlwaysEnglish = false;
             ShowFloatingButton = false;
+            ClipboardMonitoringEnabled = false;
+            ClipboardHistorySize = 500;
+            ClipboardPollIntervalMs = 2500;
         }
 
         /// <summary>
@@ -108,6 +112,13 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("color_for_solid_theme")]
         public string ColorForSolidTheme { get; set; }
+
+        /// <summary>
+        /// Gets or sets the background color of the application itself, this is the color behind
+        /// the pages, e.g. the settings page.
+        /// </summary>
+        [XmlElement("background_color")]
+        public string BackgroundColorHex { get; set; }
 
         /// <summary>
         /// Gets or sets a value describing whether the dark mode should be used.
@@ -308,6 +319,28 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("show_floating_button")]
         public bool ShowFloatingButton { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the system clipboard should be monitored in the
+        /// background, to build a clipboard history. This is only supported on Android by an
+        /// accessibility service.
+        /// </summary>
+        [XmlElement("clipboard_monitoring")]
+        public bool ClipboardMonitoringEnabled { get; set; }
+
+        /// <summary>
+        /// Gets or sets the maximum number of non-favorite clipboard items to keep. Favorite items
+        /// are never removed by this limit.
+        /// </summary>
+        [XmlElement("clipboard_history_size")]
+        public int ClipboardHistorySize { get; set; }
+
+        /// <summary>
+        /// Gets or sets the interval in milliseconds, in which the background monitor checks the
+        /// clipboard for changes.
+        /// </summary>
+        [XmlElement("clipboard_poll_interval_ms")]
+        public int ClipboardPollIntervalMs { get; set; }
 
         /// <summary>
         /// Gets a value indicating whether a cloud storage is set.

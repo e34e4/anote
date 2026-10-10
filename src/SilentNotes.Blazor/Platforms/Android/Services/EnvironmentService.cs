@@ -1,4 +1,4 @@
-﻿// Copyright © 2020 Martin Stoeckli.
+// Copyright © 2020 Martin Stoeckli.
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -8,7 +8,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Android.Content;
 using Android.Content.Res;
+using Android.OS;
 using Android.Views;
+using Debug = System.Diagnostics.Debug;
+using AndroidX.Core.Content;
 using SilentNotes.Services;
 
 namespace SilentNotes.Platforms.Services
@@ -16,8 +19,10 @@ namespace SilentNotes.Platforms.Services
     /// <summary>
     /// Implementation of the <see cref="IEnvironmentService"/> for the Android platform.
     /// </summary>
-    internal class EnvironmentService : IEnvironmentService, IKeepScreenOn, IScreenshots, IFloatingButtonService
+    internal class EnvironmentService : IEnvironmentService, IKeepScreenOn, IScreenshots, IFloatingButtonService, IClipboardMonitorService
     {
+        private const int NotificationPermissionRequestCode = 0x0A17;
+
         private readonly IAppContextService _appContext;
         private readonly IMessengerService _messengerService;
         private CancellationTokenSource _cancellationTokenSource;
@@ -147,6 +152,114 @@ namespace SilentNotes.Platforms.Services
             var intent = new Intent(global::Android.Provider.Settings.ActionAccessibilitySettings);
             intent.AddFlags(ActivityFlags.NewTask);
             _appContext.Context.StartActivity(intent);
+        }
+
+        /// <inheritdoc/>
+        public IClipboardMonitorService ClipboardMonitor
+        {
+            get { return this; }
+        }
+
+        /// <inheritdoc/>
+        bool IClipboardMonitorService.CanMonitor
+        {
+            get { return true; }
+        }
+
+        /// <inheritdoc/>
+        bool IClipboardMonitorService.IsMonitoringActive
+        {
+            get { return ClipboardMonitorService.IsRunning; }
+        }
+
+        /// <inheritdoc/>
+        bool IClipboardMonitorService.HasOverlayPermission
+        {
+            get { return global::Android.Provider.Settings.CanDrawOverlays(_appContext.Context); }
+        }
+
+        /// <inheritdoc/>
+        void IClipboardMonitorService.SetMonitoringEnabled(bool enabled)
+        {
+            if (enabled)
+            {
+                RequestNotificationPermission();
+                var intent = new Intent(_appContext.Context, typeof(ClipboardMonitorService));
+                intent.SetAction(ClipboardMonitorService.ActionStart);
+                ContextCompat.StartForegroundService(_appContext.Context, intent);
+            }
+            else
+            {
+                var intent = new Intent(_appContext.Context, typeof(ClipboardMonitorService));
+                _appContext.Context.StopService(intent);
+            }
+        }
+
+        /// <inheritdoc/>
+        void IClipboardMonitorService.RequestOverlayPermission()
+        {
+            if (global::Android.Provider.Settings.CanDrawOverlays(_appContext.Context))
+                return;
+
+            if (!TryGrantOverlayPermissionWithRoot())
+                ((IClipboardMonitorService)this).OpenOverlayPermissionSettings();
+        }
+
+        /// <inheritdoc/>
+        void IClipboardMonitorService.OpenOverlayPermissionSettings()
+        {
+            try
+            {
+                var intent = new Intent(global::Android.Provider.Settings.ActionManageOverlayPermission);
+                intent.SetData(global::Android.Net.Uri.Parse("package:" + _appContext.Context.PackageName));
+                intent.AddFlags(ActivityFlags.NewTask);
+                _appContext.Context.StartActivity(intent);
+            }
+            catch (System.Exception ex)
+            {
+                Debug.WriteLine("*** Could not open the overlay permission settings: " + ex.Message);
+            }
+        }
+
+        /// <inheritdoc/>
+        void IClipboardMonitorService.RefreshSettings()
+        {
+            if (ClipboardMonitorService.IsRunning)
+            {
+                var intent = new Intent(_appContext.Context, typeof(ClipboardMonitorService));
+                intent.SetAction(ClipboardMonitorService.ActionStart);
+                ContextCompat.StartForegroundService(_appContext.Context, intent);
+            }
+        }
+
+        private bool TryGrantOverlayPermissionWithRoot()
+        {
+            try
+            {
+                string command = "appops set " + _appContext.Context.PackageName + " SYSTEM_ALERT_WINDOW allow";
+                Java.Lang.Process process = Java.Lang.Runtime.GetRuntime().Exec(new[] { "su", "-c", command });
+                process.WaitFor();
+                return process.ExitValue() == 0;
+            }
+            catch (System.Exception)
+            {
+                return false;
+            }
+        }
+
+        private void RequestNotificationPermission()
+        {
+            if (Build.VERSION.SdkInt < BuildVersionCodes.Tiramisu)
+                return;
+
+            global::Android.App.Activity activity = _appContext.RootActivity;
+            if (activity == null)
+                return;
+
+            if (ContextCompat.CheckSelfPermission(activity, global::Android.Manifest.Permission.PostNotifications) == global::Android.Content.PM.Permission.Granted)
+                return;
+
+            activity.RequestPermissions(new[] { global::Android.Manifest.Permission.PostNotifications }, NotificationPermissionRequestCode);
         }
     }
 }

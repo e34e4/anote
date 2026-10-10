@@ -19,5 +19,13 @@ namespace SilentNotes.Services
         /// <param name="text">Text to copy.</param>
         /// <returns>Task for async calls.</returns>
         Task SetTextAsync(string text);
+
+        /// <summary>
+        /// Copies an image to the clipboard. Not all platforms support copying images, on
+        /// unsupported platforms this is a no-op.
+        /// </summary>
+        /// <param name="png">The encoded image (PNG).</param>
+        /// <returns>Task for async calls.</returns>
+        Task SetImageAsync(byte[] png);
     }
 }

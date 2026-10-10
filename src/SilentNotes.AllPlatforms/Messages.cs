@@ -142,6 +142,14 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Message to inform the clipboard tab that the clipboard history has changed and should be
+    /// reloaded. It is sent by the background clipboard monitor.
+    /// </summary>
+    public class ClipboardChangedMessage
+    {
+    }
+
+    /// <summary>
     /// Enumeration of possible sources of a sent message.
     /// </summary>
     public enum MessageSender

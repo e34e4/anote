@@ -179,5 +179,11 @@
     <Compile Include="$(MSBuildThisFileDirectory)Workers\UnmixableAlphabet.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\WebviewUtils.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\XmlUtils.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\ClipboardHistoryModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\ClipboardItemModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\ClipboardHistoryServiceBase.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IClipboardHistoryService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IClipboardMonitorService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\ClipboardViewModel.cs" />
   </ItemGroup>
 </Project>

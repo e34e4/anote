@@ -150,6 +150,12 @@ namespace SilentNotes.Services
                 // Dynamically created colors
                 result.Append("--theme-header: " + colorHeader + ";");
                 result.Append("}");
+
+                // Background color of the application (behind the pages), configurable by the user.
+                string backgroundColor = _settingsService.LoadSettingsOrDefault().BackgroundColorHex;
+                if (string.IsNullOrWhiteSpace(backgroundColor))
+                    backgroundColor = "#000000";
+                result.Append(".mud-layout { background-color: " + backgroundColor + "; }");
                 return result.ToString();
             }
         }

@@ -1,0 +1,174 @@
+@using MudBlazor
+@using SilentNotes.Models
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+
+@implements IDisposable
+
+@inject IClipboardHistoryService ClipboardHistoryService
+@inject IClipboardService ClipboardService
+@inject ILanguageService LanguageService
+@inject IMessengerService MessengerService
+@inject IEnvironmentService EnvironmentService
+@inject ISettingsService SettingsService
+
+<style type="text/css">
+	.clipboard-list {
+		overflow-y: auto;
+		max-height: calc(100vh - 260px);
+	}
+	.clipboard-text {
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+	.clipboard-image {
+		max-height: 140px;
+		max-width: 100%;
+		border-radius: 4px;
+	}
+</style>
+
+<div class="pa-2">
+	@if (ViewModel.IsEmpty)
+	{
+		<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["clipboard_empty"]</MudText>
+	}
+	else
+	{
+		<MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="false">
+			<MudTabPanel Text="@LanguageService["clipboard_all"]">
+				<div class="clipboard-list">
+					@foreach (var item in ViewModel.AllItems)
+					{
+						<MudPaper Elevation="1" Class="pa-2 my-2 d-flex align-start">
+							<div class="flex-grow-1 overflow-hidden">
+								@if (item.IsImage)
+								{
+									<img class="clipboard-image" src="@item.ThumbnailDataUri" />
+								}
+								else
+								{
+									<MudText Class="clipboard-text">@item.PreviewText</MudText>
+								}
+								<MudText Typo="Typo.caption" Class="mud-text-secondary mt-1">@item.CreatedUtc.ToLocalTime().ToString("g")</MudText>
+							</div>
+							<MudStack Row="true" Spacing="0" Class="flex-shrink-0">
+								<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="@(() => ViewModel.CopyCommand.Execute(item))" title="@LanguageService["clipboard_copy"]" />
+								<MudIconButton Icon="@(item.IsFavorite ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)" Color="@(item.IsFavorite ? Color.Tertiary : Color.Default)" Size="Size.Small" OnClick="@(() => ViewModel.ToggleFavoriteCommand.Execute(item))" title="@LanguageService["clipboard_favorite"]" />
+								<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ViewModel.DeleteCommand.Execute(item))" title="@LanguageService["clipboard_delete"]" />
+							</MudStack>
+						</MudPaper>
+					}
+				</div>
+			</MudTabPanel>
+			<MudTabPanel Text="@LanguageService["clipboard_favorites"]">
+				<div class="clipboard-list">
+					@if (ViewModel.FavoriteItems.Count == 0)
+					{
+						<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["clipboard_empty"]</MudText>
+					}
+					else
+					{
+						@foreach (var item in ViewModel.FavoriteItems)
+						{
+							<MudPaper Elevation="1" Class="pa-2 my-2 d-flex align-start">
+								<div class="flex-grow-1 overflow-hidden">
+									@if (item.IsImage)
+									{
+										<img class="clipboard-image" src="@item.ThumbnailDataUri" />
+									}
+									else
+									{
+										<MudText Class="clipboard-text">@item.PreviewText</MudText>
+									}
+									<MudText Typo="Typo.caption" Class="mud-text-secondary mt-1">@item.CreatedUtc.ToLocalTime().ToString("g")</MudText>
+								</div>
+								<MudStack Row="true" Spacing="0" Class="flex-shrink-0">
+									<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="@(() => ViewModel.CopyCommand.Execute(item))" title="@LanguageService["clipboard_copy"]" />
+									<MudIconButton Icon="@Icons.Material.Filled.Star" Color="Color.Tertiary" Size="Size.Small" OnClick="@(() => ViewModel.ToggleFavoriteCommand.Execute(item))" title="@LanguageService["clipboard_unfavorite"]" />
+									<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ViewModel.DeleteCommand.Execute(item))" title="@LanguageService["clipboard_delete"]" />
+								</MudStack>
+							</MudPaper>
+						}
+					}
+				</div>
+			</MudTabPanel>
+		</MudTabs>
+	}
+
+	@if (!IsMonitoringEnabled)
+	{
+		<MudAlert Severity="Severity.Info" Class="mt-3" Dense="true">
+			@LanguageService["clipboard_monitoring_off"]
+			@if (CanMonitor)
+			{
+				<MudButton Size="Size.Small" Color="Color.Primary" Class="ml-2" OnClick="EnableMonitoring">@LanguageService["clipboard_enable"]</MudButton>
+			}
+		</MudAlert>
+	}
+
+	<MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-3" Spacing="2">
+		<MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ViewModel.ClearNonFavoritesCommand.Execute(null))" Disabled="@(!ViewModel.HasNonFavorites)">@LanguageService["clipboard_clear_unfavorites"]</MudButton>
+		<MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => ViewModel.ClearAllCommand.Execute(null))" Disabled="@ViewModel.IsEmpty">@LanguageService["clipboard_clear_all"]</MudButton>
+	</MudStack>
+</div>
+
+@code {
+	private ClipboardViewModel ViewModel { get; set; }
+
+	/// <summary>
+	/// Gets a value indicating whether the OS can monitor the clipboard.
+	/// </summary>
+	private bool CanMonitor
+	{
+		get { return EnvironmentService.ClipboardMonitor != null; }
+	}
+
+	/// <summary>
+	/// Gets a value indicating whether the background clipboard monitor is running.
+	/// </summary>
+	private bool IsMonitoringEnabled
+	{
+		get
+		{
+			IClipboardMonitorService monitor = EnvironmentService.ClipboardMonitor;
+			return (monitor != null) && monitor.IsMonitoringActive;
+		}
+	}
+
+	protected override void OnInitialized()
+	{
+		ViewModel = new ClipboardViewModel(ClipboardHistoryService, ClipboardService);
+		MessengerService.Register<ClipboardChangedMessage>(this, (recipient, message) => InvokeAsync(Reload));
+		MessengerService.Register<AfterResumeMessage>(this, (recipient, message) => InvokeAsync(Reload));
+	}
+
+	private void Reload()
+	{
+		ViewModel.Reload();
+		StateHasChanged();
+	}
+
+	private void EnableMonitoring()
+	{
+		IClipboardMonitorService monitor = EnvironmentService.ClipboardMonitor;
+		if (monitor == null)
+			return;
+		if (!monitor.HasOverlayPermission)
+			monitor.RequestOverlayPermission();
+
+		// Remember the setting, so the monitor is started again after a restart.
+		SettingsModel settings = SettingsService.LoadSettingsOrDefault();
+		settings.ClipboardMonitoringEnabled = true;
+		SettingsService.TrySaveSettingsToLocalDevice(settings);
+
+		monitor.SetMonitoringEnabled(true);
+	}
+
+	/// <inheritdoc/>
+	public void Dispose()
+	{
+		MessengerService.Unregister<ClipboardChangedMessage>(this);
+		MessengerService.Unregister<AfterResumeMessage>(this);
+	}
+}

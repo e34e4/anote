@@ -47,5 +47,11 @@ namespace SilentNotes.Platforms.Services
         {
             get { return null; }
         }
+
+        /// <inheritdoc/>
+        public IClipboardMonitorService ClipboardMonitor
+        {
+            get { return null; }
+        }
     }
 }

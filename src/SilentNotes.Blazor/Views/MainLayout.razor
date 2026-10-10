@@ -17,6 +17,7 @@
 @inject ISynchronizationService SynchronizationService
 @inject ISynchronizationState SynchronizationState
 @inject ISettingsService SettingsService
+@inject IEnvironmentService EnvironmentService
 @inject ILanguageService LanguageService
 
 @implements IDisposable
@@ -106,6 +107,11 @@
 		if (firstRender)
 		{
 			MessengerService.Send(new MainLayoutReadyMessage());
+
+			// Make sure the clipboard monitor keeps running while the app is used, e.g. after the
+			// service was stopped by the operating system.
+			if (SettingsService.LoadSettingsOrDefault().ClipboardMonitoringEnabled)
+				EnvironmentService.ClipboardMonitor?.SetMonitoringEnabled(true);
 
 			await NotificationService.ShowNextNotification();
 

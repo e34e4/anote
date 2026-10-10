@@ -42,6 +42,12 @@ namespace SilentNotes.Services
         /// property can be null, if the OS doesn't support this functionality.
         /// </summary>
         IFloatingButtonService FloatingButton { get; }
+
+        /// <summary>
+        /// Gets an interface which can be used to monitor the system clipboard in the background.
+        /// This property can be null, if the OS doesn't support this functionality.
+        /// </summary>
+        IClipboardMonitorService ClipboardMonitor { get; }
     }
 
     /// <summary>
