@@ -11,7 +11,8 @@ using Android.Content.Res;
 using Android.OS;
 using Android.Views;
 using Debug = System.Diagnostics.Debug;
-using AndroidX.Core.Content;
+using Microsoft.Extensions.DependencyInjection;
+using SilentNotes.Models;
 using SilentNotes.Services;
 
 namespace SilentNotes.Platforms.Services
@@ -21,8 +22,6 @@ namespace SilentNotes.Platforms.Services
     /// </summary>
     internal class EnvironmentService : IEnvironmentService, IKeepScreenOn, IScreenshots, IFloatingButtonService, IClipboardMonitorService, IBrowserUrlProvider
     {
-        private const int NotificationPermissionRequestCode = 0x0A17;
-
         private readonly IAppContextService _appContext;
         private readonly IMessengerService _messengerService;
         private CancellationTokenSource _cancellationTokenSource;
@@ -194,97 +193,93 @@ namespace SilentNotes.Platforms.Services
         /// <inheritdoc/>
         bool IClipboardMonitorService.IsMonitoringActive
         {
-            get { return ClipboardMonitorService.IsRunning; }
+            get { return FloatingButtonAccessibilityService.Instance?.IsClipboardCaptureActive ?? false; }
         }
 
         /// <inheritdoc/>
-        bool IClipboardMonitorService.HasOverlayPermission
+        bool IClipboardMonitorService.IsAccessibilityServiceEnabled
         {
-            get { return global::Android.Provider.Settings.CanDrawOverlays(_appContext.Context); }
+            get
+            {
+                if (FloatingButtonAccessibilityService.Instance != null)
+                    return true;
+
+                try
+                {
+                    string enabled = global::Android.Provider.Settings.Secure.GetString(
+                        _appContext.Context.ContentResolver,
+                        global::Android.Provider.Settings.Secure.EnabledAccessibilityServices);
+                    if (string.IsNullOrEmpty(enabled))
+                        return false;
+
+                    string componentId = new ComponentName(
+                        _appContext.Context,
+                        Java.Lang.Class.FromType(typeof(FloatingButtonAccessibilityService))).FlattenToString();
+                    return enabled.Contains(componentId);
+                }
+                catch (System.Exception)
+                {
+                    return false;
+                }
+            }
         }
 
         /// <inheritdoc/>
         void IClipboardMonitorService.SetMonitoringEnabled(bool enabled)
         {
-            if (enabled)
-            {
-                RequestNotificationPermission();
-                var intent = new Intent(_appContext.Context, typeof(ClipboardMonitorService));
-                intent.SetAction(ClipboardMonitorService.ActionStart);
-                ContextCompat.StartForegroundService(_appContext.Context, intent);
-            }
-            else
-            {
-                var intent = new Intent(_appContext.Context, typeof(ClipboardMonitorService));
-                _appContext.Context.StopService(intent);
-            }
+            FloatingButtonAccessibilityService.Instance?.SetClipboardMonitoringEnabled(enabled);
         }
 
         /// <inheritdoc/>
-        void IClipboardMonitorService.RequestOverlayPermission()
+        void IClipboardMonitorService.RequestAccessibilityPermission()
         {
-            if (global::Android.Provider.Settings.CanDrawOverlays(_appContext.Context))
-                return;
-
-            if (!TryGrantOverlayPermissionWithRoot())
-                ((IClipboardMonitorService)this).OpenOverlayPermissionSettings();
+            ((IClipboardMonitorService)this).OpenAccessibilitySettings();
         }
 
         /// <inheritdoc/>
-        void IClipboardMonitorService.OpenOverlayPermissionSettings()
+        void IClipboardMonitorService.OpenAccessibilitySettings()
         {
             try
             {
-                var intent = new Intent(global::Android.Provider.Settings.ActionManageOverlayPermission);
-                intent.SetData(global::Android.Net.Uri.Parse("package:" + _appContext.Context.PackageName));
+                var intent = new Intent(global::Android.Provider.Settings.ActionAccessibilitySettings);
                 intent.AddFlags(ActivityFlags.NewTask);
                 _appContext.Context.StartActivity(intent);
             }
             catch (System.Exception ex)
             {
-                Debug.WriteLine("*** Could not open the overlay permission settings: " + ex.Message);
+                Debug.WriteLine("*** Could not open the accessibility settings: " + ex.Message);
             }
         }
 
         /// <inheritdoc/>
         void IClipboardMonitorService.RefreshSettings()
         {
-            if (ClipboardMonitorService.IsRunning)
-            {
-                var intent = new Intent(_appContext.Context, typeof(ClipboardMonitorService));
-                intent.SetAction(ClipboardMonitorService.ActionStart);
-                ContextCompat.StartForegroundService(_appContext.Context, intent);
-            }
-        }
-
-        private bool TryGrantOverlayPermissionWithRoot()
-        {
             try
             {
-                string command = "appops set " + _appContext.Context.PackageName + " SYSTEM_ALERT_WINDOW allow";
-                Java.Lang.Process process = Java.Lang.Runtime.GetRuntime().Exec(new[] { "su", "-c", command });
-                process.WaitFor();
-                return process.ExitValue() == 0;
+                SettingsModel settings = Ioc.Instance.GetService<ISettingsService>()?.LoadSettingsOrDefault();
+                if (settings != null)
+                    FloatingButtonAccessibilityService.Instance?.SetClipboardMonitoringEnabled(settings.ClipboardMonitoringEnabled);
             }
             catch (System.Exception)
             {
-                return false;
             }
         }
 
-        private void RequestNotificationPermission()
+        /// <inheritdoc/>
+        void IClipboardMonitorService.CaptureNow()
         {
-            if (Build.VERSION.SdkInt < BuildVersionCodes.Tiramisu)
-                return;
+            try
+            {
+                SettingsModel settings = Ioc.Instance.GetService<ISettingsService>()?.LoadSettingsOrDefault();
+                if (settings?.ClipboardMonitoringEnabled != true)
+                    return;
 
-            global::Android.App.Activity activity = _appContext.RootActivity;
-            if (activity == null)
-                return;
-
-            if (ContextCompat.CheckSelfPermission(activity, global::Android.Manifest.Permission.PostNotifications) == global::Android.Content.PM.Permission.Granted)
-                return;
-
-            activity.RequestPermissions(new[] { global::Android.Manifest.Permission.PostNotifications }, NotificationPermissionRequestCode);
+                // The application has the focus at this moment, so it is allowed to read the clipboard.
+                new ClipboardCapture(_appContext.Context, Ioc.Instance).CaptureCurrentClip();
+            }
+            catch (System.Exception)
+            {
+            }
         }
     }
 }

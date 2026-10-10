@@ -16,6 +16,7 @@
 @inject IMessengerService MessengerService
 @inject ISynchronizationService SynchronizationService
 @inject ISynchronizationState SynchronizationState
+@inject IBookySyncService BookySyncService
 @inject ISettingsService SettingsService
 @inject IEnvironmentService EnvironmentService
 @inject ILanguageService LanguageService
@@ -88,6 +89,11 @@
 		MessengerService.Register<RedrawMainPageMessage>(
 			this, (recipient, message) => InvokeAsync(StateHasChanged));
 
+		// When the application comes to the foreground it owns the focus, which is one of the few
+		// moments a regular application is allowed to read the clipboard.
+		MessengerService.Register<AfterResumeMessage>(
+			this, (recipient, message) => EnvironmentService.ClipboardMonitor?.CaptureNow());
+
 		SettingsModel settings = SettingsService.LoadSettingsOrDefault();
 		if (settings.AlwaysEnglish)
 			(LanguageService as ILanguageTestService)?.SetAlwaysEnglish(true);
@@ -111,9 +117,17 @@
 			// Make sure the clipboard monitor keeps running while the app is used, e.g. after the
 			// service was stopped by the operating system.
 			if (SettingsService.LoadSettingsOrDefault().ClipboardMonitoringEnabled)
+			{
 				EnvironmentService.ClipboardMonitor?.SetMonitoringEnabled(true);
+				EnvironmentService.ClipboardMonitor?.CaptureNow();
+			}
 
 			await NotificationService.ShowNextNotification();
+
+			// Pull new bookmarks from the shared Booky file before the repository is synchronized,
+			// so the bookmark sync and the repository sync do not write the repository concurrently.
+			if (BookySyncService.IsConfigured)
+				await BookySyncService.SyncAsync();
 
 			// Pausing the synchronization allows to user to switch to another app, to copy and
 			// paste some content, without an interferring synchronization when switching back.
@@ -157,5 +171,6 @@
 	public void Dispose()
 	{
 		MessengerService.Unregister<RedrawMainPageMessage>(this);
+		MessengerService.Unregister<AfterResumeMessage>(this);
 	}
 }

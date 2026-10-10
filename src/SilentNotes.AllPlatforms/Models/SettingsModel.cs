@@ -61,6 +61,11 @@ namespace SilentNotes.Models
             ClipboardHistorySize = 500;
             ClipboardPollIntervalMs = 2500;
             BookyUrlCaptureEnabled = false;
+            BookySyncEnabled = false;
+            BookySyncUrl = string.Empty;
+            BookySyncRemotePath = "booky/bookmarks.json";
+            BookySyncUsername = string.Empty;
+            BookySyncPassword = string.Empty;
         }
 
         /// <summary>
@@ -350,6 +355,40 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("booky_url_capture")]
         public bool BookyUrlCaptureEnabled { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the bookmarks of the Booky tab should be
+        /// synchronized with the shared bookmarks file of the Booky browser extension.
+        /// </summary>
+        [XmlElement("booky_sync_enabled")]
+        public bool BookySyncEnabled { get; set; }
+
+        /// <summary>
+        /// Gets or sets the base url of the WebDAV server which hosts the shared Booky bookmarks
+        /// file. The remote path is appended to this url.
+        /// </summary>
+        [XmlElement("booky_sync_url")]
+        public string BookySyncUrl { get; set; }
+
+        /// <summary>
+        /// Gets or sets the path of the shared Booky bookmarks file, relative to
+        /// <see cref="BookySyncUrl"/>, e.g. "booky/bookmarks.json".
+        /// </summary>
+        [XmlElement("booky_sync_remote_path")]
+        public string BookySyncRemotePath { get; set; }
+
+        /// <summary>
+        /// Gets or sets the user name for the WebDAV server of the Booky sync.
+        /// </summary>
+        [XmlElement("booky_sync_username")]
+        public string BookySyncUsername { get; set; }
+
+        /// <summary>
+        /// Gets or sets the password for the WebDAV server of the Booky sync. The password is
+        /// encrypted before it is stored on the local device.
+        /// </summary>
+        [XmlElement("booky_sync_password")]
+        public string BookySyncPassword { get; set; }
 
         /// <summary>
         /// Gets a value indicating whether a cloud storage is set.

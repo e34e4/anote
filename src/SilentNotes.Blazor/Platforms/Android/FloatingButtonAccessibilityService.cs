@@ -11,11 +11,13 @@ using Android.App;
 using Android.Content;
 using Android.Graphics;
 using Android.Net;
+using Android.OS;
 using Android.Runtime;
 using Android.Views;
 using Android.Views.Accessibility;
 using Android.Widget;
 using Microsoft.Extensions.DependencyInjection;
+using SilentNotes.Models;
 using SilentNotes.Platforms.Services;
 using SilentNotes.Services;
 using SilentNotes.Workers;
@@ -44,7 +46,8 @@ namespace SilentNotes.Platforms
         private const string PreferenceKeyX = "x";
         private const string PreferenceKeyY = "y";
         private const string LogTag = "aNoteFloating";
-        private const float TouchSlop = 10f;
+        private const int LongPressDelayMs = 600;
+        private const int SelectionMaxAgeSeconds = 120;
 
         private static readonly string[] BrowserPackages = new[]
         {
@@ -76,6 +79,14 @@ namespace SilentNotes.Platforms
         private WindowManagerLayoutParams _overlayParams;
         private bool _captureEnabled;
 
+        private IServiceProvider _serviceProvider;
+        private ClipboardCapture _clipboardCapture;
+        private ClipboardManager _clipboardManager;
+        private ClipboardChangedListener _clipboardListener;
+        private Handler _gestureHandler;
+        private string _lastSelectionText;
+        private DateTime _lastSelectionTime;
+
         /// <summary>
         /// Gets the currently connected instance of the service, or null if the service is not
         /// enabled by the user.
@@ -98,6 +109,17 @@ namespace SilentNotes.Platforms
 
             if (_captureEnabled)
                 RefreshFromActiveWindow();
+
+            _gestureHandler = new Handler(Looper.MainLooper);
+            RefreshClipboardSettings();
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether the clipboard is currently being captured.
+        /// </summary>
+        internal bool IsClipboardCaptureActive
+        {
+            get { return _clipboardListener != null; }
         }
 
         /// <summary>
@@ -139,10 +161,17 @@ namespace SilentNotes.Platforms
         /// <inheritdoc/>
         public override void OnAccessibilityEvent(AccessibilityEvent e)
         {
+            if (e == null)
+                return;
+
+            // Remember the last text selection, because many applications (e.g. web pages) do not
+            // expose the selection through their accessibility nodes.
+            RememberTextSelection(e);
+
             // Besides drawing the floating button, the service can remember the url of the page
             // which is currently open in a supported browser, so it can be used as the default url
             // when a bookmark is created.
-            if (!_captureEnabled || (e == null))
+            if (!_captureEnabled)
                 return;
 
             string packageName = e.PackageName?.ToString();
@@ -150,6 +179,53 @@ namespace SilentNotes.Platforms
                 return;
 
             RefreshFromPackage(packageName);
+        }
+
+        /// <summary>
+        /// Remembers the text which was selected last, using the accessibility selection events.
+        /// </summary>
+        /// <remarks>
+        /// The selection is deliberately not cleared when windows change, because showing the
+        /// selection toolbar itself already produces such events, which would discard the selection
+        /// before the user can long press the floating button.
+        /// </remarks>
+        private void RememberTextSelection(AccessibilityEvent e)
+        {
+            try
+            {
+                if (e.EventType != EventTypes.ViewTextSelectionChanged)
+                    return;
+
+                string text = null;
+                if ((e.Text != null) && (e.Text.Count > 0))
+                    text = e.Text[0]?.ToString();
+                if (string.IsNullOrEmpty(text) && (e.Source != null))
+                    text = e.Source.Text?.ToString();
+
+                int from = e.FromIndex;
+                int to = e.ToIndex;
+                if (string.IsNullOrEmpty(text) || (from < 0) || (to > text.Length) || (to <= from))
+                    return;
+
+                _lastSelectionText = text.Substring(from, to - from);
+                _lastSelectionTime = DateTime.UtcNow;
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not remember the text selection: " + ex);
+            }
+        }
+
+        /// <summary>
+        /// Gets the text which was selected most recently, or null if there was no recent selection.
+        /// </summary>
+        private string GetRecentSelection()
+        {
+            if (string.IsNullOrEmpty(_lastSelectionText))
+                return null;
+            if ((DateTime.UtcNow - _lastSelectionTime).TotalSeconds > SelectionMaxAgeSeconds)
+                return null;
+            return _lastSelectionText;
         }
 
         /// <inheritdoc/>
@@ -160,6 +236,7 @@ namespace SilentNotes.Platforms
         /// <inheritdoc/>
         public override bool OnUnbind(Intent intent)
         {
+            StopClipboardCapture();
             HideOverlay();
             Instance = null;
             BrowserUrlTracker.ServiceEnabled = false;
@@ -170,11 +247,180 @@ namespace SilentNotes.Platforms
         /// <inheritdoc/>
         public override void OnDestroy()
         {
+            StopClipboardCapture();
             HideOverlay();
             Instance = null;
             BrowserUrlTracker.ServiceEnabled = false;
             BrowserUrlTracker.CaptureEnabled = false;
             base.OnDestroy();
+        }
+
+        /// <summary>
+        /// Starts or stops the clipboard capture, according to the persisted setting. Called when
+        /// the service connects.
+        /// </summary>
+        private void RefreshClipboardSettings()
+        {
+            if (ShouldMonitorClipboard())
+                StartClipboardCapture();
+            else
+                StopClipboardCapture();
+        }
+
+        /// <summary>
+        /// Enables or disables the clipboard capture. Called by the application when the user
+        /// changes the setting, because the service keeps its own copy of the settings.
+        /// </summary>
+        /// <param name="enabled">True to capture clipboard changes, false to stop capturing.</param>
+        internal void SetClipboardMonitoringEnabled(bool enabled)
+        {
+            if (enabled)
+                StartClipboardCapture();
+            else
+                StopClipboardCapture();
+        }
+
+        private void StartClipboardCapture()
+        {
+            if (_clipboardListener != null)
+                return;
+
+            try
+            {
+                _clipboardManager = GetSystemService(Context.ClipboardService) as ClipboardManager;
+                if (_clipboardManager == null)
+                    return;
+
+                _clipboardCapture = new ClipboardCapture(this, GetServiceProvider());
+                _clipboardListener = new ClipboardChangedListener(() => _clipboardCapture?.CaptureCurrentClip());
+                _clipboardManager.AddPrimaryClipChangedListener(_clipboardListener);
+
+                // Read the current clip once, so the history is seeded immediately.
+                _clipboardCapture.CaptureCurrentClip();
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not start the clipboard capture: " + ex);
+                _clipboardListener = null;
+            }
+        }
+
+        private void StopClipboardCapture()
+        {
+            try
+            {
+                if ((_clipboardManager != null) && (_clipboardListener != null))
+                    _clipboardManager.RemovePrimaryClipChangedListener(_clipboardListener);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not stop the clipboard capture: " + ex);
+            }
+            _clipboardListener = null;
+        }
+
+        /// <summary>
+        /// Captures the text which is currently selected in the focused field of the active
+        /// application and stores it in the clipboard history. This is triggered by a long press on
+        /// the floating button.
+        /// </summary>
+        internal void CaptureSelectedText()
+        {
+            string text = ReadSelectedText();
+            if (string.IsNullOrWhiteSpace(text))
+                text = GetRecentSelection();
+
+            ILanguageService language = GetServiceProvider()?.GetService<ILanguageService>();
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                Toast.MakeText(this, language?["clipboard_gesture_none"] ?? "No text selected", ToastLength.Short)?.Show();
+                return;
+            }
+
+            try
+            {
+                _clipboardCapture = _clipboardCapture ?? new ClipboardCapture(this, GetServiceProvider());
+                _clipboardCapture.StoreText(text);
+                Toast.MakeText(this, language?["clipboard_gesture_saved"] ?? "Text saved to the clipboard history", ToastLength.Short)?.Show();
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not capture the selected text: " + ex);
+            }
+        }
+
+        /// <summary>
+        /// Reads the text which is currently selected in the active application. The text and its
+        /// selection are read from the accessibility tree, so the clipboard is not involved and the
+        /// other application keeps the focus.
+        /// </summary>
+        /// <returns>The selected text, or null if no text is selected.</returns>
+        private string ReadSelectedText()
+        {
+            try
+            {
+                AccessibilityNodeInfo root = RootInActiveWindow;
+                if (root == null)
+                    return null;
+
+                AccessibilityNodeInfo node = FindNodeWithSelection(root, 0);
+                if (node == null)
+                    return null;
+
+                string text = node.Text?.ToString();
+                int start = node.TextSelectionStart;
+                int end = node.TextSelectionEnd;
+                if (string.IsNullOrEmpty(text) || (start < 0) || (end > text.Length) || (end <= start))
+                    return null;
+
+                return text.Substring(start, end - start);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not read the selected text: " + ex);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Searches the accessibility tree for the node which contains a text selection.
+        /// </summary>
+        private static AccessibilityNodeInfo FindNodeWithSelection(AccessibilityNodeInfo node, int depth)
+        {
+            if ((node == null) || (depth > 30))
+                return null;
+
+            int start = node.TextSelectionStart;
+            int end = node.TextSelectionEnd;
+            if ((start >= 0) && (end > start) && (node.Text != null))
+                return node;
+
+            for (int index = 0; index < node.ChildCount; index++)
+            {
+                AccessibilityNodeInfo found = FindNodeWithSelection(node.GetChild(index), depth + 1);
+                if (found != null)
+                    return found;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Listener which is notified by the clipboard manager whenever the clipboard changes.
+        /// </summary>
+        private class ClipboardChangedListener : Java.Lang.Object, ClipboardManager.IOnPrimaryClipChangedListener
+        {
+            private readonly System.Action _callback;
+
+            public ClipboardChangedListener(System.Action callback)
+            {
+                _callback = callback;
+            }
+
+            public void OnPrimaryClipChanged()
+            {
+                _callback();
+            }
         }
 
         private void RefreshFromActiveWindow()
@@ -377,35 +623,55 @@ namespace SilentNotes.Platforms
         }
 
         /// <summary>
-        /// Reads the persisted setting, whether the floating button should be shown. The service can
-        /// run independently of the application, so it builds its own service provider.
+        /// Reads the persisted setting, whether the floating button should be shown.
         /// </summary>
         /// <returns>True if the floating button should be shown.</returns>
         private bool ShouldShowFloatingButton()
         {
-            try
-            {
-                ServiceCollection services = new ServiceCollection();
-                MauiProgram.RegisterSharedServices(services);
-                MauiProgram.RegisterPlatformServices(services);
-                ServiceProvider serviceProvider = services.BuildServiceProvider();
-                serviceProvider.GetService<IAppContextService>().InitializeWithContextOnly(this);
-                return serviceProvider.GetService<ISettingsService>().LoadSettingsOrDefault().ShowFloatingButton;
-            }
-            catch (Exception ex)
-            {
-                global::Android.Util.Log.Error(LogTag, "Could not read the settings: " + ex);
-                return false;
-            }
+            return LoadSettings()?.ShowFloatingButton ?? false;
         }
 
         /// <summary>
-        /// Reads the persisted setting, whether the browser url should be captured. The service can
-        /// run independently of the application, so it builds its own service provider.
+        /// Reads the persisted setting, whether the browser url should be captured.
         /// </summary>
         /// <returns>True if the browser url should be captured.</returns>
         private bool ShouldCaptureBrowserUrl()
         {
+            return LoadSettings()?.BookyUrlCaptureEnabled ?? false;
+        }
+
+        /// <summary>
+        /// Reads the persisted setting, whether the clipboard should be monitored.
+        /// </summary>
+        /// <returns>True if the clipboard should be monitored.</returns>
+        private bool ShouldMonitorClipboard()
+        {
+            return LoadSettings()?.ClipboardMonitoringEnabled ?? false;
+        }
+
+        private SettingsModel LoadSettings()
+        {
+            try
+            {
+                return GetServiceProvider()?.GetService<ISettingsService>()?.LoadSettingsOrDefault();
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not read the settings: " + ex);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Gets a service provider for the service. The service can run independently of the
+        /// application, so it builds its own service provider once.
+        /// </summary>
+        /// <returns>The service provider, or null if it could not be built.</returns>
+        private IServiceProvider GetServiceProvider()
+        {
+            if (_serviceProvider != null)
+                return _serviceProvider;
+
             try
             {
                 ServiceCollection services = new ServiceCollection();
@@ -413,12 +679,13 @@ namespace SilentNotes.Platforms
                 MauiProgram.RegisterPlatformServices(services);
                 ServiceProvider serviceProvider = services.BuildServiceProvider();
                 serviceProvider.GetService<IAppContextService>().InitializeWithContextOnly(this);
-                return serviceProvider.GetService<ISettingsService>().LoadSettingsOrDefault().BookyUrlCaptureEnabled;
+                _serviceProvider = serviceProvider;
+                return _serviceProvider;
             }
             catch (Exception ex)
             {
-                global::Android.Util.Log.Error(LogTag, "Could not read the settings: " + ex);
-                return false;
+                global::Android.Util.Log.Error(LogTag, "Could not build the service provider: " + ex);
+                return null;
             }
         }
 
@@ -445,10 +712,25 @@ namespace SilentNotes.Platforms
             private int _paramsStartX;
             private int _paramsStartY;
             private bool _isDragging;
+            private bool _longPressFired;
+            private System.Action _longPressAction;
+            private float _touchSlop;
 
             public OverlayTouchListener(FloatingButtonAccessibilityService service)
             {
                 _service = service;
+            }
+
+            /// <summary>
+            /// Gets the movement which is tolerated while holding the button, before the gesture is
+            /// treated as a drag. Uses the system touch slop (a real finger always drifts a little),
+            /// doubled to make it comfortable to hold the button for a long press.
+            /// </summary>
+            private float GetTouchSlop(global::Android.Views.View view)
+            {
+                if (_touchSlop <= 0f)
+                    _touchSlop = global::Android.Views.ViewConfiguration.Get(view.Context).ScaledTouchSlop * 2f;
+                return _touchSlop;
             }
 
             /// <inheritdoc/>
@@ -462,13 +744,19 @@ namespace SilentNotes.Platforms
                         _paramsStartX = _service._overlayParams.X;
                         _paramsStartY = _service._overlayParams.Y;
                         _isDragging = false;
+                        _longPressFired = false;
+                        ScheduleLongPress();
                         return true;
 
                     case MotionEventActions.Move:
                         float dx = motionEvent.RawX - _touchStartRawX;
                         float dy = motionEvent.RawY - _touchStartRawY;
-                        if (Math.Abs(dx) > TouchSlop || Math.Abs(dy) > TouchSlop)
+                        float touchSlop = GetTouchSlop(view);
+                        if (Math.Abs(dx) > touchSlop || Math.Abs(dy) > touchSlop)
+                        {
                             _isDragging = true;
+                            CancelLongPress();
+                        }
 
                         if (_isDragging)
                         {
@@ -479,6 +767,10 @@ namespace SilentNotes.Platforms
                         return true;
 
                     case MotionEventActions.Up:
+                        CancelLongPress();
+                        if (_longPressFired)
+                            return true; // The long press already captured the selected text.
+
                         if (_isDragging)
                         {
                             var preferences = _service.GetSharedPreferences(PreferencesName, FileCreationMode.Private);
@@ -493,8 +785,32 @@ namespace SilentNotes.Platforms
                         }
                         return true;
 
+                    case MotionEventActions.Cancel:
+                        CancelLongPress();
+                        return true;
+
                     default:
                         return true;
+                }
+            }
+
+            private void ScheduleLongPress()
+            {
+                CancelLongPress();
+                _longPressAction = () =>
+                {
+                    _longPressFired = true;
+                    _service.CaptureSelectedText();
+                };
+                _service._gestureHandler?.PostDelayed(_longPressAction, LongPressDelayMs);
+            }
+
+            private void CancelLongPress()
+            {
+                if (_longPressAction != null)
+                {
+                    _service._gestureHandler?.RemoveCallbacks(_longPressAction);
+                    _longPressAction = null;
                 }
             }
         }

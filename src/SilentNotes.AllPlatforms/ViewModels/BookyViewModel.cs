@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using SilentNotes.Models;
@@ -28,6 +29,8 @@ namespace SilentNotes.ViewModels
         private readonly IRepositoryStorageService _repositoryService;
         private readonly INativeBrowserService _browserService;
         private readonly IEnvironmentService _environmentService;
+        private readonly IBookySyncService _bookySyncService;
+        private readonly IFeedbackService _feedbackService;
         private string _filter;
         private bool _isDraftVisible;
         private string _draftUrl;
@@ -49,19 +52,24 @@ namespace SilentNotes.ViewModels
             ILanguageService languageService,
             IRepositoryStorageService repositoryService,
             INativeBrowserService browserService,
-            IEnvironmentService environmentService)
+            IEnvironmentService environmentService,
+            IBookySyncService bookySyncService,
+            IFeedbackService feedbackService)
         {
             _model = model;
             _languageService = languageService;
             _repositoryService = repositoryService;
             _browserService = browserService;
             _environmentService = environmentService;
+            _bookySyncService = bookySyncService;
+            _feedbackService = feedbackService;
 
             OpenCommand = new RelayCommand<BookmarkItemViewModel>(Open);
             DeleteCommand = new RelayCommand<BookmarkItemViewModel>(Delete);
             StartAddCommand = new RelayCommand(StartAdd);
             SaveDraftCommand = new RelayCommand(SaveDraft);
             CancelDraftCommand = new RelayCommand(CancelDraft);
+            SyncCommand = new AsyncRelayCommand(SyncBookmarks);
 
             Reload();
         }
@@ -90,6 +98,11 @@ namespace SilentNotes.ViewModels
         /// Gets the command to cancel the bookmark draft.
         /// </summary>
         public ICommand CancelDraftCommand { get; }
+
+        /// <summary>
+        /// Gets the command to synchronize the bookmarks with the shared Booky bookmarks file.
+        /// </summary>
+        public ICommand SyncCommand { get; }
 
         /// <summary>
         /// Gets or sets the search filter.
@@ -265,6 +278,7 @@ namespace SilentNotes.ViewModels
 
             _model.Bookmarks.Insert(0, bookmark);
             _repositoryService.TrySaveRepository(_model);
+            TriggerAutoSync();
 
             IsDraftVisible = false;
             DraftError = null;
@@ -289,7 +303,43 @@ namespace SilentNotes.ViewModels
 
             _model.Bookmarks.Remove(model);
             _repositoryService.TrySaveRepository(_model);
+            TriggerAutoSync();
             Reload();
+        }
+
+        private async Task SyncBookmarks()
+        {
+            BookySyncResult result = await _bookySyncService.SyncAsync();
+            ShowSyncFeedback(result);
+            Reload();
+        }
+
+        private async void TriggerAutoSync()
+        {
+            try
+            {
+                await _bookySyncService.SyncAsync();
+            }
+            catch (Exception)
+            {
+                // Auto synchronization must never bubble up into the UI.
+            }
+        }
+
+        private void ShowSyncFeedback(BookySyncResult result)
+        {
+            switch (result)
+            {
+                case BookySyncResult.Success:
+                    _feedbackService.ShowToast(_languageService["booky_sync_success"]);
+                    break;
+                case BookySyncResult.NotConfigured:
+                    _feedbackService.ShowToast(_languageService["booky_sync_not_configured"]);
+                    break;
+                case BookySyncResult.Failed:
+                    _feedbackService.ShowToast(_languageService["booky_sync_failed"], FeedbackSeverity.Warning);
+                    break;
+            }
         }
     }
 

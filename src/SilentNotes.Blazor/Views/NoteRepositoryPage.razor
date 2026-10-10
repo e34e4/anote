@@ -27,6 +27,7 @@
 @inject IMessengerService MessengerService
 @inject INativeBrowserService NativeBrowserService
 @inject IClipboardService ClipboardService
+@inject IBookySyncService BookySyncService
 
 <style type="text/css">
 	.mud-main-content {
@@ -349,7 +350,9 @@
 			LanguageService,
 			RepositoryStorageService,
 			NativeBrowserService,
-			EnvironmentService);
+			EnvironmentService,
+			BookySyncService,
+			FeedbackService);
 
 		_contactsViewModel = new ContactsViewModel(
 			noteRepositoryModel,
@@ -362,10 +365,10 @@
 
 		MessengerService.Register<BringNoteIntoViewMessage>(
 			this, (recipient, message) => _pendingScrollIntoView = message);
-		MessengerService.Register<AddBookmarkDraftMessage>(
-			this, (recipient, message) => OnAddBookmarkDraft(message));
 		MessengerService.Register<SynchronizationIsRunningChangedMessage>(
 			this, (recipient, message) => InvokeAsync(StateHasChanged));
+		MessengerService.Register<BookyChangedMessage>(
+			this, (recipient, message) => OnBookyChanged());
 
 		if (loadResult == RepositoryStorageLoadResult.InvalidRepository)
 			throw new Exception("Invalid repository");
@@ -418,17 +421,15 @@
 		base.OnClosingPage();
 		MessengerService.Unregister<SynchronizationIsRunningChangedMessage>(this);
 		MessengerService.Unregister<BringNoteIntoViewMessage>(this);
-		MessengerService.Unregister<AddBookmarkDraftMessage>(this);
+		MessengerService.Unregister<BookyChangedMessage>(this);
 	}
 
 	/// <summary>
-	/// Switches to the booky tab and opens the add-bookmark dialog with the received draft.
+	/// Reloads the booky tab after its bookmarks were merged with the shared Booky bookmarks file.
 	/// </summary>
-	/// <param name="message">The draft with the url, title and quote.</param>
-	private void OnAddBookmarkDraft(AddBookmarkDraftMessage message)
+	private void OnBookyChanged()
 	{
-		_activeTab = 2;
-		_bookyViewModel?.ShowDraft(message.Url, message.Title, message.Quote);
+		_bookyViewModel?.Reload();
 		InvokeAsync(StateHasChanged);
 	}
 

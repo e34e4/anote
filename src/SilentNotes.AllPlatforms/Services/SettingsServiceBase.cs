@@ -202,6 +202,8 @@ namespace SilentNotes.Services
         protected virtual void BeforeSaving(SettingsModel settings)
         {
             settings.Credentials?.EncryptBeforeSerialization(EncryptProperty);
+            if (!string.IsNullOrEmpty(settings.BookySyncPassword))
+                settings.BookySyncPassword = EncryptProperty(settings.BookySyncPassword);
         }
 
         /// <summary>
@@ -212,6 +214,8 @@ namespace SilentNotes.Services
         protected virtual void AfterLoading(SettingsModel settings)
         {
             settings.Credentials?.DecryptAfterDeserialization(DecryptProperty);
+            if (!string.IsNullOrEmpty(settings.BookySyncPassword))
+                settings.BookySyncPassword = DecryptProperty(settings.BookySyncPassword);
 
             if (!settings.RememberLastTagFilter)
                 settings.FilterTags = null;

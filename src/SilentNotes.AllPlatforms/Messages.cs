@@ -150,25 +150,11 @@ namespace SilentNotes
     }
 
     /// <summary>
-    /// Message to inform the note repository page that a new bookmark draft should be created.
-    /// It is sent when text was selected in a browser (PROCESS_TEXT) or a page was shared.
+    /// Message to inform the booky tab that the bookmarks have changed and should be reloaded.
+    /// It is sent after the bookmarks were merged with the shared Booky bookmarks file.
     /// </summary>
-    public class AddBookmarkDraftMessage
+    public class BookyChangedMessage
     {
-        /// <summary>
-        /// Gets or sets the url of the page, or null if unknown.
-        /// </summary>
-        public string Url { get; set; }
-
-        /// <summary>
-        /// Gets or sets the title of the page, or null.
-        /// </summary>
-        public string Title { get; set; }
-
-        /// <summary>
-        /// Gets or sets the selected text quote, or null.
-        /// </summary>
-        public string Quote { get; set; }
     }
 
     /// <summary>

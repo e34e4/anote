@@ -72,6 +72,21 @@ namespace SilentNotes.Models
         public string Note { get; set; }
 
         /// <summary>
+        /// Gets or sets the url of the favicon of the bookmarked page. This value is only used to
+        /// round-trip the data of the shared Booky bookmarks file.
+        /// </summary>
+        [XmlElement("favicon_url")]
+        public string FavIconUrl { get; set; }
+
+        /// <summary>
+        /// Gets or sets the raw JSON of the Booky anchor object. It preserves the details of the
+        /// text anchor (prefix, suffix, scroll position), which aNote itself does not use. It is
+        /// only set for bookmarks which were imported from the shared Booky bookmarks file.
+        /// </summary>
+        [XmlElement("anchor_json")]
+        public string AnchorJson { get; set; }
+
+        /// <summary>
         /// Sets the <see cref="ModifiedAt"/> property to the current UTC time.
         /// </summary>
         public void RefreshModifiedAt()
@@ -97,6 +112,8 @@ namespace SilentNotes.Models
             target.Url = this.Url;
             target.Quote = this.Quote;
             target.Note = this.Note;
+            target.FavIconUrl = this.FavIconUrl;
+            target.AnchorJson = this.AnchorJson;
         }
 
         /// <summary>

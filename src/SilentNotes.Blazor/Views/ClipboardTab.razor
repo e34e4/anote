@@ -157,8 +157,8 @@
 		IClipboardMonitorService monitor = EnvironmentService.ClipboardMonitor;
 		if (monitor == null)
 			return;
-		if (!monitor.HasOverlayPermission)
-			monitor.RequestOverlayPermission();
+		if (!monitor.IsAccessibilityServiceEnabled)
+			monitor.RequestAccessibilityPermission();
 
 		// Remember the setting, so the monitor is started again after a restart.
 		SettingsModel settings = SettingsService.LoadSettingsOrDefault();

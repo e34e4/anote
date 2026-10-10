@@ -24,6 +24,9 @@
 	.booky-draft-overlay {
 		z-index: 1300;
 	}
+	.theme-dark .booky-card {
+		background-color: #000000;
+	}
 </style>
 
 <div class="pa-2">
@@ -34,6 +37,7 @@
 				Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
 				Immediate="true" Clearable="true" Placeholder="@LanguageService["booky_search"]" />
 		</MudPaper>
+		<MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.CloudSync" OnClick="@(() => ViewModel.SyncCommand.Execute(null))" title="@LanguageService["booky_sync"]" />
 		<MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(() => ViewModel.StartAddCommand.Execute(null))" title="@LanguageService["booky_add"]" />
 	</div>
 
@@ -99,7 +103,7 @@
 
 	private RenderFragment RenderBookmark(BookmarkItemViewModel bookmark)
 	{
-		return @<MudPaper Elevation="1" Class="pa-2 my-2 d-flex align-start">
+		return @<MudPaper Elevation="1" Class="pa-2 my-2 booky-card d-flex align-start">
 			<div class="flex-grow-1 overflow-hidden" style="cursor:pointer" @onclick="() => ViewModel.OpenCommand.Execute(bookmark)">
 				<MudText Class="booky-title">@bookmark.Title</MudText>
 				@if (!string.IsNullOrWhiteSpace(bookmark.Quote))

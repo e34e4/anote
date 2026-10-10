@@ -3,16 +3,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-using System.Text;
+using System;
+using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
-using CommunityToolkit.Mvvm.Messaging;
-using Java.Net;
+using Android.Widget;
 using SilentNotes.Models;
 using SilentNotes.Platforms.Services;
 using SilentNotes.Services;
 using SilentNotes.Stories.SynchronizationStory;
-using SilentNotes.ViewModels;
 
 namespace SilentNotes.Platforms
 {
@@ -22,12 +21,7 @@ namespace SilentNotes.Platforms
     /// </summary>
     internal class ApplicationEventHandler
     {
-        private string _actionSendParameter;
-        private NoteModel _newNoteFromActionSend;
-        private string _pendingBookmarkUrl;
-        private string _pendingBookmarkTitle;
-        private string _pendingBookmarkQuote;
-        private bool _mainLayoutReady;
+        private const string LogTag = "aNoteSharedText";
         private DateTime? _lastPauseTime; // The (UTC) time the application was sent to the background the last time.
 
         internal void OnCreate(Activity activity)
@@ -49,9 +43,8 @@ namespace SilentNotes.Platforms
             // Inform services about the new main activity.
             Ioc.Instance.GetService<IAppContextService>().Initialize(activity);
 
-            // Check for arguments passed by the ActionSendActivity.
-            ConsumeActionSendIntentParameter(activity.Intent);
-            ConsumeBookmarkIntentParameter(activity.Intent);
+            // Check for text which was shared by another application.
+            ConsumeSharedTextParameter(activity.Intent);
 
             // Prevent notes from being visible in list of recent apps and screenshots
             ISettingsService settingsService = Ioc.Instance.GetService<ISettingsService>();
@@ -66,75 +59,54 @@ namespace SilentNotes.Platforms
             // After reading the parameters from the passed intent, we forget about it and keep
             // the old intent running. This is called if the app was closed with the back key and
             // was not completely closed.
-            ConsumeActionSendIntentParameter(intent);
-            ConsumeBookmarkIntentParameter(intent);
+            ConsumeSharedTextParameter(intent);
         }
 
         /// <summary>
-        /// Checks whether the intent was created by a <see cref="ProcessTextActivity"/> or a
-        /// <see cref="BookySendActivity"/>, and stores its parameters so a bookmark draft can be
-        /// opened in the booky tab.
+        /// Checks whether the intent was created by an <see cref="ActionSendActivity"/> or a
+        /// <see cref="ProcessTextActivity"/>, and stores the shared text in the clipboard history.
         /// </summary>
         /// <param name="intent">The active intent.</param>
-        private void ConsumeBookmarkIntentParameter(Intent intent)
+        private void ConsumeSharedTextParameter(Intent intent)
         {
-            string url = intent.GetStringExtra(ProcessTextActivity.UrlParam);
-            string title = intent.GetStringExtra(ProcessTextActivity.TitleParam);
-            string quote = intent.GetStringExtra(ProcessTextActivity.QuoteParam);
-            if (string.IsNullOrEmpty(url) && string.IsNullOrEmpty(title) && string.IsNullOrEmpty(quote))
+            string sharedText = intent?.GetStringExtra(ActionSendActivity.SharedTextParam);
+            if (string.IsNullOrEmpty(sharedText))
                 return;
 
-            _pendingBookmarkUrl = url;
-            _pendingBookmarkTitle = title;
-            _pendingBookmarkQuote = quote;
-
-            intent.RemoveExtra(ProcessTextActivity.UrlParam);
-            intent.RemoveExtra(ProcessTextActivity.TitleParam);
-            intent.RemoveExtra(ProcessTextActivity.QuoteParam);
+            intent.RemoveExtra(ActionSendActivity.SharedTextParam);
+            SaveSharedTextToClipboard(sharedText);
         }
 
         /// <summary>
-        /// Publishes a pending bookmark draft to the note repository page, which opens the
-        /// add-bookmark dialog. On a cold start the page is not yet listening when the activity
-        /// resumes, so the draft is published once the main layout is ready.
+        /// Stores a text which was shared by another application in the clipboard history.
         /// </summary>
-        private void PublishPendingBookmarkDraft()
+        private void SaveSharedTextToClipboard(string text)
         {
-            if (string.IsNullOrEmpty(_pendingBookmarkUrl) && string.IsNullOrEmpty(_pendingBookmarkTitle) && string.IsNullOrEmpty(_pendingBookmarkQuote))
-                return;
-
-            var messenger = Ioc.Instance.GetService<IMessengerService>();
-            messenger.Send(new AddBookmarkDraftMessage
+            try
             {
-                Url = _pendingBookmarkUrl,
-                Title = _pendingBookmarkTitle,
-                Quote = _pendingBookmarkQuote,
-            });
+                int limit = Ioc.Instance.GetService<ISettingsService>()?.LoadSettingsOrDefault()?.ClipboardHistorySize ?? 500;
 
-            _pendingBookmarkUrl = null;
-            _pendingBookmarkTitle = null;
-            _pendingBookmarkQuote = null;
-        }
+                // Writing the history file can take a moment, so do it in the background.
+                Task.Run(() =>
+                {
+                    try
+                    {
+                        Ioc.Instance.GetService<IClipboardHistoryService>()?.AddText(text.Trim(), limit);
+                        Ioc.Instance.GetService<IMessengerService>()?.Send(new ClipboardChangedMessage());
+                    }
+                    catch (Exception ex)
+                    {
+                        global::Android.Util.Log.Error(LogTag, "Could not store the shared text: " + ex);
+                    }
+                });
 
-        /// <summary>
-        /// Checks whether the intent was created by an <see cref="ActionSendActivity"/> and stores
-        /// its parameter to the variable <see cref="_actionSendParameter"/>, so it can later be
-        /// used to start up the app.
-        /// </summary>
-        /// <param name="intent">The active indent.</param>
-        private void ConsumeActionSendIntentParameter(Intent intent)
-        {
-            bool isStartedWithActionSend = intent.HasExtra(ActionSendActivity.NoteHtmlParam);
-            bool isAlreadyHandled = intent.Flags.HasFlag(ActivityFlags.LaunchedFromHistory);
-
-            if (isStartedWithActionSend && !isAlreadyHandled)
-            {
-                _actionSendParameter = intent.GetStringExtra(ActionSendActivity.NoteHtmlParam);
-                intent.RemoveExtra(ActionSendActivity.NoteHtmlParam);
+                string message = Ioc.Instance.GetService<ILanguageService>()?["clipboard_gesture_saved"];
+                Context context = Ioc.Instance.GetService<IAppContextService>()?.Context;
+                Toast.MakeText(context, message ?? "Text saved to the clipboard history", ToastLength.Short)?.Show();
             }
-            else
+            catch (Exception ex)
             {
-                _actionSendParameter = null;
+                global::Android.Util.Log.Error(LogTag, "Could not store the shared text: " + ex);
             }
         }
 
@@ -148,37 +120,19 @@ namespace SilentNotes.Platforms
             var synchronizationService = Ioc.Instance.GetService<ISynchronizationService>();
             synchronizationService.StopAutoSynchronization(Ioc.Instance);
 
-            if (!string.IsNullOrEmpty(_actionSendParameter))
-            {
-                // A text was shared with the app.
-                _newNoteFromActionSend = CreateNewNoteFromSendParameter(Ioc.Instance, _actionSendParameter);
-                _actionSendParameter = null; // create the note only once
-                bool safesClosed = CloseSafesWhenTimeoutReached();
-                var messenger = Ioc.Instance.GetService<IMessengerService>();
-                messenger.Send(new AfterResumeMessage { NewNoteShared = true, SafesClosed = safesClosed });
-            }
-            else if (IsStartedByOAuthRedirectIndent(synchronizationService))
+            if (IsStartedByOAuthRedirectIndent(synchronizationService))
             {
                 // Coming back from an OAuth2 redirect.
                 var startStep = new HandleOAuthRedirectStep();
                 _ = startStep.RunStoryAndShowLastFeedback(synchronizationService.ManualSynchronization, Ioc.Instance, synchronizationService.ManualSynchronization.StoryMode);
             }
-            else
+            else if (_lastPauseTime.HasValue)
             {
-                // Normal startup
                 // Close safes if timeout is reached
-                if (_lastPauseTime.HasValue)
-                {
-                    bool safesClosed = CloseSafesWhenTimeoutReached();
-                    var messenger = Ioc.Instance.GetService<IMessengerService>();
-                    messenger.Send(new AfterResumeMessage { SafesClosed = safesClosed });
-                }
+                bool safesClosed = CloseSafesWhenTimeoutReached();
+                var messenger = Ioc.Instance.GetService<IMessengerService>();
+                messenger.Send(new AfterResumeMessage { SafesClosed = safesClosed });
             }
-
-            // On a warm start the note repository page is already listening, so the draft can be
-            // published immediately. On a cold start it is published by OnMainLayoutReady().
-            if (_mainLayoutReady)
-                PublishPendingBookmarkDraft();
         }
 
         private bool CloseSafesWhenTimeoutReached()
@@ -192,24 +146,6 @@ namespace SilentNotes.Platforms
 
             ISafeKeyService keyService = Ioc.Instance.GetService<ISafeKeyService>();
             return keyService.CloseAllSafes();
-        }
-
-        private NoteModel CreateNewNoteFromSendParameter(IServiceProvider serviceProvider, string actionSendParameter)
-        {
-            var repositoryStorageService = serviceProvider.GetService<IRepositoryStorageService>();
-            SettingsModel settings = serviceProvider.GetService<ISettingsService>().LoadSettingsOrDefault();
-            repositoryStorageService.LoadRepositoryOrDefault(out NoteRepositoryModel noteRepository);
-
-            NoteModel note = new NoteModel
-            {
-                BackgroundColorHex = settings.DefaultNoteColorHex,
-                HtmlContent = _actionSendParameter,
-            };
-
-            int insertionIndex = noteRepository.Notes.IndexToInsertNewNote(settings.DefaultNoteInsertion);
-            noteRepository.Notes.Insert(insertionIndex, note);
-            repositoryStorageService.TrySaveRepository(noteRepository);
-            return note;
         }
 
         internal void OnPause(Activity activity)
@@ -247,16 +183,6 @@ namespace SilentNotes.Platforms
 
         public void OnMainLayoutReady()
         {
-            _mainLayoutReady = true;
-
-            if (_newNoteFromActionSend != null)
-            {
-                var messenger = Ioc.Instance.GetService<IMessengerService>();
-                messenger.Send(new BringNoteIntoViewMessage(_newNoteFromActionSend.Id, false));
-                _newNoteFromActionSend = null;
-            }
-
-            PublishPendingBookmarkDraft();
         }
 
         private static string GetId(Activity activity)

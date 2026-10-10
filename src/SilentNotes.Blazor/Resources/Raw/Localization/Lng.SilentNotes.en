@@ -212,7 +212,7 @@ gui_localization_test = Test new language file
 gui_show_floating_button = Floating note button
 gui_open_accessibility_settings = Open Android accessibility settings
 
-gui_clipboard_monitoring = Monitor clipboard
+gui_clipboard_monitoring = Monitor clipboard (uses the aNote accessibility service)
 gui_clipboard_open_accessibility = Open Android accessibility settings
 gui_clipboard_history_size = Remembered clips (favorites are never removed)
 tab_notes = Notes
@@ -231,7 +231,9 @@ clipboard_monitoring_off = Clipboard monitoring is off, enable it in the setting
 clipboard_enable = Enable
 clipboard_image = Image
 gui_clipboard_grant_overlay = Allow display over other apps
-gui_clipboard_poll_interval = Check for new clips (seconds)
+gui_clipboard_longpress_hint = Long-press the floating button to save the selected text.
+clipboard_gesture_saved = Text saved to the clipboard history
+clipboard_gesture_none = No text selected
 
 tab_booky = Booky
 booky_empty = No bookmarks yet. Select text in a browser and choose "aNote bookmark".
@@ -245,6 +247,16 @@ booky_delete = Delete
 booky_save = Save
 booky_error_url = Enter a valid http(s) URL
 gui_booky_url_capture = Capture browser page URL for bookmarks
+gui_booky_sync = Booky sync
+gui_booky_sync_enabled = Sync bookmarks with the Booky file
+gui_booky_sync_url = WebDAV base URL
+gui_booky_sync_remote_path = Remote file path
+gui_booky_sync_username = User name
+gui_booky_sync_password = Password
+booky_sync = Sync bookmarks
+booky_sync_success = Bookmarks synchronized
+booky_sync_failed = Bookmark synchronization failed
+booky_sync_not_configured = Configure the Booky sync in the settings first
 
 tab_phone = Phone
 contact_empty = No contacts yet. Tap + to add one, or import a contacts file.

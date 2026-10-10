@@ -40,6 +40,7 @@ namespace SilentNotes.ViewModels
         private readonly IFilePickerService _filePickerService;
         private readonly IMessengerService _messengerService;
         private readonly ICloudStorageClientFactory _cloudStorageClientFactory;
+        private readonly IBookySyncService _bookySyncService;
         private readonly SliderStepConverter _fontSizeConverter;
         private readonly SliderStepConverter _noteMaxHeightConverter;
         private string _defaultFontFamilyLabel;
@@ -57,7 +58,8 @@ namespace SilentNotes.ViewModels
             IMessengerService messengerService,
             IFontService fontService,
             ICloudStorageClientFactory cloudStorageClientFactory,
-            IFilePickerService filePickerService)
+            IFilePickerService filePickerService,
+            IBookySyncService bookySyncService)
         {
             Language = languageService;
             _settingsService = settingsService;
@@ -68,6 +70,7 @@ namespace SilentNotes.ViewModels
             _messengerService = messengerService;
             _cloudStorageClientFactory = cloudStorageClientFactory;
             _filePickerService = filePickerService;
+            _bookySyncService = bookySyncService;
             Model = _settingsService.LoadSettingsOrDefault();
             Modifications = new ModificationDetector(() => GetModificationFingerprint(Model));
 
@@ -87,8 +90,9 @@ namespace SilentNotes.ViewModels
             ClearCloudSettingsCommand = new RelayCommand(ClearCloudSettings);
             TestNewLocalizationCommand = new RelayCommand(TestNewLocalization);
             OpenAccessibilitySettingsCommand = new RelayCommand(OpenAccessibilitySettings);
-            GrantOverlayPermissionCommand = new RelayCommand(GrantOverlayPermission);
+            GrantAccessibilityPermissionCommand = new RelayCommand(GrantAccessibilityPermission);
             OpenOverlayPermissionSettingsCommand = new RelayCommand(OpenOverlayPermissionSettings);
+            SyncBookyCommand = new AsyncRelayCommand(SyncBooky);
         }
 
         /// <summary>
@@ -136,6 +140,11 @@ namespace SilentNotes.ViewModels
                 settings.ClipboardHistorySize.GetHashCode(),
                 settings.ClipboardPollIntervalMs.GetHashCode(),
                 settings.BookyUrlCaptureEnabled.GetHashCode(),
+                settings.BookySyncEnabled.GetHashCode(),
+                string.GetHashCode(settings.BookySyncUrl),
+                string.GetHashCode(settings.BookySyncRemotePath),
+                string.GetHashCode(settings.BookySyncUsername),
+                string.GetHashCode(settings.BookySyncPassword),
                 (settings.Credentials == null).GetHashCode(),
             });
         }
@@ -535,8 +544,8 @@ namespace SilentNotes.ViewModels
                     IClipboardMonitorService monitor = _environmentService.ClipboardMonitor;
                     if (monitor == null)
                         return;
-                    if (value && !monitor.HasOverlayPermission)
-                        monitor.RequestOverlayPermission();
+                    if (value && !monitor.IsAccessibilityServiceEnabled)
+                        monitor.RequestAccessibilityPermission();
                     monitor.SetMonitoringEnabled(value);
                 }
             }
@@ -560,11 +569,12 @@ namespace SilentNotes.ViewModels
         }
 
         /// <summary>
-        /// Gets a value indicating whether the permission to draw the overlay window is granted.
+        /// Gets a value indicating whether the accessibility service which is required to read the
+        /// clipboard in the background is enabled.
         /// </summary>
-        public bool HasOverlayPermission
+        public bool IsAccessibilityServiceEnabled
         {
-            get { return _environmentService.ClipboardMonitor?.HasOverlayPermission ?? false; }
+            get { return _environmentService.ClipboardMonitor?.IsAccessibilityServiceEnabled ?? false; }
         }
 
         /// <summary>
@@ -573,16 +583,6 @@ namespace SilentNotes.ViewModels
         public bool IsClipboardMonitoringActive
         {
             get { return _environmentService.ClipboardMonitor?.IsMonitoringActive ?? false; }
-        }
-
-        /// <summary>
-        /// Gets or sets the interval in seconds, in which the background monitor checks the
-        /// clipboard for changes.
-        /// </summary>
-        public int ClipboardPollIntervalSeconds
-        {
-            get { return Model.ClipboardPollIntervalMs / 1000; }
-            set { SetProperty(Model.ClipboardPollIntervalMs / 1000, value, (int v) => Model.ClipboardPollIntervalMs = v * 1000); }
         }
 
         /// <summary>
@@ -599,6 +599,82 @@ namespace SilentNotes.ViewModels
                 {
                     _environmentService.BrowserUrl?.SetCaptureEnabled(value);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the bookmarks of the Booky tab should be
+        /// synchronized with the shared Booky bookmarks file.
+        /// </summary>
+        public bool BookySyncEnabled
+        {
+            get { return Model.BookySyncEnabled; }
+            set { SetProperty(Model.BookySyncEnabled, value, (bool v) => Model.BookySyncEnabled = v); }
+        }
+
+        /// <summary>
+        /// Gets or sets the base url of the WebDAV server which hosts the shared Booky bookmarks file.
+        /// </summary>
+        public string BookySyncUrl
+        {
+            get { return Model.BookySyncUrl; }
+            set { SetProperty(Model.BookySyncUrl, value, (string v) => Model.BookySyncUrl = v); }
+        }
+
+        /// <summary>
+        /// Gets or sets the path of the shared Booky bookmarks file, relative to the base url.
+        /// </summary>
+        public string BookySyncRemotePath
+        {
+            get { return Model.BookySyncRemotePath; }
+            set { SetProperty(Model.BookySyncRemotePath, value, (string v) => Model.BookySyncRemotePath = v); }
+        }
+
+        /// <summary>
+        /// Gets or sets the user name for the Booky sync WebDAV server.
+        /// </summary>
+        public string BookySyncUsername
+        {
+            get { return Model.BookySyncUsername; }
+            set { SetProperty(Model.BookySyncUsername, value, (string v) => Model.BookySyncUsername = v); }
+        }
+
+        /// <summary>
+        /// Gets or sets the password for the Booky sync WebDAV server.
+        /// </summary>
+        public string BookySyncPassword
+        {
+            get { return Model.BookySyncPassword; }
+            set { SetProperty(Model.BookySyncPassword, value, (string v) => Model.BookySyncPassword = v); }
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether the Booky sync can be run with the current settings.
+        /// </summary>
+        public bool CanSyncBooky
+        {
+            get { return Model.BookySyncEnabled && !string.IsNullOrWhiteSpace(Model.BookySyncUrl); }
+        }
+
+        /// <summary>
+        /// Gets the command to run the Booky bookmarks synchronization immediately.
+        /// </summary>
+        public ICommand SyncBookyCommand { get; }
+
+        private async Task SyncBooky()
+        {
+            BookySyncResult result = await _bookySyncService.SyncAsync();
+            switch (result)
+            {
+                case BookySyncResult.Success:
+                    _feedbackService.ShowToast(Language["booky_sync_success"]);
+                    break;
+                case BookySyncResult.NotConfigured:
+                    _feedbackService.ShowToast(Language["booky_sync_not_configured"]);
+                    break;
+                case BookySyncResult.Failed:
+                    _feedbackService.ShowToast(Language["booky_sync_failed"], FeedbackSeverity.Warning);
+                    break;
             }
         }
 
@@ -734,22 +810,22 @@ namespace SilentNotes.ViewModels
         /// Gets the command to open the accessibility settings, where the user can enable the
         /// service which monitors the clipboard.
         /// </summary>
-        public ICommand GrantOverlayPermissionCommand { get; private set; }
+        public ICommand GrantAccessibilityPermissionCommand { get; private set; }
 
-        private void GrantOverlayPermission()
+        private void GrantAccessibilityPermission()
         {
-            _environmentService.ClipboardMonitor?.RequestOverlayPermission();
+            _environmentService.ClipboardMonitor?.RequestAccessibilityPermission();
         }
 
         /// <summary>
-        /// Gets the command to open the system settings, where the overlay permission can be
-        /// granted manually.
+        /// Gets the command to open the accessibility settings, where the service which monitors
+        /// the clipboard can be enabled manually.
         /// </summary>
         public ICommand OpenOverlayPermissionSettingsCommand { get; private set; }
 
         private void OpenOverlayPermissionSettings()
         {
-            _environmentService.ClipboardMonitor?.OpenOverlayPermissionSettings();
+            _environmentService.ClipboardMonitor?.OpenAccessibilitySettings();
         }
 
         /// <summary>

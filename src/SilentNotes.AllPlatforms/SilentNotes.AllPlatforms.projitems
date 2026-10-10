@@ -198,5 +198,8 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\ContactListModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\ContactsViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\ContactsImporter.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\BookyJsonFormat.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IBookySyncService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\BookySyncService.cs" />
   </ItemGroup>
 </Project>

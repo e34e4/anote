@@ -212,7 +212,7 @@ gui_localization_test = Neue Sprachdatei testen
 gui_show_floating_button = Schwebende Notiz-Schaltfläche
 gui_open_accessibility_settings = Android-Bedienungshilfen öffnen
 
-gui_clipboard_monitoring = Zwischenablage überwachen
+gui_clipboard_monitoring = Zwischenablage überwachen (nutzt den aNote-Bedienungshilfe-Dienst)
 gui_clipboard_open_accessibility = Android-Bedienungshilfen öffnen
 gui_clipboard_history_size = Gemerkte Einträge (Favoriten werden nie gelöscht)
 tab_notes = Notizen
@@ -231,7 +231,9 @@ clipboard_monitoring_off = Zwischenablage-Überwachung ist aus, aktiviere sie in
 clipboard_enable = Aktivieren
 clipboard_image = Bild
 gui_clipboard_grant_overlay = Über anderen Apps anzeigen erlauben
-gui_clipboard_poll_interval = Auf neue Einträge prüfen (Sekunden)
+gui_clipboard_longpress_hint = Zum Speichern des markierten Textes das schwebende Symbol lange drücken.
+clipboard_gesture_saved = Text im Zwischenablagenverlauf gespeichert
+clipboard_gesture_none = Kein Text markiert
 
 tab_booky = Booky
 booky_empty = No bookmarks yet. Select text in a browser and choose "aNote bookmark".
@@ -245,6 +247,16 @@ booky_delete = Delete
 booky_save = Save
 booky_error_url = Enter a valid http(s) URL
 gui_booky_url_capture = Capture browser page URL for bookmarks
+gui_booky_sync = Booky sync
+gui_booky_sync_enabled = Sync bookmarks with the Booky file
+gui_booky_sync_url = WebDAV base URL
+gui_booky_sync_remote_path = Remote file path
+gui_booky_sync_username = User name
+gui_booky_sync_password = Password
+booky_sync = Sync bookmarks
+booky_sync_success = Bookmarks synchronized
+booky_sync_failed = Bookmark synchronization failed
+booky_sync_not_configured = Configure the Booky sync in the settings first
 
 tab_phone = Phone
 contact_empty = No contacts yet. Tap + to add one, or import a contacts file.

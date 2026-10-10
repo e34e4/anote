@@ -3,8 +3,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-using System;
-using System.Text;
 using Android.App;
 using Android.Content;
 using Android.OS;
@@ -12,7 +10,8 @@ using Android.OS;
 namespace SilentNotes
 {
     /// <summary>
-    /// This activity handles retrieving text data from other applications.
+    /// This activity handles text which is shared from another application (ACTION_SEND) and stores
+    /// it in the clipboard history of aNote.
     /// </summary>
     [Activity(Label = "aNote", NoHistory = true, Exported = true)]
     [IntentFilter(
@@ -21,48 +20,22 @@ namespace SilentNotes
         DataMimeType = @"text/plain")]
     public class ActionSendActivity : Activity
     {
-        public const string NoteHtmlParam = "ActionSendNoteHtml";
+        /// <summary>Intent parameter which carries the shared text to the main activity.</summary>
+        public const string SharedTextParam = "ActionSendSharedText";
 
         protected override void OnCreate(Bundle savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
 
-            // Start main activity to create new note. If later the application is stopped/restarted
-            // it will be opened with the main activity instead of this ActionSend activity, this
-            // avoids creating new notes each time.
+            string sharedText = Intent?.GetStringExtra(Intent.ExtraText);
+
+            // Let the main activity store the text in the clipboard history, it has all services
+            // initialized. The NoHistory flag avoids that this activity is opened again later.
             Intent mainActivityIntent = new Intent(this, typeof(MainActivity));
-            mainActivityIntent.PutExtra(NoteHtmlParam, PlainTextToHtml(GetSendIntentText()));
+            mainActivityIntent.PutExtra(SharedTextParam, sharedText);
             StartActivity(mainActivityIntent);
 
-            // Stop the activity, its job is just to start the main activity with parameters.
             Finish();
-        }
-
-        private string GetSendIntentText()
-        {
-            return Intent.GetStringExtra(Intent.ExtraText);
-        }
-
-        /// <summary>
-        /// Escapes special characters which would be potentially dangerous inside HTML, and puts
-        /// each new line into a paragraph section.
-        /// </summary>
-        /// <param name="plainText">Plain text.</param>
-        /// <returns>Html content.</returns>
-        private static string PlainTextToHtml(string plainText)
-        {
-            StringBuilder sb = new StringBuilder();
-            if (!string.IsNullOrWhiteSpace(plainText))
-            {
-                string encodedText = System.Net.WebUtility.HtmlEncode(plainText);
-                sb.Append("<p>");
-                sb.Append(encodedText);
-                sb.Append("</p>");
-                sb.Replace("\r\n", "\n");
-                sb.Replace("\n\n", "\n");
-                sb.Replace("\n", "</p><p>");
-            }
-            return sb.ToString();
         }
     }
 }

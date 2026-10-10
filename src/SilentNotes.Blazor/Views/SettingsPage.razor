@@ -17,6 +17,7 @@
 @inject IFilePickerService FilePickerService
 @inject IFontService FontService
 @inject ICloudStorageClientFactory CloudStorageClientFactory
+@inject IBookySyncService BookySyncService
 @inject ISynchronizationService SynchronizationService
 @inject IJSRuntime JSRuntime
 @inject INavigationService Navigation
@@ -287,32 +288,27 @@
 						</MudButton>
 					</div>
 				}
-				@* Clipboard monitoring (Android overlay service) *@
+				@* Clipboard monitoring (uses the Android accessibility service) *@
 				@if (ViewModel.CanMonitorClipboard)
 				{
 					<div><MudIcon Icon="@Icons.Material.Filled.ContentPaste" Color="Color.Secondary" /></div>
 					<div>
 						<MudSwitch @bind-Value="@ViewModel.ClipboardMonitoringEnabled"
 							Label="@LanguageService["gui_clipboard_monitoring"]" Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
-						@if (!ViewModel.HasOverlayPermission)
+						@if (!ViewModel.IsAccessibilityServiceEnabled)
 						{
-							<MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Layers"
-								OnClick="@(() => ViewModel.GrantOverlayPermissionCommand.Execute(null))">
-								@LanguageService["gui_clipboard_grant_overlay"]
+							<MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AccessibilityNew"
+								OnClick="@(() => ViewModel.GrantAccessibilityPermissionCommand.Execute(null))">
+								@LanguageService["gui_clipboard_open_accessibility"]
 							</MudButton>
 						}
+						<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["gui_clipboard_longpress_hint"]</MudText>
 					</div>
 					<div><MudIcon Icon="@Icons.Material.Filled.History" Color="Color.Secondary" /></div>
 					<div>
 						<label for="ClipboardHistorySize">@LanguageService["gui_clipboard_history_size"]</label>
 						<MudSlider id="ClipboardHistorySize" @bind-Value="ViewModel.ClipboardHistorySize"
 							Min="50" Max="2000" Step="50" Color="Color.Tertiary"></MudSlider>
-					</div>
-					<div><MudIcon Icon="@Icons.Material.Filled.Timer" Color="Color.Secondary" /></div>
-					<div>
-						<label for="ClipboardPollIntervalSeconds">@LanguageService["gui_clipboard_poll_interval"]</label>
-						<MudSlider id="ClipboardPollIntervalSeconds" @bind-Value="ViewModel.ClipboardPollIntervalSeconds"
-							Min="1" Max="10" Step="1" Color="Color.Tertiary"></MudSlider>
 					</div>
 				}
 
@@ -378,6 +374,56 @@
 			</div>
 
 
+			<h2 class="h-colored mt-10">@LanguageService["gui_booky_sync"]</h2>
+
+			<div class="css-grid">
+
+				@* Enable Booky sync *@
+				<div><MudIcon Icon="@Icons.Material.Filled.BookmarkBorder" Color="Color.Secondary" /></div>
+				<div>
+					<MudSwitch @bind-Value="@ViewModel.BookySyncEnabled" Label="@LanguageService["gui_booky_sync_enabled"]"
+						Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
+				</div>
+
+				@* WebDAV base url *@
+				<div></div>
+				<div>
+					<label for="BookySyncUrl">@LanguageService["gui_booky_sync_url"]</label>
+					<MudTextField id="BookySyncUrl" @bind-Value="@ViewModel.BookySyncUrl" Variant="Variant.Outlined" Placeholder="https://example.com/webdav" />
+				</div>
+
+				@* Remote file path *@
+				<div></div>
+				<div>
+					<label for="BookySyncRemotePath">@LanguageService["gui_booky_sync_remote_path"]</label>
+					<MudTextField id="BookySyncRemotePath" @bind-Value="@ViewModel.BookySyncRemotePath" Variant="Variant.Outlined" />
+				</div>
+
+				@* User name *@
+				<div></div>
+				<div>
+					<label for="BookySyncUsername">@LanguageService["gui_booky_sync_username"]</label>
+					<MudTextField id="BookySyncUsername" @bind-Value="@ViewModel.BookySyncUsername" Variant="Variant.Outlined" />
+				</div>
+
+				@* Password *@
+				<div></div>
+				<div>
+					<label for="BookySyncPassword">@LanguageService["gui_booky_sync_password"]</label>
+					<MudTextField id="BookySyncPassword" @bind-Value="@ViewModel.BookySyncPassword" Variant="Variant.Outlined" InputType="InputType.Password" />
+				</div>
+
+				@* Sync now *@
+				<div></div>
+				<div>
+					<MudButton OnClick="@(() => ViewModel.SyncBookyCommand.Execute(null))" Color="Color.Primary" Variant="Variant.Filled"
+						StartIcon="@Icons.Material.Filled.CloudSync" Disabled="@(!ViewModel.CanSyncBooky)">
+						@LanguageService["booky_sync"]
+					</MudButton>
+				</div>
+			</div>
+
+
 			<h2 class="h-colored mt-10">@LanguageService["security"]</h2>
 
 			<div class="css-grid">
@@ -426,7 +472,7 @@
 
 	protected override void OnInitialized()
 	{
-		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService);
+		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService);
 	}
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)
