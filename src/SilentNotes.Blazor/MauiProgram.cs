@@ -153,6 +153,7 @@ public static class MauiProgram
         services.AddSingleton<ISynchronizationService>((serviceProvider) => new SynchronizationService(
             serviceProvider.GetService<ISynchronizationState>()));
         services.AddSingleton<ISharingService>((serviceProvider) => new SharingService());
+        services.AddSingleton<IDeviceCalendarService>((serviceProvider) => new DeviceCalendarService());
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<ISnackbar>(),
@@ -194,6 +195,8 @@ public static class MauiProgram
         services.AddSingleton<ISynchronizationService>((serviceProvider) => new SynchronizationService(
             serviceProvider.GetService<ISynchronizationState>()));
         services.AddSingleton<ISharingService>((serviceProvider) => new SharingService(
+            serviceProvider.GetService<IAppContextService>()));
+        services.AddSingleton<IDeviceCalendarService>((serviceProvider) => new DeviceCalendarService(
             serviceProvider.GetService<IAppContextService>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(

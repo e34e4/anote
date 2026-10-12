@@ -1,0 +1,165 @@
+@using SilentNotes.ViewModels
+
+<style type="text/css">
+	.calc-root {
+		background-color: #000000;
+		min-height: calc(100vh - 88px);
+		display: flex;
+		flex-direction: column;
+		padding: 8px;
+		color: #ffffff;
+	}
+	.calc-display {
+		text-align: right;
+		padding: 12px 12px 4px 12px;
+	}
+	.calc-expression {
+		font-size: 2rem;
+		line-height: 1.2;
+		word-break: break-all;
+	}
+	.calc-result {
+		font-size: 1.25rem;
+		min-height: 1.6rem;
+		color: #9e9e9e;
+		margin-top: 4px;
+		word-break: break-all;
+	}
+	.calc-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 6px;
+		margin-top: 6px;
+	}
+	.calc-btn {
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background-color: #000000;
+		color: #ffffff;
+		font-size: 1.3rem;
+		height: 54px;
+		padding: 0;
+		cursor: pointer;
+		touch-action: manipulation;
+	}
+	.calc-btn:active {
+		background-color: #1f1f1f;
+	}
+	.calc-btn.fn {
+		background-color: #000000;
+		color: #cccccc;
+		font-size: 1.05rem;
+	}
+	.calc-btn.op {
+		background-color: #000000;
+	}
+	.calc-btn.eq {
+		background-color: #000000;
+		color: var(--mud-palette-primary);
+		border-color: var(--mud-palette-primary);
+	}
+	.calc-history {
+		margin-top: 10px;
+		overflow-y: auto;
+	}
+	.calc-history-item {
+		padding: 6px 8px;
+		border-bottom: 1px solid #202020;
+		cursor: pointer;
+	}
+	.calc-history-expr {
+		color: #9e9e9e;
+		font-size: 0.85rem;
+		word-break: break-all;
+	}
+	.calc-history-res {
+		font-size: 1.15rem;
+		text-align: right;
+		word-break: break-all;
+	}
+</style>
+
+<div class="calc-root">
+	<div class="calc-display">
+		<div class="calc-expression">@(string.IsNullOrEmpty(ViewModel.Expression) ? "0" : ViewModel.Expression)</div>
+		<div class="calc-result">@ViewModel.Result</div>
+	</div>
+
+	@if (ViewModel.IsScientific)
+	{
+		<div class="calc-grid">
+			<button class="calc-btn fn" @onclick='() => Press("sin")'>sin</button>
+			<button class="calc-btn fn" @onclick='() => Press("cos")'>cos</button>
+			<button class="calc-btn fn" @onclick='() => Press("tan")'>tan</button>
+			<button class="calc-btn fn" @onclick='() => Press("ln")'>ln</button>
+
+			<button class="calc-btn fn" @onclick='() => Press("asin")'>sin⁻¹</button>
+			<button class="calc-btn fn" @onclick='() => Press("acos")'>cos⁻¹</button>
+			<button class="calc-btn fn" @onclick='() => Press("atan")'>tan⁻¹</button>
+			<button class="calc-btn fn" @onclick='() => Press("log")'>log</button>
+
+			<button class="calc-btn fn" @onclick='() => Press("√")'>√</button>
+			<button class="calc-btn fn" @onclick='() => Press("^")'>xʸ</button>
+			<button class="calc-btn fn" @onclick='() => Press("π")'>π</button>
+			<button class="calc-btn fn" @onclick='() => Press("e")'>e</button>
+
+			<button class="calc-btn fn" @onclick="() => ViewModel.BracketsCommand.Execute(null)">( )</button>
+			<button class="calc-btn fn" @onclick='() => Press("!")'>n!</button>
+			<button class="calc-btn fn" @onclick='() => Press("exp")'>exp</button>
+			<button class="calc-btn fn" @onclick='() => Press("cot")'>cot</button>
+		</div>
+	}
+
+	<div class="calc-grid">
+		<button class="calc-btn op" @onclick="() => ViewModel.ClearCommand.Execute(null)">AC</button>
+		<button class="calc-btn op" @onclick="() => ViewModel.DeleteCommand.Execute(null)">⌫</button>
+		<button class="calc-btn op" @onclick='() => Press("%")'>%</button>
+		<button class="calc-btn op" @onclick='() => Press("÷")'>÷</button>
+
+		<button class="calc-btn" @onclick='() => Press("7")'>7</button>
+		<button class="calc-btn" @onclick='() => Press("8")'>8</button>
+		<button class="calc-btn" @onclick='() => Press("9")'>9</button>
+		<button class="calc-btn op" @onclick='() => Press("×")'>×</button>
+
+		<button class="calc-btn" @onclick='() => Press("4")'>4</button>
+		<button class="calc-btn" @onclick='() => Press("5")'>5</button>
+		<button class="calc-btn" @onclick='() => Press("6")'>6</button>
+		<button class="calc-btn op" @onclick='() => Press("-")'>−</button>
+
+		<button class="calc-btn" @onclick='() => Press("1")'>1</button>
+		<button class="calc-btn" @onclick='() => Press("2")'>2</button>
+		<button class="calc-btn" @onclick='() => Press("3")'>3</button>
+		<button class="calc-btn op" @onclick='() => Press("+")'>+</button>
+
+		<button class="calc-btn" @onclick="() => ViewModel.SignCommand.Execute(null)">±</button>
+		<button class="calc-btn" @onclick='() => Press("0")'>0</button>
+		<button class="calc-btn" @onclick='() => Press(".")'>.</button>
+		<button class="calc-btn eq" @onclick="() => ViewModel.CalculateCommand.Execute(null)">=</button>
+	</div>
+
+	@if (ViewModel.HasHistory)
+	{
+		<div class="calc-history">
+			@foreach (var item in ViewModel.History)
+			{
+				<div class="calc-history-item" @onclick="() => ViewModel.UseHistoryCommand.Execute(item)">
+					<div class="calc-history-expr">@item.Expression</div>
+					<div class="calc-history-res">@item.Result</div>
+				</div>
+			}
+		</div>
+	}
+</div>
+
+@code {
+	/// <summary>
+	/// Gets or sets the view model of the calculator tab.
+	/// </summary>
+	[Parameter]
+	public CalculatorViewModel ViewModel { get; set; }
+
+	private void Press(string token)
+	{
+		ViewModel.InputCommand.Execute(token);
+	}
+}

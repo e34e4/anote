@@ -46,6 +46,9 @@ namespace SilentNotes.Platforms
             // Check for text which was shared by another application.
             ConsumeSharedTextParameter(activity.Intent);
 
+            // Check whether the app was started by a calendar intent of another application.
+            ConsumeCalendarIntent(activity.Intent);
+
             // Prevent notes from being visible in list of recent apps and screenshots
             ISettingsService settingsService = Ioc.Instance.GetService<ISettingsService>();
             SettingsModel settings = settingsService.LoadSettingsOrDefault();
@@ -60,6 +63,110 @@ namespace SilentNotes.Platforms
             // the old intent running. This is called if the app was closed with the back key and
             // was not completely closed.
             ConsumeSharedTextParameter(intent);
+            ConsumeCalendarIntent(intent);
+        }
+
+        /// <summary>
+        /// Checks whether the intent was created by a calendar action of another application
+        /// (e.g. "open the calendar at this day" or "add this event"), and remembers the request
+        /// in <see cref="CalendarIntentRequest.Pending"/>, so the calendar tab can handle it.
+        /// </summary>
+        /// <param name="intent">The active intent.</param>
+        private void ConsumeCalendarIntent(Intent intent)
+        {
+            CalendarIntentRequest request = ParseCalendarIntent(intent);
+            if (request == null)
+                return;
+
+            CalendarIntentRequest.Pending = request;
+            Ioc.Instance.GetService<IMessengerService>()?.Send(new CalendarIntentMessage());
+        }
+
+        private static CalendarIntentRequest ParseCalendarIntent(Intent intent)
+        {
+            if (intent == null)
+                return null;
+
+            string action = intent.Action;
+            global::Android.Net.Uri data = intent.Data;
+            string path = data?.Path ?? string.Empty;
+
+            if ((action == Intent.ActionView) && (data != null))
+            {
+                if ((data.Host == "com.android.calendar") && path.StartsWith("/time"))
+                {
+                    long millis = ParseTrailingId(data);
+                    DateTime date = millis > 0
+                        ? DateTimeOffset.FromUnixTimeMilliseconds(millis).ToLocalTime().Date
+                        : DateTime.Today;
+                    return new CalendarIntentRequest { Action = CalendarIntentAction.OpenDate, Date = date };
+                }
+                if (path.StartsWith("/events") || (intent.Type == "vnd.android.cursor.item/event"))
+                {
+                    return new CalendarIntentRequest { Action = CalendarIntentAction.OpenEvent, EventId = ParseTrailingId(data) };
+                }
+            }
+
+            if (action == Intent.ActionEdit)
+            {
+                return new CalendarIntentRequest { Action = CalendarIntentAction.EditEvent, EventId = ParseTrailingId(data) };
+            }
+
+            if ((action == Intent.ActionInsert) || (action == "android.intent.action.INSERT_OR_EDIT"))
+            {
+                var request = new CalendarIntentRequest
+                {
+                    Action = CalendarIntentAction.NewEvent,
+                    Title = GetStringExtraSafe(intent, "title"),
+                    Description = GetStringExtraSafe(intent, "description"),
+                    Location = GetStringExtraSafe(intent, "eventLocation"),
+                    AllDay = GetBooleanExtraSafe(intent, "allDay"),
+                };
+
+                long begin = intent.GetLongExtra("beginTime", 0);
+                long end = intent.GetLongExtra("endTime", 0);
+                if (begin > 0)
+                {
+                    request.BeginUtc = DateTimeOffset.FromUnixTimeMilliseconds(begin).UtcDateTime;
+                    request.Date = DateTimeOffset.FromUnixTimeMilliseconds(begin).ToLocalTime().Date;
+                }
+                if (end > 0)
+                    request.EndUtc = DateTimeOffset.FromUnixTimeMilliseconds(end).UtcDateTime;
+                return request;
+            }
+
+            return null;
+        }
+
+        private static long ParseTrailingId(global::Android.Net.Uri uri)
+        {
+            if (uri == null)
+                return 0;
+            return long.TryParse(uri.LastPathSegment, out long id) ? id : 0;
+        }
+
+        private static string GetStringExtraSafe(Intent intent, string name)
+        {
+            try
+            {
+                return intent.GetStringExtra(name);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private static bool GetBooleanExtraSafe(Intent intent, string name)
+        {
+            try
+            {
+                return intent.GetBooleanExtra(name, false);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         /// <summary>

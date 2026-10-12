@@ -27,12 +27,53 @@
 @inject IMessengerService MessengerService
 @inject INativeBrowserService NativeBrowserService
 @inject IClipboardService ClipboardService
+@inject IClipboardHistoryService ClipboardHistoryService
 @inject IBookySyncService BookySyncService
+@inject IDeviceCalendarService DeviceCalendarService
 
 <style type="text/css">
 	.mud-main-content {
 		@(ThemeService.CssNoteRepositoryBackground)
 		background-attachment: fixed;
+		padding-top: 88px !important;
+	}
+	.app-header {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: var(--mud-zindex-appbar);
+		display: flex;
+		flex-direction: column;
+		background-color: #000000;
+		color: var(--mud-palette-appbar-text);
+	}
+	.app-header-row {
+		display: flex;
+		align-items: center;
+		min-height: 48px;
+		padding: 0 4px;
+	}
+	.app-header-tabs {
+		min-height: 40px;
+		padding: 0;
+	}
+	.app-header-tabs .mud-button {
+		flex: 1 1 0;
+		min-width: 0;
+		padding: 0 2px;
+		font-size: 0.8rem;
+		border-radius: 0;
+		color: var(--mud-palette-appbar-text);
+	}
+	.app-header-tabs .mud-button.tab-active {
+		color: #ffffff;
+		border-bottom: 2px solid var(--mud-palette-primary);
+	}
+	.header-text-btn {
+		color: var(--mud-palette-appbar-text);
+		font-weight: 600;
+		min-width: 52px;
 	}
 	.note-item, .note-card, .note-locked {
 		min-height: @(ViewModel.NoteMinHeight)px;
@@ -45,27 +86,6 @@
 	.filter-input .mud-svg-icon {
 		fill: var(--mud-palette-appbar-background);
 	}
-	.appbar-tabs-inner {
-		flex: 0 0 auto;
-		width: auto;
-	}
-	.appbar-tabs {
-		background-color: #000000 !important;
-	}
-	.appbar-tabs .mud-tabs-tabbar,
-	.appbar-tabs .mud-tabs-tabbar-content {
-		background-color: transparent !important;
-		box-shadow: none;
-	}
-	.appbar-tabs .mud-tab {
-		color: var(--mud-palette-appbar-text);
-		text-transform: none;
-		min-width: auto;
-		padding: 0 10px;
-	}
-	.appbar-tabs .mud-tab.mud-tab-active {
-		color: var(--mud-palette-appbar-text);
-	}
 	.note-light .note-viewer.over-view.checklist p::before { content: @(IconService.LoadIconAsCssUrl(IconNames.CheckboxBlankOutline, new[] { new KeyValuePair<string, string>("fill", "#000000") })) }
 	.note-light .note-viewer.over-view.checklist p.done::before { content: @(IconService.LoadIconAsCssUrl(IconNames.CheckboxOutline, new[] { new KeyValuePair<string, string>("fill", "#000000") })) }
 	.note-light .note-viewer.over-view.checklist p.disabled::before { content: @(IconService.LoadIconAsCssUrl(IconNames.CheckboxBlankOutline, new[] { new KeyValuePair<string, string>("fill", "#000000") })) }
@@ -74,16 +94,72 @@
 	.note-dark .note-viewer.over-view.checklist p.disabled::before { content: @(IconService.LoadIconAsCssUrl(IconNames.CheckboxBlankOutline, new[] { new KeyValuePair<string, string>("fill", "#FFFFFF") })) }
 </style>
 
-@* Main menu with the Notes / Clipboard tabs *@
-<MudAppBar Class="flex-none appbar-tabs" Fixed="true" Dense="true" WrapContent="false">
-	<MudTabs @bind-ActivePanelIndex="_activeTab" Elevation="0" Rounded="false" ApplyEffectsToContainer="false" MinimumTabWidth="0" Class="appbar-tabs-inner">
-		<MudTabPanel Text="@LanguageService["tab_notes"]" />
-		<MudTabPanel Text="@LanguageService["tab_clipboard"]" />
-		<MudTabPanel Text="@LanguageService["tab_booky"]" />
-		<MudTabPanel Text="@LanguageService["tab_phone"]" />
-	</MudTabs>
+@* Two row header: the filter controls on the first row, the tab buttons on the second row *@
+<div class="app-header">
+	<div class="app-header-row">
+		@if (_activeTab == 0)
+		{
+			<MudIconButton @ref="_tagsButton" OnClick="@(() => ViewModel.IsDrawerOpen = !ViewModel.IsDrawerOpen)"
+				Class="@Css.BuildClass(new CssClassIf("btn-toggled", ViewModel.IsFilteredByTag))"
+				Icon="@(IconService.GetSvgLink(IconNames.TagMultiple))" Color="Color.Inherit"
+				title="@GetTagsTooltip()" />
+			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 ml-1" Style="background-color: var(--mud-palette-appbar-text)" MaxWidth="70%" MaxHeight="36px" Elevation="0">
+				<MudInput @ref="_filterInput" @bind-Value="ViewModel.Filter"
+					Class="filter-input ml-2 mr-1 my-0"
+					Style="color: #000000"
+					AutoFocus="@ShouldAutofocusToFilter"
+					Adornment="@(ViewModel.IsFiltered ? Adornment.None : Adornment.End)" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+					Immediate="true" Clearable="true" />
+			</MudPaper>
+		}
+		else if (_activeTab == 1)
+		{
+			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Style="background-color: var(--mud-palette-appbar-text)" MaxHeight="36px" Elevation="0">
+				<MudInput @bind-Value="_clipboardViewModel.Filter"
+					Class="filter-input ml-2 mr-1 my-0"
+					Style="color: #000000"
+					Adornment="Adornment.End" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+					Immediate="true" Clearable="true" Placeholder="@LanguageService["clipboard_search"]" />
+			</MudPaper>
+		}
+		else if (_activeTab == 2)
+		{
+			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Style="background-color: var(--mud-palette-appbar-text)" MaxHeight="36px" Elevation="0">
+				<MudInput @bind-Value="_bookyViewModel.Filter"
+					Class="filter-input ml-2 mr-1 my-0"
+					Style="color: #000000"
+					Adornment="Adornment.End" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+					Immediate="true" Clearable="true" Placeholder="@LanguageService["booky_search"]" />
+			</MudPaper>
+			<MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.CloudSync" OnClick="@(() => _bookyViewModel.SyncCommand.Execute(null))" title="@LanguageService["booky_sync"]" />
+			<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(() => _bookyViewModel.StartAddCommand.Execute(null))" title="@LanguageService["booky_add"]" />
+		}
+		else if (_activeTab == 3)
+		{
+			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Style="background-color: var(--mud-palette-appbar-text)" MaxHeight="36px" Elevation="0">
+				<MudInput @bind-Value="_contactsViewModel.Filter"
+					Class="filter-input ml-2 mr-1 my-0"
+					Style="color: #000000"
+					Adornment="Adornment.End" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+					Immediate="true" Clearable="true" Placeholder="@LanguageService["contact_search"]" />
+			</MudPaper>
+			<MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.FileUpload" OnClick="@(() => _contactsViewModel.ImportCommand.Execute(null))" title="@LanguageService["contact_import"]" />
+			<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(() => _contactsViewModel.AddCommand.Execute(null))" title="@LanguageService["contact_add"]" />
+		}
+		else if (_activeTab == 4)
+		{
+			<MudIconButton Icon="@Icons.Material.Filled.Functions"
+				Class="@Css.BuildClass(new CssClassIf("btn-toggled", _calculatorViewModel.IsScientific))"
+				OnClick="@(() => _calculatorViewModel.ToggleScientificCommand.Execute(null))"
+				title="@LanguageService["calc_scientific"]" Color="Color.Inherit" />
+			<MudButton Class="header-text-btn" OnClick="@(() => _calculatorViewModel.ToggleAngleCommand.Execute(null))" Variant="Variant.Text" Color="Color.Inherit">@_calculatorViewModel.AngleLabel</MudButton>
+		}
+		else if (_activeTab == 5)
+		{
+			<MudButton Class="header-text-btn" OnClick="@(() => _calendarViewModel.GoToTodayAsync())" Variant="Variant.Text" Color="Color.Inherit">@LanguageService["cal_today"]</MudButton>
+		}
 
-	<MudSpacer />
+		<MudSpacer />
 
 	@* Synchronization *@
 	@if (SynchronizationState.IsSynchronizationRunning)
@@ -140,7 +216,17 @@
 		<MudIconButton OnClick="() => ViewModel.MoveSelectedOrderNote(false, false)" Icon="@IconService[IconNames.ArrowCollapseDown]" Color="Color.Inherit" title="order" Edge="Edge.False" />
 		<MudIconButton OnClick="() => ViewModel.SelectOrderNote(null)" Icon="@IconService.GetSvgLink(IconNames.Close)" Color="Color.Inherit" Size="Size.Small" Edge="Edge.End" />
 	</MudPopover>
-</MudAppBar>
+	</div>
+
+	<div class="app-header-row app-header-tabs">
+		<MudButton Class="@GetTabButtonClass(0)" OnClick="@(() => SetActiveTab(0))" Variant="Variant.Text">@LanguageService["tab_notes"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(1)" OnClick="@(() => SetActiveTab(1))" Variant="Variant.Text">@LanguageService["tab_clipboard"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(2)" OnClick="@(() => SetActiveTab(2))" Variant="Variant.Text">@LanguageService["tab_booky"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(3)" OnClick="@(() => SetActiveTab(3))" Variant="Variant.Text">@LanguageService["tab_phone"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(4)" OnClick="@(() => SetActiveTab(4))" Variant="Variant.Text">@LanguageService["tab_calc"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(5)" OnClick="@(() => SetActiveTab(5))" Variant="Variant.Text">@LanguageService["tab_cald"]</MudButton>
+	</div>
+</div>
 
 @if (_activeTab == 0)
 {
@@ -192,22 +278,6 @@
 <MudMainContent>
 	@if (_activeTab == 0)
 	{
-		@* Toolbar with the tag filter, which used to live in the app bar *@
-		<div class="d-flex align-center px-2 pt-2">
-			<MudIconButton @ref="_tagsButton" OnClick="@(() => ViewModel.IsDrawerOpen = !ViewModel.IsDrawerOpen)"
-				Class="@Css.BuildClass(new CssClassIf("btn-toggled", ViewModel.IsFilteredByTag))"
-				Icon="@(IconService.GetSvgLink(IconNames.TagMultiple))" Color="Color.Inherit"
-				title="@GetTagsTooltip()" />
-			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 ml-1" Style="background-color: var(--mud-palette-appbar-text)" MaxWidth="70%" MaxHeight="36px" Elevation="0">
-				<MudInput @ref="_filterInput" @bind-Value="ViewModel.Filter"
-					Class="filter-input ml-2 mr-1 my-0"
-					Style="color: #000000"
-					AutoFocus="@ShouldAutofocusToFilter"
-					Adornment="@(ViewModel.IsFiltered ? Adornment.None : Adornment.End)" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
-					Immediate="true" Clearable="true" />
-			</MudPaper>
-		</div>
-
 		<div id="content" class="px-1 py-2">
 			<ul id="note-repository" class="note-list flex-column flex-sm-row">
 				@foreach (var note in ViewModel.FilteredNotes)
@@ -264,17 +334,27 @@
 	else if (_activeTab == 1)
 	{
 		@* Clipboard history *@
-		<ClipboardTab />
+		<ClipboardTab ViewModel="_clipboardViewModel" />
 	}
 	else if (_activeTab == 2)
 	{
 		@* Booky bookmarks *@
 		<BookyTab ViewModel="_bookyViewModel" />
 	}
-	else
+	else if (_activeTab == 3)
 	{
 		@* Phone contacts *@
 		<ContactsTab ViewModel="_contactsViewModel" />
+	}
+	else if (_activeTab == 4)
+	{
+		@* Calculator *@
+		<CalcTab ViewModel="_calculatorViewModel" />
+	}
+	else
+	{
+		@* Calendar *@
+		<CalTab ViewModel="_calendarViewModel" />
 	}
 </MudMainContent>
 
@@ -315,8 +395,11 @@
 	private BringNoteIntoViewMessage _pendingScrollIntoView;
 	private MudTreeItemWrapper _tagsRootNode;
 	private int _activeTab = 0;
+	private ClipboardViewModel _clipboardViewModel;
 	private BookyViewModel _bookyViewModel;
 	private ContactsViewModel _contactsViewModel;
+	private CalculatorViewModel _calculatorViewModel;
+	private CalendarViewModel _calendarViewModel;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="NoteRepositoryPage"/> class.
@@ -345,6 +428,11 @@
 		await ViewModel.InitializeTagTree();
 		_tagsRootNode = new MudTreeItemWrapper(ViewModel.TagsRootNode, null);
 
+		_clipboardViewModel = new ClipboardViewModel(
+			ClipboardHistoryService,
+			ClipboardService,
+			SettingsService);
+
 		_bookyViewModel = new BookyViewModel(
 			noteRepositoryModel,
 			LanguageService,
@@ -363,12 +451,26 @@
 			FilePickerService,
 			FeedbackService);
 
+		_calculatorViewModel = new CalculatorViewModel(LanguageService);
+		_calendarViewModel = new CalendarViewModel(DeviceCalendarService, LanguageService, FeedbackService);
+
+		// When the app was started by a calendar intent, the calendar tab is opened and shows it.
+		CalendarIntentRequest pendingCalendarIntent = CalendarIntentRequest.Pending;
+		if (pendingCalendarIntent != null)
+		{
+			CalendarIntentRequest.Pending = null;
+			_calendarViewModel.QueueIntent(pendingCalendarIntent);
+			_activeTab = 5;
+		}
+
 		MessengerService.Register<BringNoteIntoViewMessage>(
 			this, (recipient, message) => _pendingScrollIntoView = message);
 		MessengerService.Register<SynchronizationIsRunningChangedMessage>(
 			this, (recipient, message) => InvokeAsync(StateHasChanged));
 		MessengerService.Register<BookyChangedMessage>(
 			this, (recipient, message) => OnBookyChanged());
+		MessengerService.Register<CalendarIntentMessage>(
+			this, (recipient, message) => OnCalendarIntent());
 
 		if (loadResult == RepositoryStorageLoadResult.InvalidRepository)
 			throw new Exception("Invalid repository");
@@ -422,6 +524,7 @@
 		MessengerService.Unregister<SynchronizationIsRunningChangedMessage>(this);
 		MessengerService.Unregister<BringNoteIntoViewMessage>(this);
 		MessengerService.Unregister<BookyChangedMessage>(this);
+		MessengerService.Unregister<CalendarIntentMessage>(this);
 	}
 
 	/// <summary>
@@ -431,6 +534,26 @@
 	{
 		_bookyViewModel?.Reload();
 		InvokeAsync(StateHasChanged);
+	}
+
+	/// <summary>
+	/// Handles a calendar intent which was received from another application.
+	/// </summary>
+	private void OnCalendarIntent()
+	{
+		InvokeAsync(ConsumeCalendarIntent);
+	}
+
+	private async Task ConsumeCalendarIntent()
+	{
+		CalendarIntentRequest request = CalendarIntentRequest.Pending;
+		if (request == null)
+			return;
+
+		CalendarIntentRequest.Pending = null;
+		_activeTab = 5;
+		await _calendarViewModel.HandleIntentAsync(request);
+		StateHasChanged();
 	}
 
 	/// <inheritdoc/>
@@ -555,5 +678,21 @@
 	private string GetTagsTooltip()
 	{
 		return string.Join(", ", ViewModel.GetFilterTags());
+	}
+
+	/// <summary>
+	/// Switches the visible tab of the note repository page.
+	/// </summary>
+	private void SetActiveTab(int index)
+	{
+		_activeTab = index;
+	}
+
+	/// <summary>
+	/// Builds the css class of a tab button, highlighting the active tab.
+	/// </summary>
+	private string GetTabButtonClass(int index)
+	{
+		return (index == _activeTab) ? "tab-active" : null;
 	}
 }

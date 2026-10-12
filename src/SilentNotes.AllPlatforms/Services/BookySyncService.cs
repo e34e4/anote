@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using SilentNotes.Models;
@@ -48,7 +49,24 @@ namespace SilentNotes.Services
         }
 
         /// <inheritdoc/>
-        public async Task<BookySyncResult> SyncAsync()
+        public Task<BookySyncResult> SyncAsync()
+        {
+            return SyncInternalAsync(false, null);
+        }
+
+        /// <inheritdoc/>
+        public Task<BookySyncResult> OverwriteRemoteAsync()
+        {
+            return SyncInternalAsync(true, null);
+        }
+
+        /// <inheritdoc/>
+        public Task<BookySyncResult> SyncAfterDeleteAsync(Guid deletedBookmarkId)
+        {
+            return SyncInternalAsync(false, new[] { deletedBookmarkId });
+        }
+
+        private async Task<BookySyncResult> SyncInternalAsync(bool overwriteRemote, ICollection<Guid> excludedBookmarkIds)
         {
             CloudStorageCredentials credentials = null;
             try
@@ -64,23 +82,35 @@ namespace SilentNotes.Services
                 credentials = BuildCredentials(folderUrl, settings);
                 ICloudStorageClient client = _cloudStorageClientFactory.GetByKey(CloudStorageClientFactory.CloudStorageIdWebdav);
 
-                // Download the shared file, a missing file is treated as an empty collection.
-                BookmarkListModel remote = new BookmarkListModel();
-                if (await client.ExistsFileAsync(fileName, credentials))
+                _repositoryService.LoadRepositoryOrDefault(out NoteRepositoryModel repository);
+                bool changed = false;
+
+                if (!overwriteRemote)
                 {
-                    byte[] bytes = await client.DownloadFileAsync(fileName, credentials);
-                    remote = BookyJsonFormat.Parse(Encoding.UTF8.GetString(bytes));
-                    if (remote == null)
-                        return BookySyncResult.Failed;
+                    // Download the shared file, a missing file is treated as an empty collection.
+                    BookmarkListModel remote = new BookmarkListModel();
+                    if (await client.ExistsFileAsync(fileName, credentials))
+                    {
+                        byte[] bytes = await client.DownloadFileAsync(fileName, credentials);
+                        remote = BookyJsonFormat.Parse(Encoding.UTF8.GetString(bytes));
+                        if (remote == null)
+                            return BookySyncResult.Failed;
+                    }
+
+                    // A bookmark which was deleted locally must not be resurrected from the file.
+                    if (excludedBookmarkIds != null)
+                    {
+                        foreach (Guid id in excludedBookmarkIds)
+                            remote.RemoveAll(item => item.Id == id);
+                    }
+
+                    // Merge the new remote bookmarks into the repository and store it locally.
+                    changed = MergeInto(remote, repository.Bookmarks);
+                    if (changed)
+                        _repositoryService.TrySaveRepository(repository);
                 }
 
-                // Merge the remote bookmarks into the repository and store it locally.
-                _repositoryService.LoadRepositoryOrDefault(out NoteRepositoryModel repository);
-                bool changed = MergeInto(remote, repository.Bookmarks);
-                if (changed)
-                    _repositoryService.TrySaveRepository(repository);
-
-                // Upload the merged list back to the shared file.
+                // Upload the local list back to the shared file.
                 string json = BookyJsonFormat.Serialize(repository.Bookmarks);
                 await client.UploadFileAsync(fileName, Encoding.UTF8.GetBytes(json), credentials);
 

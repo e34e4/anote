@@ -9,8 +9,9 @@
         ...but don't forget to reset this file before building for production. After changing a
         value, please rebuild the solution. Remove DEMO to run unit tests.
         
-        Only when compiled in RELEASE mode, the repository has the name "silentnotes_repository.silentnotes",
-        otherwise it uses an alternative name to keep the original repo intact, see also NoteRepositoryModel.RepositoryFileName
+        The repository is always stored with the name "silentnotes_repository.silentnotes", for local
+        builds as well, so a debug build synchronizes with the same cloud file as a release build,
+        see also NoteRepositoryModel.RepositoryFileName
         
         Known defines are:
         FORCE_REPO_DEMO:   Loads hard coded demo data (works only in DEBUG mode)

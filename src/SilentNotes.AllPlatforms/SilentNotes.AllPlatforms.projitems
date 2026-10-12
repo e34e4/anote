@@ -197,7 +197,14 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\ContactModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\ContactListModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\ContactsViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\CalculatorViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\CalendarViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\ContactsImporter.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\CalculatorEngine.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\DeviceCalendarModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\DeviceEventModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\CalendarIntentRequest.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IDeviceCalendarService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\BookyJsonFormat.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IBookySyncService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\BookySyncService.cs" />

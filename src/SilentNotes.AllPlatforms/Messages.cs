@@ -158,6 +158,14 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Message to inform the main page that a calendar intent was received from another
+    /// application, and that its request should be handled by the calendar tab.
+    /// </summary>
+    public class CalendarIntentMessage
+    {
+    }
+
+    /// <summary>
     /// Enumeration of possible sources of a sent message.
     /// </summary>
     public enum MessageSender

@@ -18,6 +18,34 @@ namespace SilentNotes
         LaunchMode = LaunchMode.SingleTask,
         Exported = true,
         ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation)]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "vnd.android.cursor.item/event")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "vnd.android.cursor.dir/event")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataScheme = "content", DataHost = "com.android.calendar", DataPathPrefix = "/time")]
+    [IntentFilter(
+        new[] { "android.intent.action.EDIT" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "vnd.android.cursor.item/event")]
+    [IntentFilter(
+        new[] { "android.intent.action.INSERT" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "vnd.android.cursor.dir/event")]
+    [IntentFilter(
+        new[] { "android.intent.action.INSERT_OR_EDIT" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "vnd.android.cursor.item/event")]
+    [IntentFilter(
+        new[] { "android.intent.action.INSERT_OR_EDIT" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "vnd.android.cursor.dir/event")]
     public class MainActivity : MauiAppCompatActivity, IOnPreDrawListener
     {
         private readonly ApplicationEventHandler _applicationEventHandler = new ApplicationEventHandler();

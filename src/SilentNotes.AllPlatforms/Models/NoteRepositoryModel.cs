@@ -35,11 +35,7 @@ namespace SilentNotes.Models
 #if (DEBUG)
         public readonly string InstanceId = Guid.NewGuid().ToString();
 #endif
-#if (RELEASE)
         public const string RepositoryFileName = "silentnotes_repository.silentnotes";
-#else
-        public const string RepositoryFileName = "silentnotes_repository_dev.silentnotes";
-#endif
         public const string BackupFileMask = "silentnotes_*.slnbackup";
 
         /// <summary>

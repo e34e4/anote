@@ -30,17 +30,6 @@
 </style>
 
 <div class="pa-2">
-	<div class="d-flex align-center my-2">
-		<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Elevation="0">
-			<MudInput @bind-Value="ViewModel.Filter"
-				Class="filter-input ml-2 mr-1 my-0"
-				Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
-				Immediate="true" Clearable="true" Placeholder="@LanguageService["contact_search"]" />
-		</MudPaper>
-		<MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.FileUpload" OnClick="@(() => ViewModel.ImportCommand.Execute(null))" title="@LanguageService["contact_import"]" />
-		<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(() => ViewModel.AddCommand.Execute(null))" title="@LanguageService["contact_add"]" />
-	</div>
-
 	<MudText Typo="Typo.caption" Class="contact-empty-number mb-1">@ViewModel.CountText</MudText>
 
 	@if (ViewModel.IsEmpty)

@@ -5,8 +5,6 @@
 
 @implements IDisposable
 
-@inject IClipboardHistoryService ClipboardHistoryService
-@inject IClipboardService ClipboardService
 @inject ILanguageService LanguageService
 @inject IMessengerService MessengerService
 @inject IEnvironmentService EnvironmentService
@@ -41,6 +39,10 @@
 		<MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="false">
 			<MudTabPanel Text="@LanguageService["clipboard_all"]">
 				<div class="clipboard-list">
+					@if (ViewModel.AllItems.Count == 0)
+					{
+						<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@(ViewModel.IsFiltered ? LanguageService["clipboard_no_matches"] : LanguageService["clipboard_all_empty"])</MudText>
+					}
 					@foreach (var item in ViewModel.AllItems)
 					{
 						<MudPaper Elevation="1" Class="pa-2 my-2 clipboard-card d-flex align-start">
@@ -68,7 +70,7 @@
 				<div class="clipboard-list">
 					@if (ViewModel.FavoriteItems.Count == 0)
 					{
-						<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["clipboard_empty"]</MudText>
+						<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@(ViewModel.IsFiltered ? LanguageService["clipboard_no_matches"] : LanguageService["clipboard_empty"])</MudText>
 					}
 					else
 					{
@@ -126,7 +128,11 @@
 </div>
 
 @code {
-	private ClipboardViewModel ViewModel { get; set; }
+	/// <summary>
+	/// Gets or sets the view model of the clipboard tab.
+	/// </summary>
+	[Parameter]
+	public ClipboardViewModel ViewModel { get; set; }
 
 	/// <summary>
 	/// Gets a value indicating whether the OS can monitor the clipboard.
@@ -150,7 +156,6 @@
 
 	protected override void OnInitialized()
 	{
-		ViewModel = new ClipboardViewModel(ClipboardHistoryService, ClipboardService, SettingsService);
 		MessengerService.Register<ClipboardChangedMessage>(this, (recipient, message) => InvokeAsync(Reload));
 		MessengerService.Register<AfterResumeMessage>(this, (recipient, message) => InvokeAsync(Reload));
 	}

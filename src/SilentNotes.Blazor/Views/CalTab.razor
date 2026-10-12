@@ -1,0 +1,416 @@
+@using MudBlazor
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+
+@inject ILanguageService LanguageService
+
+<style type="text/css">
+	.cal-root {
+		display: flex;
+		flex-direction: column;
+		padding: 8px;
+		margin: 6px;
+		border-radius: 12px;
+		background-color: rgba(0, 0, 0, 0.45);
+		color: #ffffff;
+	}
+	.cal-nav {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 2px 4px 6px 4px;
+	}
+	.cal-month {
+		font-size: 1.15rem;
+		font-weight: 600;
+	}
+	.cal-weekdays, .cal-grid {
+		display: grid;
+		grid-template-columns: repeat(7, 1fr);
+		gap: 2px;
+	}
+	.cal-weekdays div {
+		text-align: center;
+		font-size: 0.75rem;
+		font-weight: 600;
+		padding: 4px 0;
+		color: #ffffff;
+		opacity: 0.9;
+	}
+	.cal-cell {
+		position: relative;
+		width: 100%;
+		min-height: 44px;
+		border: 1px solid #2b2b2b;
+		border-radius: 8px;
+		display: flex;
+		align-items: flex-start;
+		justify-content: center;
+		padding-top: 4px;
+		font-family: inherit;
+		font-size: 0.95rem;
+		color: #ffffff;
+		cursor: pointer;
+		touch-action: manipulation;
+		background-color: #000000;
+	}
+	.cal-cell.out {
+		opacity: 0.35;
+	}
+	.cal-cell.today {
+		outline: 1px solid var(--mud-palette-primary);
+	}
+	.cal-cell.sel {
+		background-color: var(--mud-palette-primary);
+		color: var(--mud-palette-primary-text);
+		border-color: var(--mud-palette-primary);
+	}
+	.cal-dot {
+		position: absolute;
+		bottom: 5px;
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background-color: var(--mud-palette-primary);
+	}
+	.cal-cell.sel .cal-dot {
+		background-color: var(--mud-palette-primary-text);
+	}
+	.cal-overlay {
+		position: fixed;
+		top: 0; left: 0; right: 0; bottom: 0;
+		background-color: rgba(0, 0, 0, 0.55);
+		z-index: 1350;
+		display: flex;
+		align-items: flex-end;
+	}
+	.cal-sheet {
+		background-color: var(--mud-palette-surface);
+		color: var(--mud-palette-text-primary);
+		width: 100%;
+		max-height: 78vh;
+		overflow-y: auto;
+		border-radius: 16px 16px 0 0;
+		padding: 12px;
+	}
+	.cal-sheet-title {
+		font-size: 1.05rem;
+		font-weight: 600;
+		margin-bottom: 6px;
+	}
+	.cal-event {
+		display: flex;
+		align-items: flex-start;
+		padding: 8px;
+		border-radius: 8px;
+		background-color: var(--mud-palette-background-gray);
+		margin-bottom: 6px;
+		cursor: pointer;
+	}
+	.cal-event-main {
+		touch-action: manipulation;
+	}
+	.cal-event-color {
+		width: 4px;
+		border-radius: 2px;
+		align-self: stretch;
+		margin-right: 8px;
+		background-color: var(--mud-palette-primary);
+	}
+	.cal-event-title {
+		font-weight: 500;
+		word-break: break-word;
+	}
+	.cal-event-sub {
+		font-size: 0.8rem;
+		opacity: 0.75;
+		word-break: break-word;
+	}
+	.cal-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin: 4px 0 10px 0;
+	}
+	.cal-chip {
+		border: 1px solid var(--mud-palette-lines-default);
+		background: transparent;
+		color: inherit;
+		border-radius: 16px;
+		padding: 4px 10px;
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+	.cal-chip.sel {
+		background-color: var(--mud-palette-primary);
+		color: var(--mud-palette-primary-text);
+		border-color: var(--mud-palette-primary);
+	}
+	.cal-color {
+		width: 30px;
+		height: 30px;
+		border-radius: 50%;
+		border: 2px solid transparent;
+		padding: 0;
+		cursor: pointer;
+	}
+	.cal-color.sel {
+		border-color: #ffffff;
+	}
+	.cal-reminder-add {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.cal-reminder-amount {
+		max-width: 80px;
+	}
+	.cal-field {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 8px;
+	}
+	.cal-field label {
+		font-size: 0.85rem;
+		opacity: 0.8;
+		min-width: 74px;
+	}
+	.cal-input {
+		flex: 1;
+		min-width: 0;
+		background: var(--mud-palette-background);
+		color: inherit;
+		border: 1px solid var(--mud-palette-lines-default);
+		border-radius: 6px;
+		padding: 8px;
+		font-size: 0.95rem;
+	}
+</style>
+
+@if (!ViewModel.IsSupported)
+{
+	<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["cal_not_supported"]</MudText>
+}
+else if (!ViewModel.HasPermission)
+{
+	<div class="pa-4">
+		<MudAlert Severity="Severity.Info" Class="mb-3" Dense="true">@LanguageService["cal_needs_permission"]</MudAlert>
+		<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => ViewModel.GrantPermissionAsync())">@LanguageService["cal_grant"]</MudButton>
+	</div>
+}
+else
+{
+	<div class="cal-root">
+		<div class="cal-nav">
+			<MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" OnClick="@(() => ViewModel.ShowPreviousMonthAsync())" Size="Size.Medium" />
+			<div class="cal-month">@ViewModel.MonthTitle</div>
+			<MudIconButton Icon="@Icons.Material.Filled.ChevronRight" OnClick="@(() => ViewModel.ShowNextMonthAsync())" Size="Size.Medium" />
+		</div>
+
+		<div class="cal-weekdays">
+			@foreach (var weekday in ViewModel.Weekdays)
+			{
+				<div>@weekday</div>
+			}
+		</div>
+
+		<div class="cal-grid">
+			@foreach (var day in ViewModel.Days)
+			{
+				<button type="button" class="@GetCellClass(day)" @onclick="() => ViewModel.DayClickedAsync(day)">
+					<span>@day.DayNumber</span>
+					@if (day.HasEvents)
+					{
+						<span class="cal-dot"></span>
+					}
+				</button>
+			}
+		</div>
+	</div>
+}
+
+@if (ViewModel.IsDayListVisible)
+{
+	<div class="cal-overlay" @onclick="() => ViewModel.CloseDayList()">
+		<div class="cal-sheet" @onclick:stopPropagation="true">
+			<div class="cal-sheet-title">@ViewModel.DayListTitle</div>
+
+			@if (!ViewModel.HasDayEvents)
+			{
+				<MudText Class="mud-text-secondary mb-3">@LanguageService["cal_no_events"]</MudText>
+			}
+			else
+			{
+				@foreach (var item in ViewModel.DayEvents)
+				{
+					<div class="cal-event">
+						<div class="cal-event-main d-flex flex-grow-1 overflow-hidden" @onclick="() => ViewModel.EditEvent(item)">
+							<div class="cal-event-color" style="background-color:@(string.IsNullOrWhiteSpace(item.ColorHex) ? "var(--mud-palette-primary)" : item.ColorHex)"></div>
+							<div class="flex-grow-1 overflow-hidden">
+								<div class="cal-event-title">@item.Title</div>
+								@if (!string.IsNullOrEmpty(item.TimeText))
+								{
+									<div class="cal-event-sub">@item.TimeText</div>
+								}
+								@if (item.HasLocation)
+								{
+									<div class="cal-event-sub">@item.Location</div>
+								}
+							</div>
+						</div>
+						<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ViewModel.DeleteEventAsync(item))" />
+					</div>
+				}
+			}
+
+			<div class="d-flex justify-end mt-3">
+				<MudButton Variant="Variant.Text" OnClick="@(() => ViewModel.CloseDayList())">@LanguageService["close"]</MudButton>
+				<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => ViewModel.AddEvent())">@LanguageService["cal_add_event"]</MudButton>
+			</div>
+		</div>
+	</div>
+}
+
+@if (ViewModel.IsEditorVisible)
+{
+	<div class="cal-overlay">
+		<div class="cal-sheet">
+			<div class="cal-sheet-title">@(ViewModel.IsNewEvent ? LanguageService["cal_add_event"] : LanguageService["cal_edit_event"])</div>
+
+			<div class="cal-field">
+				<label>@LanguageService["cal_event_title"]</label>
+				<input class="cal-input" @bind="ViewModel.DraftTitle" />
+			</div>
+
+			<MudCheckBox T="bool" @bind-Value="ViewModel.DraftAllDay" Label="@LanguageService["cal_event_all_day"]" Dense="true" Class="mb-2" />
+
+			<div class="cal-field">
+				<label>@LanguageService["cal_event_date"]</label>
+				<input class="cal-input" type="date" value="@ViewModel.DraftDate" @onchange="OnDateChanged" />
+			</div>
+
+			@if (!ViewModel.DraftAllDay)
+			{
+				<div class="cal-field">
+					<label>@LanguageService["cal_event_start"]</label>
+					<input class="cal-input" type="time" value="@ViewModel.DraftStart" @onchange="OnStartChanged" />
+				</div>
+				<div class="cal-field">
+					<label>@LanguageService["cal_event_end"]</label>
+					<input class="cal-input" type="time" value="@ViewModel.DraftEnd" @onchange="OnEndChanged" />
+				</div>
+			}
+
+			<div class="cal-field">
+				<label>@LanguageService["cal_event_location"]</label>
+				<input class="cal-input" @bind="ViewModel.DraftLocation" />
+			</div>
+
+			<div class="cal-field">
+				<label>@LanguageService["cal_event_description"]</label>
+				<input class="cal-input" @bind="ViewModel.DraftDescription" />
+			</div>
+
+			<div class="cal-field" style="display:block">
+				<label>@LanguageService["cal_event_calendar"]</label>
+				<div class="cal-chips">
+					@foreach (var calendar in ViewModel.Calendars)
+					{
+						<button class="@(ViewModel.DraftCalendarId == calendar.Id ? "cal-chip sel" : "cal-chip")" @onclick="() => SelectCalendar(calendar.Id)">@calendar.DisplayName</button>
+					}
+				</div>
+			</div>
+
+			<div class="cal-field" style="display:block">
+				<label>@LanguageService["cal_event_color"]</label>
+				<div class="cal-chips">
+					@foreach (var color in ViewModel.EventColors)
+					{
+						<button class="@(ViewModel.DraftColorHex == color ? "cal-color sel" : "cal-color")" style="background-color:@color" @onclick="() => ViewModel.SelectColor(color)"></button>
+					}
+				</div>
+			</div>
+
+			<div class="cal-field" style="display:block">
+				<label>@LanguageService["cal_reminders"]</label>
+				@if (ViewModel.HasDraftReminders)
+				{
+					<div class="cal-chips">
+						@foreach (var minutes in ViewModel.DraftReminders)
+						{
+							<button class="cal-chip" @onclick="() => ViewModel.RemoveReminder(minutes)">@ViewModel.FormatReminder(minutes) ✕</button>
+						}
+					</div>
+				}
+				else
+				{
+					<MudText Class="mud-text-secondary mb-2">@LanguageService["cal_reminder_none"]</MudText>
+				}
+				<div class="cal-reminder-add">
+					<input class="cal-input cal-reminder-amount" type="number" min="1" @bind="ViewModel.DraftReminderAmount" />
+					<button class="@(ViewModel.DraftReminderUnit == 0 ? "cal-chip sel" : "cal-chip")" @onclick="() => SelectReminderUnit(0)">@LanguageService["cal_reminder_unit_min"]</button>
+					<button class="@(ViewModel.DraftReminderUnit == 1 ? "cal-chip sel" : "cal-chip")" @onclick="() => SelectReminderUnit(1)">@LanguageService["cal_reminder_unit_hours"]</button>
+					<button class="@(ViewModel.DraftReminderUnit == 2 ? "cal-chip sel" : "cal-chip")" @onclick="() => SelectReminderUnit(2)">@LanguageService["cal_reminder_unit_days"]</button>
+					<button class="cal-chip" @onclick="() => ViewModel.AddReminder()">@LanguageService["cal_reminder_add"]</button>
+				</div>
+			</div>
+
+			<div class="d-flex justify-end mt-3">
+				<MudButton Variant="Variant.Text" OnClick="@(() => ViewModel.CancelEditor())">@LanguageService["cancel"]</MudButton>
+				<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => ViewModel.SaveEventAsync())">@LanguageService["cal_save"]</MudButton>
+			</div>
+		</div>
+	</div>
+}
+
+@code {
+	/// <summary>
+	/// Gets or sets the view model of the calendar tab.
+	/// </summary>
+	[Parameter]
+	public CalendarViewModel ViewModel { get; set; }
+
+	protected override async Task OnInitializedAsync()
+	{
+		await ViewModel.InitializeAsync();
+	}
+
+	private string GetCellClass(CalendarDayViewModel day)
+	{
+		string cssClass = "cal-cell";
+		if (!day.IsCurrentMonth)
+			cssClass += " out";
+		if (day.IsToday)
+			cssClass += " today";
+		if (day.IsSelected)
+			cssClass += " sel";
+		return cssClass;
+	}
+
+	private void OnDateChanged(ChangeEventArgs args)
+	{
+		ViewModel.DraftDate = args.Value?.ToString();
+	}
+
+	private void OnStartChanged(ChangeEventArgs args)
+	{
+		ViewModel.DraftStart = args.Value?.ToString();
+	}
+
+	private void OnEndChanged(ChangeEventArgs args)
+	{
+		ViewModel.DraftEnd = args.Value?.ToString();
+	}
+
+	private void SelectCalendar(long calendarId)
+	{
+		ViewModel.DraftCalendarId = calendarId;
+	}
+
+	private void SelectReminderUnit(int unit)
+	{
+		ViewModel.DraftReminderUnit = unit;
+	}
+}

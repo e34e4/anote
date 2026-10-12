@@ -30,17 +30,6 @@
 </style>
 
 <div class="pa-2">
-	<div class="d-flex align-center my-2">
-		<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Elevation="0">
-			<MudInput @bind-Value="ViewModel.Filter"
-				Class="filter-input ml-2 mr-1 my-0"
-				Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
-				Immediate="true" Clearable="true" Placeholder="@LanguageService["booky_search"]" />
-		</MudPaper>
-		<MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.CloudSync" OnClick="@(() => ViewModel.SyncCommand.Execute(null))" title="@LanguageService["booky_sync"]" />
-		<MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(() => ViewModel.StartAddCommand.Execute(null))" title="@LanguageService["booky_add"]" />
-	</div>
-
 	@if (ViewModel.IsEmpty)
 	{
 		<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["booky_empty"]</MudText>

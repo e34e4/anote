@@ -25,6 +25,7 @@ namespace SilentNotes.ViewModels
         private readonly ISettingsService _settingsService;
         private List<ClipboardItemViewModel> _items = new List<ClipboardItemViewModel>();
         private string _newItemText;
+        private string _filter;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ClipboardViewModel"/> class.
@@ -72,11 +73,37 @@ namespace SilentNotes.ViewModels
         }
 
         /// <summary>
-        /// Gets all captured items, newest first.
+        /// Gets or sets the search filter for the clipboard history.
+        /// </summary>
+        public string Filter
+        {
+            get { return _filter; }
+            set
+            {
+                if (SetProperty(ref _filter, value))
+                {
+                    OnPropertyChanged(nameof(AllItems));
+                    OnPropertyChanged(nameof(FavoriteItems));
+                    OnPropertyChanged(nameof(IsFiltered));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether a search filter is active.
+        /// </summary>
+        public bool IsFiltered
+        {
+            get { return !string.IsNullOrWhiteSpace(_filter); }
+        }
+
+        /// <summary>
+        /// Gets the captured items which are not marked as favorite, newest first. Favorite items
+        /// are hidden here and only listed in <see cref="FavoriteItems"/>.
         /// </summary>
         public IReadOnlyList<ClipboardItemViewModel> AllItems
         {
-            get { return _items; }
+            get { return ApplyFilter(_items.Where(i => !i.IsFavorite)).ToList(); }
         }
 
         /// <summary>
@@ -84,7 +111,15 @@ namespace SilentNotes.ViewModels
         /// </summary>
         public IReadOnlyList<ClipboardItemViewModel> FavoriteItems
         {
-            get { return _items.Where(i => i.IsFavorite).ToList(); }
+            get { return ApplyFilter(_items.Where(i => i.IsFavorite)).ToList(); }
+        }
+
+        private IEnumerable<ClipboardItemViewModel> ApplyFilter(IEnumerable<ClipboardItemViewModel> items)
+        {
+            string query = _filter?.Trim().ToLowerInvariant();
+            if (string.IsNullOrEmpty(query))
+                return items;
+            return items.Where(item => item.Matches(query));
         }
 
         /// <summary>
@@ -275,6 +310,17 @@ namespace SilentNotes.ViewModels
                 }
                 return _thumbnailDataUri;
             }
+        }
+
+        /// <summary>
+        /// Determines whether the item matches a search query.
+        /// </summary>
+        /// <param name="query">Lower case search query.</param>
+        /// <returns>True if the item matches, otherwise false.</returns>
+        public bool Matches(string query)
+        {
+            string text = Model.Text;
+            return !string.IsNullOrEmpty(text) && text.ToLowerInvariant().Contains(query);
         }
 
         /// <summary>

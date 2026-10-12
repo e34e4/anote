@@ -65,7 +65,7 @@ namespace SilentNotes.ViewModels
             _feedbackService = feedbackService;
 
             OpenCommand = new RelayCommand<BookmarkItemViewModel>(Open);
-            DeleteCommand = new RelayCommand<BookmarkItemViewModel>(Delete);
+            DeleteCommand = new AsyncRelayCommand<BookmarkItemViewModel>(Delete);
             StartAddCommand = new RelayCommand(StartAdd);
             SaveDraftCommand = new RelayCommand(SaveDraft);
             CancelDraftCommand = new RelayCommand(CancelDraft);
@@ -293,7 +293,7 @@ namespace SilentNotes.ViewModels
             _browserService.OpenWebsiteInNewTab(target);
         }
 
-        private void Delete(BookmarkItemViewModel bookmark)
+        private async Task Delete(BookmarkItemViewModel bookmark)
         {
             if (bookmark == null)
                 return;
@@ -303,12 +303,41 @@ namespace SilentNotes.ViewModels
 
             _model.Bookmarks.Remove(model);
             _repositoryService.TrySaveRepository(_model);
-            TriggerAutoSync();
             Reload();
+
+            try
+            {
+                // Push the deletion to the shared file, otherwise a later synchronization would
+                // merge the still existing bookmark from the server back into the local list.
+                await _bookySyncService.SyncAfterDeleteAsync(bookmark.Id);
+            }
+            catch (Exception)
+            {
+                // A failing synchronization must never bubble up into the UI.
+            }
         }
 
         private async Task SyncBookmarks()
         {
+            if (_bookySyncService.IsConfigured)
+            {
+                MessageBoxResult answer = await _feedbackService.ShowMessageAsync(
+                    _languageService["booky_sync_overwrite_question"],
+                    _languageService["booky_sync"],
+                    MessageBoxButtons.YesNoCancel,
+                    false);
+
+                if (answer == MessageBoxResult.Cancel)
+                    return;
+
+                if (answer == MessageBoxResult.Yes)
+                {
+                    ShowSyncFeedback(await _bookySyncService.OverwriteRemoteAsync());
+                    Reload();
+                    return;
+                }
+            }
+
             BookySyncResult result = await _bookySyncService.SyncAsync();
             ShowSyncFeedback(result);
             Reload();
