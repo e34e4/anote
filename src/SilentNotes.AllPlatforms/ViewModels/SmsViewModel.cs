@@ -52,8 +52,9 @@ namespace SilentNotes.ViewModels
             GrantPermissionCommand = new AsyncRelayCommand(GrantPermissionAsync);
             SetDefaultAppCommand = new AsyncRelayCommand(SetDefaultAppAsync);
 
+            // Loading the conversations is deferred to InitializeAsync, so the app start is not
+            // slowed down for users who never open the sms tab.
             _hasPermission = _smsService.HasReadPermission && _smsService.HasSendPermission;
-            Reload();
         }
 
         /// <summary>Gets a value indicating whether the platform supports messages.</summary>
