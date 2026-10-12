@@ -323,6 +323,9 @@
 	private bool _colorPaletteOpen;
 	private LinkState _linkState;
 	private bool _allowNoteContentChanges;
+	private bool _isPickingFile;
+	private readonly System.Text.StringBuilder _contentChunks = new System.Text.StringBuilder();
+	private int _receivedContentChunks;
 
 	protected override void OnInitialized()
 	{
@@ -382,7 +385,7 @@
 			{
 				// Prepare prose mirror editor
 				_jsModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./Views/NotePage.razor.js");
-				await _jsModule.InvokeVoidAsync("initialize", DotNetModule, _editorContainer, ViewModel.ShoppingModeActive);
+				await _jsModule.InvokeVoidAsync("initialize", DotNetModule, ViewModel.Id.ToString(), _editorContainer, ViewModel.ShoppingModeActive);
 				string content = ViewModel.UnlockedHtmlContent;
 				await _jsModule.InvokeVoidAsync("setNoteContent", content);
 				await _jsModule.InvokeVoidAsync("sessionLoadScrollTop", ViewModel.Id, _editorContainer);
@@ -422,7 +425,7 @@
 		if (_jsModule != null)
 		{
 			await _jsModule.InvokeVoidAsync("sessionSaveScrollTop", ViewModel.Id, _editorContainer);
-			await _jsModule.InvokeVoidAsync("finalize");
+			await _jsModule.InvokeVoidAsync("finalize", ViewModel?.Id.ToString());
 			await _jsModule.DisposeAsync();
 		}
 	}
@@ -431,6 +434,12 @@
 	protected override void OnAfterResume(bool newNoteShared, bool safesClosed)
 	{
 		base.OnAfterResume(newNoteShared, safesClosed);
+
+		// Returning from the file picker would reload the page and thereby discard the picture
+		// which is about to be inserted.
+		if (_isPickingFile)
+			return;
+
 		if ((ViewModel == null) || (ViewModel.Model == NoteModel.NotFound))
 			return;
 
@@ -577,6 +586,9 @@
 		if (ViewModel.ShoppingModeActive)
 			return;
 
+		// While the picker is open, the application is paused and resumed. The resume must not
+		// reload the page, otherwise the picture which is inserted afterwards would be lost.
+		_isPickingFile = true;
 		try
 		{
 			if (!await FilePickerService.PickImage())
@@ -584,13 +596,22 @@
 
 			byte[] bytes = await FilePickerService.ReadPickedFile();
 			if ((bytes == null) || (bytes.Length == 0))
+			{
+				FeedbackService.ShowToast(LanguageService["note_image_failed"], FeedbackSeverity.Warning);
 				return;
+			}
 
-			await _jsModule.InvokeVoidAsync("insertImageFromBase64", Convert.ToBase64String(bytes));
+			string status = await _jsModule.InvokeAsync<string>("insertImageFromBase64", Convert.ToBase64String(bytes));
+			if (!string.Equals(status, "ok", StringComparison.Ordinal) && !string.Equals(status, "ok-unscaled", StringComparison.Ordinal))
+				FeedbackService.ShowToast(LanguageService["note_image_failed"] + " (" + status + ")", FeedbackSeverity.Warning);
 		}
 		catch (Exception)
 		{
 			FeedbackService.ShowToast(LanguageService["note_image_failed"], FeedbackSeverity.Warning);
+		}
+		finally
+		{
+			_isPickingFile = false;
 		}
 	}
 
@@ -703,6 +724,38 @@
 	/// <param name="content">String containing the html note content.</param>
 	[JSInvokable("SetNoteContent")]
 	public void SetNoteContent(string content)
+	{
+		ApplyNoteContent(content);
+	}
+
+	/// <summary>
+	/// Called from the javascript with a part of the note content. Large notes are transferred in
+	/// several chunks, because a single js to .net message has a maximum size.
+	/// </summary>
+	/// <param name="index">The zero based index of the transferred part.</param>
+	/// <param name="total">The total number of parts.</param>
+	/// <param name="part">The html content of this part.</param>
+	[JSInvokable("SetNoteContentChunk")]
+	public void SetNoteContentChunk(int index, int total, string part)
+	{
+		if (index == 0)
+		{
+			_contentChunks.Clear();
+			_receivedContentChunks = 0;
+		}
+
+		_contentChunks.Append(part);
+		_receivedContentChunks++;
+
+		if (_receivedContentChunks >= total)
+		{
+			string content = _contentChunks.ToString();
+			_contentChunks.Clear();
+			ApplyNoteContent(content);
+		}
+	}
+
+	private void ApplyNoteContent(string content)
 	{
 		// The _allowNoteContentChanges guarantees, that changes are only processed after all the
 		// initialization steps are completed, so premature events can never damage the note content.

@@ -1,0 +1,10 @@
+aNote version 1.3.5
+
+* Fixed adding a picture to a note. Three problems were solved: the web view
+  was not allowed to downscale the picture, the note page was reloaded when
+  returning from the picker (which discarded the picture), and large note
+  contents could not be transferred from the editor, so the picture was never
+  stored.
+* Failing of inserting a picture now shows an error instead of doing nothing.
+* Remaining user visible "SilentNotes" texts were renamed to "aNote", e.g. the
+  file name of the Android release.

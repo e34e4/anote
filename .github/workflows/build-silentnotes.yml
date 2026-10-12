@@ -122,7 +122,7 @@ jobs:
       run: |
         $apks = Get-ChildItem -Path .\bin\* -Filter *Signed.apk -Recurse -File
         New-Item -Path ".\artifacts" -ItemType "directory"
-        Move-Item -Path $apks[0].FullName -Destination ".\artifacts\silentnotes.apk"
+        Move-Item -Path $apks[0].FullName -Destination ".\artifacts\anote.apk"
 
     # Upload artifacts
     - name: Upload build artifacts
@@ -253,7 +253,7 @@ jobs:
       uses: LanceMcCarthy/Action-MsixBundler@v3
       with:
         msix-folder: "msixdirectory"
-        msixbundle-filepath: "silentnotes.msixbundle"
+        msixbundle-filepath: "anote.msixbundle"
         msixbundle-version: "${{needs.job_version.outputs.formatted_version}}.0"
       
     # Upload artifacts

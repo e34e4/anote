@@ -1,10 +1,12 @@
 import { initializeEditor, TiptapHelper, exportAsPlainText } from '../prose-mirror-bundle.js';
 
 var _page;
+var _editorNoteId;
 
 // Initializes the prosemirror editor
-export function initialize(dotnetPage, editorContainer, shoppingModeActive) {
+export function initialize(dotnetPage, noteId, editorContainer, shoppingModeActive) {
     _page = dotnetPage;
+    _editorNoteId = noteId;
     _page.editor = initializeEditor(editorContainer);
 
     _page.editor.on('selectionUpdate', onSelectionUpdate);
@@ -16,13 +18,19 @@ export function initialize(dotnetPage, editorContainer, shoppingModeActive) {
 }
 
 // Finalizes the prosemirror editor
-export function finalize() {
+export function finalize(noteId) {
+    // The module is shared between note pages, so a page which is closed after a newer page
+    // already took over the editor must not clear it.
+    if (!_page || (noteId && (_editorNoteId !== noteId)))
+        return;
+
     if (_page.editor) {
         _page.editor.off('selectionUpdate', onSelectionUpdate);
         _page.editor.off('update', onUpdate);
     }
     _page.editor = null;
     _page = null;
+    _editorNoteId = null;
 }
 
 function IsInitialized() {
@@ -79,14 +87,15 @@ const MAX_IMAGE_EDGE = 1600;
 
 // Inserts a picture, which was picked by the user, at the current position. The picture is
 // downscaled in the webview to keep the note (and therefore the synchronized repository) small.
+// Returns "ok" when the picture was inserted, otherwise a diagnostic message.
 export async function insertImageFromBase64(base64) {
-    if (!IsInitialized() || !base64) return;
+    if (!IsInitialized()) return 'no-editor';
+    if (!base64) return 'no-data';
 
-    const bytes = base64ToBytes(base64);
-    const mime = detectImageMime(bytes);
-    const originalDataUrl = 'data:' + mime + ';base64,' + base64;
-
+    const originalDataUrl = 'data:' + detectImageMime(base64ToBytes(base64)) + ';base64,' + base64;
     try {
+        const bytes = base64ToBytes(base64);
+        const mime = detectImageMime(bytes);
         const blob = new Blob([bytes], { type: mime });
         const { image, url } = await loadImageElement(blob);
         try {
@@ -94,11 +103,24 @@ export async function insertImageFromBase64(base64) {
         } finally {
             URL.revokeObjectURL(url);
         }
+        return 'ok';
     }
     catch (ex) {
         // Never lose the picked picture, insert it unmodified as a fallback.
-        TiptapHelper.insertImage(_page.editor, originalDataUrl);
+        try {
+            TiptapHelper.insertImage(_page.editor, originalDataUrl);
+            return 'ok-unscaled';
+        }
+        catch (ex2) {
+            return 'failed: first=' + describeException(ex) + ' second=' + describeException(ex2);
+        }
     }
+}
+
+function describeException(ex) {
+    if (!ex) return 'null';
+    if (ex.message) return ex.message;
+    try { return String(ex); } catch (ignore) { return 'unknown'; }
 }
 
 function base64ToBytes(base64) {
@@ -188,11 +210,24 @@ function onUpdate(params) {
     onNoteContentChanged(params.editor);
 }
 
+// Large notes (e.g. with an embedded picture) can exceed the maximum size of a single JS to .NET
+// message, so the content is transferred in chunks.
+const CONTENT_CHUNK_SIZE = 32 * 1024;
+
 function onNoteContentChanged(editor) {
     if (!IsInitialized()) return;
 
     var noteContent = editor.getHTML();
-    _page.invokeMethodAsync('SetNoteContent', noteContent);
+    if (noteContent.length <= CONTENT_CHUNK_SIZE) {
+        _page.invokeMethodAsync('SetNoteContent', noteContent);
+        return;
+    }
+
+    var total = Math.ceil(noteContent.length / CONTENT_CHUNK_SIZE);
+    for (var index = 0; index < total; index++) {
+        var part = noteContent.substr(index * CONTENT_CHUNK_SIZE, CONTENT_CHUNK_SIZE);
+        _page.invokeMethodAsync('SetNoteContentChunk', index, total, part);
+    }
 }
 
 export function undo() {
