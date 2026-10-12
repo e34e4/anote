@@ -1,5 +1,5 @@
 # Builds the binaries which can be uploaded to the Microsoft/Google store
-name: Build SilentNotes binaries
+name: Build aNote binaries
 
 on:
   workflow_dispatch:
@@ -128,7 +128,7 @@ jobs:
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: silentnotes_android
+        name: anote_android
         path: .\artifacts
 
   ##############################################################################
@@ -210,7 +210,7 @@ jobs:
       run: |
         $files = Get-ChildItem -Path "" -Filter SilentNotes*.msix -Recurse -File
         New-Item -Path ".\windows" -ItemType "directory"
-        Move-Item -Path $files[0].FullName -Destination ".\windows\silentnotes_${{ env.Platform }}.msix"
+        Move-Item -Path $files[0].FullName -Destination ".\windows\anote_${{ env.Platform }}.msix"
       env:
         Platform: ${{ matrix.platform }}
 
@@ -218,7 +218,7 @@ jobs:
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: silentnotes_windows_${{ matrix.platform }}
+        name: anote_windows_${{ matrix.platform }}
         path: .\windows
 
   ##############################################################################
@@ -240,7 +240,7 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         path: downloaddirectory
-        pattern: silentnotes_windows_*
+        pattern: anote_windows_*
         merge-multiple: true
 
     - name: Collect msix files
@@ -260,14 +260,14 @@ jobs:
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: silentnotes_windows
+        name: anote_windows
         path: .\**\*.msixbundle
 
     # Cleanup temporary artifacts
     - name: Cleanup temporary build artifacts
       uses: geekyeggo/delete-artifact@v5
       with:
-          name: silentnotes_windows_*
+          name: anote_windows_*
 
   ##############################################################################
   # Publish release on Github
@@ -293,7 +293,7 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         path: downloaddirectory
-        pattern: silentnotes_android*
+        pattern: anote_android*
         merge-multiple: true
 
     - name: Collect files for publishing
