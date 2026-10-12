@@ -1,8 +1,11 @@
 @using MudBlazor
 @using SilentNotes.Services
 @using SilentNotes.ViewModels
+@implements IDisposable
 
 @inject ILanguageService LanguageService
+@inject IMessengerService MessengerService
+@inject IScrollManager ScrollManager
 
 <style type="text/css">
 	.sms-root {
@@ -11,16 +14,21 @@
 		padding: 8px;
 		color: #ffffff;
 	}
+	.sms-toolbar {
+		display: flex;
+		align-items: center;
+		padding: 0 4px 4px 4px;
+	}
 	.sms-thread-row {
 		display: flex;
 		align-items: center;
-		padding: 10px 8px;
+		padding: 10px 0 10px 8px;
 		border-bottom: 1px solid #202020;
-		cursor: pointer;
 	}
 	.sms-thread-main {
 		flex-grow: 1;
 		overflow: hidden;
+		cursor: pointer;
 	}
 	.sms-thread-title {
 		font-weight: 600;
@@ -61,6 +69,9 @@
 		font-size: 1.15rem;
 		font-weight: 600;
 		margin-left: 4px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.sms-messages {
 		overflow-y: auto;
@@ -71,13 +82,14 @@
 		padding: 4px;
 	}
 	.sms-bubble {
-		max-width: 80%;
+		max-width: 82%;
 		padding: 8px 12px;
 		border-radius: 14px;
 		background-color: #1c1c1c;
 		color: #ffffff;
 		word-break: break-word;
 		white-space: pre-wrap;
+		cursor: pointer;
 	}
 	.sms-bubble.in {
 		align-self: flex-start;
@@ -87,6 +99,14 @@
 		align-self: flex-end;
 		background-color: #14472f;
 		border-bottom-right-radius: 4px;
+	}
+	.sms-bubble.sel {
+		outline: 2px solid var(--mud-palette-primary);
+	}
+	.sms-bubble-row {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
 	}
 	.sms-bubble-time {
 		font-size: 0.7rem;
@@ -117,11 +137,26 @@
 	else if (ViewModel.IsConversationOpen)
 	{
 		<div class="sms-conv-header">
-			<MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Color="Color.Inherit" OnClick="() => ViewModel.CloseConversationCommand.Execute(null)" title="@LanguageService["back"]" />
-			<div class="sms-conv-title">@ViewModel.ConversationTitle</div>
+			@if (ViewModel.IsSelectionMode)
+			{
+				<MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Inherit" OnClick="CancelSelection" title="@LanguageService["cancel"]" />
+				<div class="sms-conv-title">@ViewModel.SelectionText</div>
+				<MudSpacer />
+				<MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Inherit" Disabled="@(!ViewModel.HasSelection)" OnClick="DeleteSelected" title="@LanguageService["sms_delete"]" />
+			}
+			else
+			{
+				<MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Color="Color.Inherit" OnClick="() => ViewModel.CloseConversationCommand.Execute(null)" title="@LanguageService["back"]" />
+				<div class="sms-conv-title">@ViewModel.ConversationTitle</div>
+				<MudSpacer />
+				@if (ViewModel.Messages.Count > 0)
+				{
+					<MudIconButton Icon="@Icons.Material.Filled.Checklist" Color="Color.Inherit" OnClick="() => ViewModel.StartSelectionCommand.Execute(null)" title="@LanguageService["sms_select"]" />
+				}
+			}
 		</div>
 
-		@if (ViewModel.IsNewConversation)
+		@if (ViewModel.IsNewConversation && !ViewModel.IsSelectionMode)
 		{
 			<MudTextField T="string" @bind-Value="ViewModel.OpenAddress" Label="@LanguageService["sms_to"]" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
 		}
@@ -143,19 +178,32 @@
 			{
 				@foreach (var message in ViewModel.Messages)
 				{
-					<div class="sms-bubble @(message.IsIncoming ? "in" : "out")" @key="message.Model.Id">
-						<div>@message.Body</div>
+					<div class="sms-bubble @(message.IsIncoming ? "in" : "out") @(ViewModel.IsSelected(message) ? "sel" : null)"
+						@key="message.Model.Id"
+						@onclick="() => OnMessageClick(message)"
+						@oncontextmenu="() => ViewModel.SelectMessage(message)"
+						@oncontextmenu:preventDefault="true">
+						<div class="sms-bubble-row">
+							@if (ViewModel.IsSelectionMode)
+							{
+								<MudIcon Icon="@(ViewModel.IsSelected(message) ? Icons.Material.Filled.CheckCircle : Icons.Material.Outlined.RadioButtonUnchecked)" Size="Size.Small" Class="mt-1" />
+							}
+							<div>@message.Body</div>
+						</div>
 						<div class="sms-bubble-time">@message.TimeText</div>
 					</div>
 				}
 			}
 		</div>
 
-		<div class="sms-composer">
-			<MudTextField T="string" @bind-Value="ViewModel.ComposerText" Placeholder="@LanguageService["sms_type_message"]"
-				Variant="Variant.Outlined" Margin="Margin.Dense" Lines="1" Class="flex-grow-1" Immediate="true" />
-			<MudIconButton Icon="@Icons.Material.Filled.Send" Color="Color.Primary" Disabled="@(!ViewModel.CanSend)" OnClick="SendAsync" title="@LanguageService["sms_send"]" />
-		</div>
+		@if (!ViewModel.IsSelectionMode)
+		{
+			<div class="sms-composer">
+				<MudTextField T="string" @bind-Value="ViewModel.ComposerText" Placeholder="@LanguageService["sms_type_message"]"
+					Variant="Variant.Outlined" Margin="Margin.Dense" Lines="1" Class="flex-grow-1" Immediate="true" />
+				<MudIconButton Icon="@Icons.Material.Filled.Send" Color="Color.Primary" Disabled="@(!ViewModel.CanSend)" OnClick="SendAsync" title="@LanguageService["sms_send"]" />
+			</div>
+		}
 	}
 	else
 	{
@@ -169,11 +217,15 @@
 		}
 		else
 		{
-			<MudText Typo="Typo.caption" Class="mud-text-secondary mb-1">@ViewModel.CountText</MudText>
+			<div class="sms-toolbar">
+				<MudText Typo="Typo.caption" Class="mud-text-secondary">@ViewModel.CountText</MudText>
+				<MudSpacer />
+				<MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.DoneAll" OnClick="MarkAllRead">@LanguageService["sms_mark_all_read"]</MudButton>
+			</div>
 			@foreach (var thread in ViewModel.FilteredThreads)
 			{
-				<div class="sms-thread-row" @key="thread.Model.ThreadId" @onclick="() => ViewModel.OpenThreadCommand.Execute(thread)">
-					<div class="sms-thread-main">
+				<div class="sms-thread-row" @key="thread.Model.ThreadId">
+					<div class="sms-thread-main" @onclick="() => ViewModel.OpenThreadCommand.Execute(thread)">
 						<div class="sms-thread-title">@thread.Title</div>
 						<div class="sms-thread-snippet">@thread.Snippet</div>
 					</div>
@@ -184,6 +236,7 @@
 							<div class="sms-unread mt-1">@thread.Model.UnreadCount</div>
 						}
 					</div>
+					<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => DeleteThread(thread)" title="@LanguageService["sms_delete"]" />
 				</div>
 			}
 		}
@@ -205,10 +258,54 @@
 	[Parameter]
 	public SmsViewModel ViewModel { get; set; }
 
+	private int _lastMessageCount = -1;
+
 	/// <inheritdoc/>
 	protected override async Task OnInitializedAsync()
 	{
+		MessengerService.Register<AfterResumeMessage>(this, (recipient, message) => InvokeAsync(RefreshState));
 		await ViewModel.InitializeAsync();
+	}
+
+	/// <inheritdoc/>
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		// Keep the newest message in view when a conversation is opened or a message is added.
+		int count = ViewModel.IsConversationOpen ? ViewModel.Messages.Count : -1;
+		if (ViewModel.IsConversationOpen && (count != _lastMessageCount))
+		{
+			_lastMessageCount = count;
+			try
+			{
+				await ScrollManager.ScrollToBottomAsync(".sms-messages", ScrollBehavior.Auto);
+			}
+			catch (Exception)
+			{
+			}
+		}
+		else if (!ViewModel.IsConversationOpen)
+		{
+			_lastMessageCount = -1;
+		}
+	}
+
+	private void RefreshState()
+	{
+		ViewModel.RefreshState();
+		StateHasChanged();
+	}
+
+	private void OnMessageClick(SmsMessageItemViewModel message)
+	{
+		// A tap only selects while the selection mode is active, a long press (context menu)
+		// starts the selection mode.
+		if (ViewModel.IsSelectionMode)
+			ViewModel.ToggleSelectionCommand.Execute(message);
+	}
+
+	private void CancelSelection()
+	{
+		ViewModel.CancelSelectionCommand.Execute(null);
 	}
 
 	private async Task GrantPermissionAsync()
@@ -227,5 +324,29 @@
 	{
 		await ViewModel.SendAsync();
 		StateHasChanged();
+	}
+
+	private async Task DeleteThread(SmsThreadItemViewModel thread)
+	{
+		await ViewModel.DeleteThreadAsync(thread);
+		StateHasChanged();
+	}
+
+	private async Task MarkAllRead()
+	{
+		await ViewModel.MarkAllReadAsync();
+		StateHasChanged();
+	}
+
+	private async Task DeleteSelected()
+	{
+		await ViewModel.DeleteSelectedAsync();
+		StateHasChanged();
+	}
+
+	/// <inheritdoc/>
+	public void Dispose()
+	{
+		MessengerService.Unregister<AfterResumeMessage>(this);
 	}
 }

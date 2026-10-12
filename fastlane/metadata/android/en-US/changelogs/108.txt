@@ -1,0 +1,11 @@
+aNote version 1.3.2
+
+* Black is now the default background of a new installation (instead of the
+  cork wallpaper).
+* Messages: delete a whole conversation, or select and delete single or multiple
+  messages.
+* Messages: opening a conversation marks it as read, and all conversations can
+  be marked as read at once with "Mark all as read".
+* Messages: the default-SMS-app state is now detected correctly, the hint
+  disappears once aNote is the default app, and sent messages are shown in the
+  conversation again.

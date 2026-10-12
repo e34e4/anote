@@ -44,8 +44,9 @@ namespace SilentNotes.Models
             Revision = NewestSupportedRevision;
             AutoSyncMode = AutoSynchronizationMode.CostFreeInternetOnly;
             FontScale = 1.0;
-            UseSolidColorTheme = false;
-            ColorForSolidTheme = "#3e3e3e";
+            // aNote starts with a plain black background instead of the wallpaper of SilentNotes.
+            UseSolidColorTheme = true;
+            ColorForSolidTheme = "#000000";
             BackgroundColorHex = "#000000";
             DefaultNoteColorHex = StartDefaultNoteColorHex;
             NoteMaxHeightScale = 1.0;
@@ -53,7 +54,7 @@ namespace SilentNotes.Models
             UseColorForAllNotesInDarkMode = false;
             ColorForAllNotesInDarkModeHex = "#323232";
             KeepScreenUpDuration = 15;
-            UseWallpaper = true;
+            UseWallpaper = false;
             RememberLastTagFilter = false;
             AlwaysEnglish = false;
             ShowFloatingButton = false;

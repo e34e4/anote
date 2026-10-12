@@ -75,5 +75,23 @@ namespace SilentNotes.Platforms.Services
         {
             return Task.CompletedTask;
         }
+
+        /// <inheritdoc/>
+        public Task MarkAllThreadsReadAsync()
+        {
+            return Task.CompletedTask;
+        }
+
+        /// <inheritdoc/>
+        public Task DeleteThreadAsync(long threadId)
+        {
+            return Task.CompletedTask;
+        }
+
+        /// <inheritdoc/>
+        public Task DeleteMessagesAsync(IReadOnlyCollection<long> messageIds)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

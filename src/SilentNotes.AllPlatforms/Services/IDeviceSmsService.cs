@@ -51,5 +51,21 @@ namespace SilentNotes.Services
         /// <summary>Marks all messages of a conversation as read.</summary>
         /// <param name="threadId">The id of the thread.</param>
         Task MarkThreadReadAsync(long threadId);
+
+        /// <summary>Marks all messages of all conversations as read.</summary>
+        Task MarkAllThreadsReadAsync();
+
+        /// <summary>
+        /// Deletes a whole conversation with all its messages. This is only possible when aNote is
+        /// the default SMS app.
+        /// </summary>
+        /// <param name="threadId">The id of the thread to delete.</param>
+        Task DeleteThreadAsync(long threadId);
+
+        /// <summary>
+        /// Deletes single messages. This is only possible when aNote is the default SMS app.
+        /// </summary>
+        /// <param name="messageIds">The ids of the messages to delete.</param>
+        Task DeleteMessagesAsync(IReadOnlyCollection<long> messageIds);
     }
 }

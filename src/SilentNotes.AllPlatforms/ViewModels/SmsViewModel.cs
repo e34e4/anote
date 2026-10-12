@@ -35,6 +35,8 @@ namespace SilentNotes.ViewModels
         private string _openTitle;
         private List<SmsMessageItemViewModel> _messages = new List<SmsMessageItemViewModel>();
         private string _composerText;
+        private bool _isSelectionMode;
+        private readonly HashSet<long> _selectedMessageIds = new HashSet<long>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SmsViewModel"/> class.
@@ -51,6 +53,12 @@ namespace SilentNotes.ViewModels
             SendCommand = new AsyncRelayCommand(SendAsync);
             GrantPermissionCommand = new AsyncRelayCommand(GrantPermissionAsync);
             SetDefaultAppCommand = new AsyncRelayCommand(SetDefaultAppAsync);
+            DeleteThreadCommand = new AsyncRelayCommand<SmsThreadItemViewModel>(DeleteThreadAsync);
+            MarkAllReadCommand = new AsyncRelayCommand(MarkAllReadAsync);
+            StartSelectionCommand = new RelayCommand(() => SetSelectionMode(true));
+            CancelSelectionCommand = new RelayCommand(() => SetSelectionMode(false));
+            ToggleSelectionCommand = new RelayCommand<SmsMessageItemViewModel>(ToggleSelection);
+            DeleteSelectedCommand = new AsyncRelayCommand(DeleteSelectedAsync);
 
             // Loading the conversations is deferred to InitializeAsync, so the app start is not
             // slowed down for users who never open the sms tab.
@@ -196,6 +204,88 @@ namespace SilentNotes.ViewModels
         public ICommand SendCommand { get; }
         public ICommand GrantPermissionCommand { get; }
         public ICommand SetDefaultAppCommand { get; }
+        public ICommand DeleteThreadCommand { get; }
+        public ICommand MarkAllReadCommand { get; }
+        public ICommand StartSelectionCommand { get; }
+        public ICommand CancelSelectionCommand { get; }
+        public ICommand ToggleSelectionCommand { get; }
+        public ICommand DeleteSelectedCommand { get; }
+
+        /// <summary>Gets or sets a value indicating whether messages can be selected.</summary>
+        public bool IsSelectionMode
+        {
+            get { return _isSelectionMode; }
+            private set
+            {
+                if (SetProperty(ref _isSelectionMode, value))
+                    OnPropertyChanged(nameof(SelectedCount), nameof(HasSelection));
+            }
+        }
+
+        /// <summary>Gets the number of selected messages.</summary>
+        public int SelectedCount
+        {
+            get { return _selectedMessageIds.Count; }
+        }
+
+        /// <summary>Gets a value indicating whether at least one message is selected.</summary>
+        public bool HasSelection
+        {
+            get { return _selectedMessageIds.Count > 0; }
+        }
+
+        /// <summary>Gets the text showing the number of selected messages.</summary>
+        public string SelectionText
+        {
+            get { return _languageService.LoadTextFmt("sms_selected_count", _selectedMessageIds.Count); }
+        }
+
+        /// <summary>Determines whether a message is currently selected.</summary>
+        public bool IsSelected(SmsMessageItemViewModel message)
+        {
+            return (message != null) && _selectedMessageIds.Contains(message.Model.Id);
+        }
+
+        /// <summary>Enters the selection mode and selects the given message.</summary>
+        public void SelectMessage(SmsMessageItemViewModel message)
+        {
+            if (message == null)
+                return;
+            _selectedMessageIds.Clear();
+            _selectedMessageIds.Add(message.Model.Id);
+            IsSelectionMode = true;
+            RefreshSelection();
+        }
+
+        /// <summary>Toggles the selection of a message.</summary>
+        public void ToggleSelection(SmsMessageItemViewModel message)
+        {
+            if (message == null)
+                return;
+            if (!IsSelectionMode)
+            {
+                SelectMessage(message);
+                return;
+            }
+
+            long id = message.Model.Id;
+            if (!_selectedMessageIds.Remove(id))
+                _selectedMessageIds.Add(id);
+            RefreshSelection();
+        }
+
+        private void SetSelectionMode(bool enabled)
+        {
+            if (!enabled)
+                _selectedMessageIds.Clear();
+            IsSelectionMode = enabled;
+            RefreshSelection();
+        }
+
+        private void RefreshSelection()
+        {
+            OnPropertyChanged(nameof(SelectedCount), nameof(HasSelection), nameof(SelectionText), nameof(Messages));
+        }
 
         /// <summary>
         /// Initializes the sms tab, requests the permission if necessary and loads the threads.
@@ -219,6 +309,18 @@ namespace SilentNotes.ViewModels
         /// <summary>Reloads the conversations, and the open conversation if any.</summary>
         public void Reload()
         {
+            ReloadThreads();
+
+            // Do not replace the message list while the user is selecting messages.
+            if (_isConversationOpen && (_openThreadId != 0) && !IsSelectionMode)
+                LoadMessages();
+
+            OnPropertyChanged(nameof(HasPermission), nameof(IsDefaultSmsApp), nameof(NeedsDefaultApp), nameof(NeedsPermission));
+        }
+
+        /// <summary>Reloads only the conversation list.</summary>
+        public void ReloadThreads()
+        {
             _hasPermission = _smsService.HasReadPermission && _smsService.HasSendPermission;
             try
             {
@@ -232,16 +334,23 @@ namespace SilentNotes.ViewModels
                 _threads = new List<SmsThreadItemViewModel>();
             }
 
-            if (_isConversationOpen && (_openThreadId != 0))
-                LoadMessages();
-
             OnPropertyChanged(nameof(FilteredThreads), nameof(IsEmpty), nameof(HasNoMatches), nameof(CountText));
-            OnPropertyChanged(nameof(HasPermission), nameof(IsDefaultSmsApp), nameof(NeedsDefaultApp), nameof(NeedsPermission));
+        }
+
+        /// <summary>
+        /// Re-reads the permission and default-app state, e.g. after returning from the system
+        /// settings.
+        /// </summary>
+        public void RefreshState()
+        {
+            _hasPermission = _smsService.HasReadPermission && _smsService.HasSendPermission;
+            OnPropertyChanged(nameof(HasPermission), nameof(NeedsPermission), nameof(IsDefaultSmsApp), nameof(NeedsDefaultApp));
         }
 
         /// <summary>Closes the open conversation.</summary>
         public void CloseConversation()
         {
+            SetSelectionMode(false);
             IsConversationOpen = false;
             _openThreadId = 0;
             _openAddress = null;
@@ -255,6 +364,7 @@ namespace SilentNotes.ViewModels
             if (thread == null)
                 return;
 
+            SetSelectionMode(false);
             _openThreadId = thread.Model.ThreadId;
             _openAddress = thread.Model.Address;
             _openTitle = thread.Model.Title;
@@ -264,6 +374,7 @@ namespace SilentNotes.ViewModels
 
             LoadMessages();
 
+            // Opening a conversation marks its messages as read.
             try
             {
                 await _smsService.MarkThreadReadAsync(_openThreadId);
@@ -271,10 +382,12 @@ namespace SilentNotes.ViewModels
             catch (Exception)
             {
             }
+            ReloadThreads();
         }
 
         private void ComposeNew()
         {
+            SetSelectionMode(false);
             _openThreadId = 0;
             _openAddress = string.Empty;
             _openTitle = _languageService["sms_new_message"];
@@ -314,22 +427,20 @@ namespace SilentNotes.ViewModels
                 ComposerText = string.Empty;
                 _feedbackService?.ShowToast(_languageService["sms_sent"]);
 
-                if (_openThreadId != 0)
+                // Show the sent message immediately: the provider may not contain it yet, and when
+                // aNote is not the default SMS app it does not record sent messages at all.
+                _messages.Add(new SmsMessageItemViewModel(new SmsMessageModel
                 {
-                    LoadMessages();
-                }
-                else
-                {
-                    _messages.Add(new SmsMessageItemViewModel(new SmsMessageModel
-                    {
-                        Address = address,
-                        Body = body,
-                        Incoming = false,
-                        DateUtc = DateTime.UtcNow,
-                    }));
-                    OnPropertyChanged(nameof(Messages), nameof(HasNoMessages));
-                }
-                Reload();
+                    Id = -DateTime.UtcNow.Ticks,
+                    ThreadId = _openThreadId,
+                    Address = address,
+                    Body = body,
+                    Incoming = false,
+                    DateUtc = DateTime.UtcNow,
+                }));
+                OnPropertyChanged(nameof(Messages), nameof(HasNoMessages));
+
+                ReloadThreads();
             }
             catch (Exception)
             {
@@ -349,7 +460,82 @@ namespace SilentNotes.ViewModels
         public async Task SetDefaultAppAsync()
         {
             await _smsService.RequestDefaultSmsAppAsync();
-            OnPropertyChanged(nameof(IsDefaultSmsApp), nameof(NeedsDefaultApp));
+            RefreshState();
+        }
+
+        /// <summary>Deletes a whole conversation after a confirmation.</summary>
+        public async Task DeleteThreadAsync(SmsThreadItemViewModel thread)
+        {
+            if (thread == null)
+                return;
+            if (!EnsureDefaultApp())
+                return;
+
+            MessageBoxResult answer = await _feedbackService.ShowMessageAsync(
+                _languageService["sms_delete_thread_confirm"], _languageService["sms_delete"], MessageBoxButtons.YesNoCancel, false);
+            if (answer != MessageBoxResult.Yes)
+                return;
+
+            try
+            {
+                await _smsService.DeleteThreadAsync(thread.Model.ThreadId);
+            }
+            catch (Exception)
+            {
+            }
+            ReloadThreads();
+        }
+
+        /// <summary>Marks all messages of all conversations as read.</summary>
+        public async Task MarkAllReadAsync()
+        {
+            if (!EnsureDefaultApp())
+                return;
+
+            try
+            {
+                await _smsService.MarkAllThreadsReadAsync();
+            }
+            catch (Exception)
+            {
+            }
+            ReloadThreads();
+        }
+
+        /// <summary>Deletes the selected messages after a confirmation.</summary>
+        public async Task DeleteSelectedAsync()
+        {
+            if (_selectedMessageIds.Count == 0)
+                return;
+            if (!EnsureDefaultApp())
+                return;
+
+            MessageBoxResult answer = await _feedbackService.ShowMessageAsync(
+                _languageService.LoadTextFmt("sms_delete_messages_confirm", _selectedMessageIds.Count),
+                _languageService["sms_delete"], MessageBoxButtons.YesNoCancel, false);
+            if (answer != MessageBoxResult.Yes)
+                return;
+
+            try
+            {
+                await _smsService.DeleteMessagesAsync(_selectedMessageIds.ToList());
+            }
+            catch (Exception)
+            {
+            }
+
+            SetSelectionMode(false);
+            LoadMessages();
+            ReloadThreads();
+        }
+
+        private bool EnsureDefaultApp()
+        {
+            if (_smsService.IsDefaultSmsApp)
+                return true;
+
+            _feedbackService?.ShowToast(_languageService["sms_needs_default_short"], FeedbackSeverity.Warning);
+            return false;
         }
     }
 

@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Android.Content;
 using Android.Content.PM;
 using Android.Database;
+using Android.OS;
 using Android.Provider;
 using Android.Telephony;
 using AndroidX.Core.Content;
@@ -94,6 +95,16 @@ namespace SilentNotes.Platforms.Services
                 try
                 {
                     Context context = _appContext.Context;
+
+                    // From Android 10 the default SMS app is a role, the legacy secure setting is
+                    // not reliable anymore (it can stay empty even when the role is held).
+                    if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
+                    {
+                        global::Android.App.Roles.RoleManager roleManager = GetRoleManager();
+                        if (roleManager != null)
+                            return roleManager.IsRoleHeld(global::Android.App.Roles.RoleManager.RoleSms);
+                    }
+
                     string current = Settings.Secure.GetString(context.ContentResolver, SmsDefaultPackageSetting);
                     return string.Equals(current, context.PackageName, StringComparison.OrdinalIgnoreCase);
                 }
@@ -109,15 +120,30 @@ namespace SilentNotes.Platforms.Services
         {
             try
             {
-                var intent = new Intent(ActionChangeDefault);
-                intent.PutExtra(ExtraDefaultPackage, _appContext.Context.PackageName);
+                Context context = _appContext.Context;
+                Intent intent = null;
+
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
+                    intent = GetRoleManager()?.CreateRequestRoleIntent(global::Android.App.Roles.RoleManager.RoleSms);
+
+                if (intent == null)
+                {
+                    intent = new Intent(ActionChangeDefault);
+                    intent.PutExtra(ExtraDefaultPackage, context.PackageName);
+                }
+
                 intent.AddFlags(ActivityFlags.NewTask);
-                _appContext.Context.StartActivity(intent);
+                context.StartActivity(intent);
             }
             catch (Exception)
             {
             }
             return Task.FromResult(IsDefaultSmsApp);
+        }
+
+        private global::Android.App.Roles.RoleManager GetRoleManager()
+        {
+            return (global::Android.App.Roles.RoleManager)_appContext.Context.GetSystemService(Context.RoleService);
         }
 
         /// <inheritdoc/>
@@ -247,6 +273,65 @@ namespace SilentNotes.Platforms.Services
                     _appContext.Context.ContentResolver.Update(
                         Telephony.Sms.ContentUri, values, ColumnThreadId + "=? AND " + ColumnRead + "=0",
                         new[] { threadId.ToString(CultureInfo.InvariantCulture) });
+                }
+                catch (Exception)
+                {
+                }
+            });
+        }
+
+        /// <inheritdoc/>
+        public Task MarkAllThreadsReadAsync()
+        {
+            return Task.Run(() =>
+            {
+                if (!IsDefaultSmsApp)
+                    return;
+                try
+                {
+                    var values = new ContentValues();
+                    values.Put(ColumnRead, 1);
+                    _appContext.Context.ContentResolver.Update(Telephony.Sms.ContentUri, values, ColumnRead + "=0", null);
+                }
+                catch (Exception)
+                {
+                }
+            });
+        }
+
+        /// <inheritdoc/>
+        public Task DeleteThreadAsync(long threadId)
+        {
+            return Task.Run(() =>
+            {
+                if (!IsDefaultSmsApp)
+                    return;
+                try
+                {
+                    ContentResolver resolver = _appContext.Context.ContentResolver;
+                    var args = new[] { threadId.ToString(CultureInfo.InvariantCulture) };
+
+                    // Remove the messages, then the (now empty) conversation row itself.
+                    resolver.Delete(Telephony.Sms.ContentUri, ColumnThreadId + "=?", args);
+                    resolver.Delete(Telephony.Threads.ContentUri, ColumnId + "=?", args);
+                }
+                catch (Exception)
+                {
+                }
+            });
+        }
+
+        /// <inheritdoc/>
+        public Task DeleteMessagesAsync(IReadOnlyCollection<long> messageIds)
+        {
+            return Task.Run(() =>
+            {
+                if (!IsDefaultSmsApp || (messageIds == null) || (messageIds.Count == 0))
+                    return;
+                try
+                {
+                    string selection = ColumnId + " IN (" + string.Join(",", messageIds) + ")";
+                    _appContext.Context.ContentResolver.Delete(Telephony.Sms.ContentUri, selection, null);
                 }
                 catch (Exception)
                 {
