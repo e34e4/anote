@@ -413,11 +413,20 @@ namespace SilentNotes.ViewModels
         /// </summary>
         public Task HandleIntentAsync(ClockIntentRequest request)
         {
+            QueueIntent(request);
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Shows the section which is requested by a clock intent (a ringing alarm or a timer).
+        /// </summary>
+        public void QueueIntent(ClockIntentRequest request)
+        {
             if (request == null)
-                return Task.CompletedTask;
+                return;
 
             Section = (request.Action == ClockIntentAction.OpenTimer) ? ClockSection.Timer : ClockSection.Alarm;
-            return Task.CompletedTask;
+            Show(Section);
         }
 
         /// <summary>

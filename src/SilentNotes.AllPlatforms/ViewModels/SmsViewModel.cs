@@ -297,7 +297,8 @@ namespace SilentNotes.ViewModels
             OnPropertyChanged(nameof(Messages), nameof(HasNoMessages));
         }
 
-        private async Task SendAsync()
+        /// <summary>Sends the text of the composer to the open conversation.</summary>
+        public async Task SendAsync()
         {
             string body = _composerText?.Trim();
             if (string.IsNullOrEmpty(body))
