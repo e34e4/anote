@@ -26,7 +26,7 @@ namespace SilentNotes.Models
 #endif
 
         /// <summary>The default color for notes, when the application is started the first time.</summary>
-        public const string StartDefaultNoteColorHex = "#fbf4c1";
+        public const string StartDefaultNoteColorHex = "#000000";
 
         private string _selectedEncryptionAlgorithm;
         private string _selectedKdfAlgorithm;
@@ -160,7 +160,7 @@ namespace SilentNotes.Models
                     (_noteColorsHex = new List<string>
                     {
                         "#ffffff", "#fbf4c1", "#fdd8bb", "#facbc6", "#fcd5ef", "#d9d9fc", "#cee7fb", "#d0f8f9", "#d9f8c8",
-                        "#ae7f0a", "#871908", "#800080", "#0d5696", "#007a7a", "#33750f", "#333333",
+                        "#ae7f0a", "#871908", "#800080", "#0d5696", "#007a7a", "#33750f", "#333333", "#000000",
                     });
             }
         }
