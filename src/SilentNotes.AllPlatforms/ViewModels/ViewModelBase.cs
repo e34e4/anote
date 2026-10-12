@@ -17,5 +17,14 @@ namespace SilentNotes.ViewModels
     /// </summary>
     public abstract class ViewModelBase : ObservableObject
     {
+        /// <summary>
+        /// Raises the property changed event for several properties at once.
+        /// </summary>
+        /// <param name="propertyNames">The names of the changed properties.</param>
+        protected void OnPropertyChanged(params string[] propertyNames)
+        {
+            foreach (string propertyName in propertyNames)
+                base.OnPropertyChanged(propertyName);
+        }
     }
 }

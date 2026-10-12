@@ -166,6 +166,22 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Message to inform the main page that a clock intent was received, e.g. because an alarm is
+    /// ringing, and that its request should be handled by the clock tab.
+    /// </summary>
+    public class ClockIntentMessage
+    {
+    }
+
+    /// <summary>
+    /// Message to inform the sms tab that the stored messages have changed, e.g. because an SMS
+    /// was received by the background receiver, and that it should be reloaded.
+    /// </summary>
+    public class SmsChangedMessage
+    {
+    }
+
+    /// <summary>
     /// Enumeration of possible sources of a sent message.
     /// </summary>
     public enum MessageSender

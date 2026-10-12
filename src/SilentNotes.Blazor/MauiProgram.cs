@@ -154,6 +154,9 @@ public static class MauiProgram
             serviceProvider.GetService<ISynchronizationState>()));
         services.AddSingleton<ISharingService>((serviceProvider) => new SharingService());
         services.AddSingleton<IDeviceCalendarService>((serviceProvider) => new DeviceCalendarService());
+        services.AddSingleton<IClockService>((serviceProvider) => new ClockService(
+            serviceProvider.GetService<IXmlFileService>()));
+        services.AddSingleton<IDeviceSmsService>((serviceProvider) => new DeviceSmsService());
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<ISnackbar>(),
@@ -198,6 +201,12 @@ public static class MauiProgram
             serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<IDeviceCalendarService>((serviceProvider) => new DeviceCalendarService(
             serviceProvider.GetService<IAppContextService>()));
+        services.AddSingleton<IClockService>((serviceProvider) => new ClockService(
+            serviceProvider.GetService<IAppContextService>(),
+            serviceProvider.GetService<IXmlFileService>()));
+        services.AddSingleton<IDeviceSmsService>((serviceProvider) => new DeviceSmsService(
+            serviceProvider.GetService<IAppContextService>(),
+            serviceProvider.GetService<IRepositoryStorageService>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<IAppContextService>(),

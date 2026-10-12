@@ -43,11 +43,17 @@ namespace SilentNotes.Platforms
             // Inform services about the new main activity.
             Ioc.Instance.GetService<IAppContextService>().Initialize(activity);
 
+            // Make sure the notification channels exist before any notification is shown.
+            NotificationChannels.CreateAll(activity);
+
             // Check for text which was shared by another application.
             ConsumeSharedTextParameter(activity.Intent);
 
             // Check whether the app was started by a calendar intent of another application.
             ConsumeCalendarIntent(activity.Intent);
+
+            // Check whether the app was started because an alarm is ringing.
+            ConsumeClockIntent(activity.Intent);
 
             // Prevent notes from being visible in list of recent apps and screenshots
             ISettingsService settingsService = Ioc.Instance.GetService<ISettingsService>();
@@ -64,6 +70,25 @@ namespace SilentNotes.Platforms
             // was not completely closed.
             ConsumeSharedTextParameter(intent);
             ConsumeCalendarIntent(intent);
+            ConsumeClockIntent(intent);
+        }
+
+        /// <summary>
+        /// Checks whether the intent was created by a ringing alarm, and remembers the request in
+        /// <see cref="ClockIntentRequest.Pending"/> so the clock tab can open its alarm section.
+        /// </summary>
+        /// <param name="intent">The active intent.</param>
+        private void ConsumeClockIntent(Intent intent)
+        {
+            if (intent == null)
+                return;
+
+            if (!intent.GetBooleanExtra(AlarmRingingService.ExtraOpenClock, false))
+                return;
+
+            intent.RemoveExtra(AlarmRingingService.ExtraOpenClock);
+            ClockIntentRequest.Pending = new ClockIntentRequest { Action = ClockIntentAction.OpenAlarm };
+            Ioc.Instance.GetService<IMessengerService>()?.Send(new ClockIntentMessage());
         }
 
         /// <summary>

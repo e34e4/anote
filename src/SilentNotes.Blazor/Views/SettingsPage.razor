@@ -18,6 +18,7 @@
 @inject IFontService FontService
 @inject ICloudStorageClientFactory CloudStorageClientFactory
 @inject IBookySyncService BookySyncService
+@inject IDeviceSmsService DeviceSmsService
 @inject ISynchronizationService SynchronizationService
 @inject IJSRuntime JSRuntime
 @inject INavigationService Navigation
@@ -424,6 +425,26 @@
 			</div>
 
 
+			@if (ViewModel.CanSetDefaultSms)
+			{
+				<h2 class="h-colored mt-10">@LanguageService["gui_sms"]</h2>
+
+				<div class="css-grid">
+					<div><MudIcon Icon="@Icons.Material.Filled.Message" Color="Color.Secondary" /></div>
+					<div>
+						<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+							<MudText>@(ViewModel.IsDefaultSmsApp ? LanguageService["sms_is_default"] : LanguageService["sms_set_default"])</MudText>
+							<MudButton OnClick="@(() => ViewModel.SetDefaultSmsAppCommand.Execute(null))" Color="Color.Primary" Variant="Variant.Filled"
+								Disabled="@ViewModel.IsDefaultSmsApp" StartIcon="@Icons.Material.Filled.Message">
+								@LanguageService["gui_sms_set_default"]
+							</MudButton>
+						</MudStack>
+						<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["gui_sms_default_desc"]</MudText>
+					</div>
+				</div>
+			}
+
+
 			<h2 class="h-colored mt-10">@LanguageService["security"]</h2>
 
 			<div class="css-grid">
@@ -472,7 +493,7 @@
 
 	protected override void OnInitialized()
 	{
-		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService);
+		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService);
 	}
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)

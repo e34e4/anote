@@ -208,5 +208,15 @@
     <Compile Include="$(MSBuildThisFileDirectory)Workers\BookyJsonFormat.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IBookySyncService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\BookySyncService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\ClockDataModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\ClockIntentRequest.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\SmsThreadModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\SmsMessageModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IClockService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\ClockServiceBase.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IDeviceSmsService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\ClockViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\SmsViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\WorldClockCatalog.cs" />
   </ItemGroup>
 </Project>

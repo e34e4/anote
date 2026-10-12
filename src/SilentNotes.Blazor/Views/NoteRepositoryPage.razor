@@ -30,12 +30,14 @@
 @inject IClipboardHistoryService ClipboardHistoryService
 @inject IBookySyncService BookySyncService
 @inject IDeviceCalendarService DeviceCalendarService
+@inject IClockService ClockService
+@inject IDeviceSmsService SmsService
 
 <style type="text/css">
 	.mud-main-content {
 		@(ThemeService.CssNoteRepositoryBackground)
 		background-attachment: fixed;
-		padding-top: 88px !important;
+		padding-top: 128px !important;
 	}
 	.app-header {
 		position: fixed;
@@ -158,6 +160,17 @@
 		{
 			<MudButton Class="header-text-btn" OnClick="@(() => _calendarViewModel.GoToTodayAsync())" Variant="Variant.Text" Color="Color.Inherit">@LanguageService["cal_today"]</MudButton>
 		}
+		else if (_activeTab == 7)
+		{
+			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Style="background-color: var(--mud-palette-appbar-text)" MaxHeight="36px" Elevation="0">
+				<MudInput @bind-Value="_smsViewModel.Filter"
+					Class="filter-input ml-2 mr-1 my-0"
+					Style="color: #000000"
+					Adornment="Adornment.End" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+					Immediate="true" Clearable="true" Placeholder="@LanguageService["sms_search"]" />
+			</MudPaper>
+			<MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(() => _smsViewModel.ComposeNewCommand.Execute(null))" title="@LanguageService["sms_new_message"]" />
+		}
 
 		<MudSpacer />
 
@@ -223,8 +236,12 @@
 		<MudButton Class="@GetTabButtonClass(1)" OnClick="@(() => SetActiveTab(1))" Variant="Variant.Text">@LanguageService["tab_clipboard"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(2)" OnClick="@(() => SetActiveTab(2))" Variant="Variant.Text">@LanguageService["tab_booky"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(3)" OnClick="@(() => SetActiveTab(3))" Variant="Variant.Text">@LanguageService["tab_phone"]</MudButton>
+	</div>
+	<div class="app-header-row app-header-tabs">
 		<MudButton Class="@GetTabButtonClass(4)" OnClick="@(() => SetActiveTab(4))" Variant="Variant.Text">@LanguageService["tab_calc"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(5)" OnClick="@(() => SetActiveTab(5))" Variant="Variant.Text">@LanguageService["tab_cald"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(6)" OnClick="@(() => SetActiveTab(6))" Variant="Variant.Text">@LanguageService["tab_clock"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(7)" OnClick="@(() => SetActiveTab(7))" Variant="Variant.Text">@LanguageService["tab_sms"]</MudButton>
 	</div>
 </div>
 
@@ -351,10 +368,20 @@
 		@* Calculator *@
 		<CalcTab ViewModel="_calculatorViewModel" />
 	}
-	else
+	else if (_activeTab == 5)
 	{
 		@* Calendar *@
 		<CalTab ViewModel="_calendarViewModel" />
+	}
+	else if (_activeTab == 6)
+	{
+		@* Clock (alarm, world clock, timer, stopwatch) *@
+		<ClockTab ViewModel="_clockViewModel" />
+	}
+	else
+	{
+		@* Sms *@
+		<SmsTab ViewModel="_smsViewModel" />
 	}
 </MudMainContent>
 
@@ -400,6 +427,8 @@
 	private ContactsViewModel _contactsViewModel;
 	private CalculatorViewModel _calculatorViewModel;
 	private CalendarViewModel _calendarViewModel;
+	private ClockViewModel _clockViewModel;
+	private SmsViewModel _smsViewModel;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="NoteRepositoryPage"/> class.
@@ -453,6 +482,9 @@
 
 		_calculatorViewModel = new CalculatorViewModel(LanguageService);
 		_calendarViewModel = new CalendarViewModel(DeviceCalendarService, LanguageService, FeedbackService);
+		_clockViewModel = new ClockViewModel(ClockService, LanguageService, FeedbackService);
+		_ = _clockViewModel.RescheduleAsync();
+		_smsViewModel = new SmsViewModel(SmsService, LanguageService, FeedbackService);
 
 		// When the app was started by a calendar intent, the calendar tab is opened and shows it.
 		CalendarIntentRequest pendingCalendarIntent = CalendarIntentRequest.Pending;
@@ -471,6 +503,10 @@
 			this, (recipient, message) => OnBookyChanged());
 		MessengerService.Register<CalendarIntentMessage>(
 			this, (recipient, message) => OnCalendarIntent());
+		MessengerService.Register<ClockIntentMessage>(
+			this, (recipient, message) => OnClockIntent());
+		MessengerService.Register<SmsChangedMessage>(
+			this, (recipient, message) => OnSmsChanged());
 
 		if (loadResult == RepositoryStorageLoadResult.InvalidRepository)
 			throw new Exception("Invalid repository");
@@ -525,6 +561,8 @@
 		MessengerService.Unregister<BringNoteIntoViewMessage>(this);
 		MessengerService.Unregister<BookyChangedMessage>(this);
 		MessengerService.Unregister<CalendarIntentMessage>(this);
+		MessengerService.Unregister<ClockIntentMessage>(this);
+		MessengerService.Unregister<SmsChangedMessage>(this);
 	}
 
 	/// <summary>
@@ -554,6 +592,35 @@
 		_activeTab = 5;
 		await _calendarViewModel.HandleIntentAsync(request);
 		StateHasChanged();
+	}
+
+	/// <summary>
+	/// Handles a clock intent which was received from the alarm which just fired.
+	/// </summary>
+	private void OnClockIntent()
+	{
+		InvokeAsync(ConsumeClockIntent);
+	}
+
+	private async Task ConsumeClockIntent()
+	{
+		ClockIntentRequest request = ClockIntentRequest.Pending;
+		if (request == null)
+			return;
+
+		ClockIntentRequest.Pending = null;
+		_activeTab = 6;
+		await _clockViewModel.HandleIntentAsync(request);
+		StateHasChanged();
+	}
+
+	/// <summary>
+	/// Reloads the sms tab after a message was received or sent by the system.
+	/// </summary>
+	private void OnSmsChanged()
+	{
+		_smsViewModel?.Reload();
+		InvokeAsync(StateHasChanged);
 	}
 
 	/// <inheritdoc/>
@@ -615,9 +682,16 @@
 			result = true;
 			refreshNeeded = true;
 		}
+		if (!result && (_activeTab == 7) && (_smsViewModel != null) && _smsViewModel.IsConversationOpen)
+		{
+			// When a conversation is open in the sms tab, the back key closes it first.
+			_smsViewModel.CloseConversation();
+			result = true;
+			refreshNeeded = true;
+		}
 		if (!result && (_activeTab != 0))
 		{
-			// When the clipboard tab is open, the back key returns to the notes tab first.
+			// When a non-notes tab is open, the back key returns to the notes tab first.
 			_activeTab = 0;
 			result = true;
 			refreshNeeded = true;

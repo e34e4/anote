@@ -1,0 +1,10 @@
+aNote version 1.3
+
+* New "Clock" tab: alarms, a world clock with several cities, a timer and a
+  stopwatch. Alarms ring with sound and a full-screen notification even when
+  aNote is closed, and they survive a reboot.
+* New "Sms" tab: view your conversations, read and send text messages. Set
+  aNote as the default SMS app to receive incoming messages with notifications.
+* The tab bar now uses two rows of four buttons (Notes, Clip, Booky, Phone /
+  Calc, Cald, Clock, Sms).
+* Plain black background for the clock and the messages pages.

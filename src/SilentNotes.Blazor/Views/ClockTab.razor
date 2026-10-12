@@ -1,0 +1,366 @@
+@using MudBlazor
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+@implements IDisposable
+
+@inject ILanguageService LanguageService
+
+<style type="text/css">
+	.clock-root {
+		background-color: #000000;
+		min-height: calc(100vh - 128px);
+		padding: 8px;
+		color: #ffffff;
+	}
+	.clock-sections {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 4px;
+		margin-bottom: 10px;
+	}
+	.clock-section-btn {
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background-color: #000000;
+		color: #cccccc;
+		font-size: 0.85rem;
+		height: 40px;
+		padding: 0 2px;
+		cursor: pointer;
+		touch-action: manipulation;
+	}
+	.clock-section-btn.active {
+		color: #ffffff;
+		border-color: var(--mud-palette-primary);
+		background-color: #101010;
+	}
+	.clock-big {
+		font-size: 3rem;
+		font-weight: 300;
+		font-variant-numeric: tabular-nums;
+		text-align: center;
+		line-height: 1.1;
+	}
+	.clock-mono {
+		font-variant-numeric: tabular-nums;
+		font-family: ui-monospace, "Cascadia Code", monospace;
+	}
+	.clock-row {
+		display: flex;
+		align-items: center;
+		padding: 10px 8px;
+		border-bottom: 1px solid #202020;
+	}
+	.clock-row-time {
+		font-size: 1.7rem;
+		font-weight: 300;
+		font-variant-numeric: tabular-nums;
+		min-width: 4.2rem;
+	}
+	.clock-row-main {
+		flex-grow: 1;
+		overflow: hidden;
+		cursor: pointer;
+	}
+	.clock-city-time {
+		font-size: 1.7rem;
+		font-weight: 300;
+		font-variant-numeric: tabular-nums;
+	}
+	.clock-disabled {
+		color: #616161;
+	}
+	.clock-sub {
+		color: #9e9e9e;
+		font-size: 0.85rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.clock-btn {
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background-color: #000000;
+		color: #ffffff;
+		height: 52px;
+		padding: 0 16px;
+		font-size: 1rem;
+		cursor: pointer;
+		touch-action: manipulation;
+	}
+	.clock-btn.primary {
+		color: var(--mud-palette-primary);
+		border-color: var(--mud-palette-primary);
+	}
+	.clock-btn:active {
+		background-color: #1f1f1f;
+	}
+	.clock-actions {
+		display: flex;
+		gap: 8px;
+		justify-content: center;
+		margin-top: 14px;
+	}
+	.clock-inputs {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 6px;
+		margin-top: 10px;
+	}
+	.clock-day-toggles {
+		display: grid;
+		grid-template-columns: repeat(7, 1fr);
+		gap: 4px;
+		margin-top: 6px;
+	}
+	.clock-day-btn {
+		border: 1px solid #2b2b2b;
+		border-radius: 8px;
+		background-color: #000000;
+		color: #cccccc;
+		height: 38px;
+		font-size: 0.75rem;
+		cursor: pointer;
+	}
+	.clock-day-btn.on {
+		color: #ffffff;
+		background-color: var(--mud-palette-primary);
+		border-color: var(--mud-palette-primary);
+	}
+	.clock-editor-overlay {
+		position: fixed;
+		z-index: 1400;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		overflow-y: auto;
+		background-color: #000000;
+		padding: 14px;
+	}
+	.clock-laps {
+		margin-top: 12px;
+		overflow-y: auto;
+		max-height: calc(100vh - 420px);
+	}
+	.clock-lap {
+		padding: 6px 4px;
+		border-bottom: 1px solid #202020;
+	}
+</style>
+
+<div class="clock-root">
+	<div class="clock-sections">
+		<button class="clock-section-btn @(ViewModel.IsAlarmSection ? "active" : null)" @onclick="() => ViewModel.ShowAlarmCommand.Execute(null)">@LanguageService["clock_alarm"]</button>
+		<button class="clock-section-btn @(ViewModel.IsClockSection ? "active" : null)" @onclick="() => ViewModel.ShowClockCommand.Execute(null)">@LanguageService["clock_clock"]</button>
+		<button class="clock-section-btn @(ViewModel.IsTimerSection ? "active" : null)" @onclick="() => ViewModel.ShowTimerCommand.Execute(null)">@LanguageService["clock_timer"]</button>
+		<button class="clock-section-btn @(ViewModel.IsStopwatchSection ? "active" : null)" @onclick="() => ViewModel.ShowStopwatchCommand.Execute(null)">@LanguageService["clock_stopwatch"]</button>
+	</div>
+
+	@if (ViewModel.IsAlarmSection)
+	{
+		@if (ViewModel.NeedsExactAlarmPermission || ViewModel.NeedsNotificationPermission)
+		{
+			<MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+				<span>@LanguageService["clock_needs_permission"]</span>
+				@if (ViewModel.NeedsNotificationPermission)
+				{
+					<MudButton Size="Size.Small" Color="Color.Primary" Class="ml-2" OnClick="RequestNotificationPermission">@LanguageService["clock_grant"]</MudButton>
+				}
+				@if (ViewModel.NeedsExactAlarmPermission)
+				{
+					<MudButton Size="Size.Small" Color="Color.Primary" Class="ml-2" OnClick="RequestExactAlarmPermission">@LanguageService["clock_grant"]</MudButton>
+				}
+			</MudAlert>
+		}
+
+		@if (!ViewModel.IsSupported)
+		{
+			<MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">@LanguageService["clock_alarm_not_supported"]</MudAlert>
+		}
+
+		@if (ViewModel.HasNoAlarms)
+		{
+			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["clock_no_alarms"]</MudText>
+		}
+		else
+		{
+			@foreach (var alarm in ViewModel.Alarms)
+			{
+				<div class="clock-row" @key="alarm.Model.Id">
+					<div class="clock-row-time @(alarm.Enabled ? null : "clock-disabled")">@alarm.TimeText</div>
+					<div class="clock-row-main" @onclick="() => ViewModel.EditAlarmCommand.Execute(alarm)">
+						<div class="clock-sub">@alarm.NextText</div>
+						@if (!string.IsNullOrWhiteSpace(alarm.Label))
+						{
+							<div class="clock-sub">@alarm.Label</div>
+						}
+					</div>
+					<MudSwitch T="bool" Value="alarm.Enabled" ValueChanged="@((v) => ViewModel.ToggleAlarmCommand.Execute(alarm))" Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
+					<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ViewModel.DeleteAlarmCommand.Execute(alarm))" title="@LanguageService["clipboard_delete"]" />
+				</div>
+			}
+		}
+
+		<div class="clock-actions">
+			<button class="clock-btn primary" @onclick="() => ViewModel.AddAlarmCommand.Execute(null)">+ @LanguageService["clock_new_alarm"]</button>
+		</div>
+	}
+	else if (ViewModel.IsClockSection)
+	{
+		@if (ViewModel.CityClocks.Count == 0)
+		{
+			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["clock_no_cities"]</MudText>
+		}
+		else
+		{
+			@foreach (var city in ViewModel.CityClocks)
+			{
+				<div class="clock-row" @key="city.Model.TimeZoneId">
+					<div class="clock-row-main">
+						<div class="clock-sub">@city.Name</div>
+						<div class="clock-city-time">@city.TimeText</div>
+						<div class="clock-sub">@city.DayText</div>
+					</div>
+					<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ViewModel.RemoveCityCommand.Execute(city))" title="@LanguageService["clipboard_delete"]" />
+				</div>
+			}
+		}
+
+		<div class="clock-inputs" style="grid-template-columns: 1fr auto;">
+			<MudSelect T="int" @bind-Value="ViewModel.SelectedCityIndex" Variant="Variant.Outlined" Dense="true" Placeholder="@LanguageService["clock_add_city"]">
+				@for (int i = 0; i < ViewModel.AvailableCities.Count; i++)
+				{
+					var index = i;
+					<MudSelectItem T="int" Value="@index">@ViewModel.AvailableCities[index].Name</MudSelectItem>
+				}
+			</MudSelect>
+			<button class="clock-btn" @onclick="() => ViewModel.AddCityCommand.Execute(null)">@LanguageService["clipboard_add"]</button>
+		</div>
+	}
+	else if (ViewModel.IsTimerSection)
+	{
+		<div class="clock-big clock-mono mt-6">@ViewModel.TimerDisplay</div>
+
+		<div class="clock-inputs">
+			<MudNumericField T="int" @bind-Value="ViewModel.TimerHours" Label="@LanguageService["clock_hours"]" Min="0" Max="23" Variant="Variant.Outlined" />
+			<MudNumericField T="int" @bind-Value="ViewModel.TimerMinutes" Label="@LanguageService["clock_minutes"]" Min="0" Max="59" Variant="Variant.Outlined" />
+			<MudNumericField T="int" @bind-Value="ViewModel.TimerSeconds" Label="@LanguageService["clock_seconds"]" Min="0" Max="59" Variant="Variant.Outlined" />
+		</div>
+
+		<div class="clock-actions">
+			@if (ViewModel.IsTimerRunning)
+			{
+				<button class="clock-btn primary" @onclick="() => ViewModel.PauseTimerCommand.Execute(null)">@LanguageService["clock_pause"]</button>
+			}
+			else
+			{
+				<button class="clock-btn primary" @onclick="() => ViewModel.StartTimerCommand.Execute(null)">@LanguageService["clock_start"]</button>
+			}
+			<button class="clock-btn" @onclick="() => ViewModel.ResetTimerCommand.Execute(null)">@LanguageService["clock_reset"]</button>
+		</div>
+	}
+	else
+	{
+		<div class="clock-big clock-mono mt-6">@ViewModel.StopwatchDisplay</div>
+
+		<div class="clock-actions">
+			@if (ViewModel.IsStopwatchRunning)
+			{
+				<button class="clock-btn primary" @onclick="() => ViewModel.StartPauseStopwatchCommand.Execute(null)">@LanguageService["clock_pause"]</button>
+			}
+			else
+			{
+				<button class="clock-btn primary" @onclick="() => ViewModel.StartPauseStopwatchCommand.Execute(null)">@LanguageService["clock_start"]</button>
+			}
+			<button class="clock-btn" @onclick="() => ViewModel.LapCommand.Execute(null)">@LanguageService["clock_lap"]</button>
+			<button class="clock-btn" @onclick="() => ViewModel.ResetStopwatchCommand.Execute(null)">@LanguageService["clock_reset"]</button>
+		</div>
+
+		@if (ViewModel.Laps.Count > 0)
+		{
+			<div class="clock-laps">
+				@foreach (var lap in ViewModel.Laps)
+				{
+					<div class="clock-lap clock-mono">@lap</div>
+				}
+			</div>
+		}
+	}
+</div>
+
+@if (ViewModel.IsEditorVisible)
+{
+	<div class="clock-editor-overlay">
+		<h2 class="h-colored mb-4">@(ViewModel.IsNewAlarm ? LanguageService["clock_new_alarm"] : LanguageService["clock_edit_alarm"])</h2>
+
+		<div class="clock-inputs">
+			<MudNumericField T="int" @bind-Value="ViewModel.DraftHour" Label="@LanguageService["clock_hours"]" Min="0" Max="23" Variant="Variant.Outlined" />
+			<MudNumericField T="int" @bind-Value="ViewModel.DraftMinute" Label="@LanguageService["clock_minutes"]" Min="0" Max="59" Variant="Variant.Outlined" />
+			<div style="display:flex; align-items:center; justify-content:center;" class="clock-mono">@ViewModel.DraftTimeText</div>
+		</div>
+
+		<MudTextField T="string" @bind-Value="ViewModel.DraftLabel" Label="@LanguageService["clock_alarm_label"]" Variant="Variant.Outlined" Class="mt-4" />
+
+		<MudText Typo="Typo.caption" Class="mt-3 mud-text-secondary">@ViewModel.DraftDaysText</MudText>
+		<div class="clock-day-toggles">
+			@for (int i = 0; i < 7; i++)
+			{
+				var index = i;
+				<button class="clock-day-btn @(ViewModel.IsDraftDay(index) ? "on" : null)" @onclick="() => ViewModel.ToggleDraftDayCommand.Execute(index)">@ViewModel.DayNames[index]</button>
+			}
+		</div>
+
+		<div class="clock-actions">
+			<button class="clock-btn" @onclick="() => ViewModel.CancelEditorCommand.Execute(null)">@LanguageService["cancel"]</button>
+			<button class="clock-btn primary" @onclick="() => ViewModel.SaveAlarmCommand.Execute(null)">@LanguageService["clipboard_add"]</button>
+		</div>
+	</div>
+}
+
+@code {
+	/// <summary>
+	/// Gets or sets the view model of the clock tab.
+	/// </summary>
+	[Parameter]
+	public ClockViewModel ViewModel { get; set; }
+
+	private System.Threading.Timer _timer;
+
+	/// <inheritdoc/>
+	protected override async Task OnInitializedAsync()
+	{
+		await ViewModel.InitializeAsync();
+		_timer = new System.Threading.Timer(_ => InvokeAsync(Tick), null, 500, 500);
+	}
+
+	private void Tick()
+	{
+		ViewModel.Tick();
+		StateHasChanged();
+	}
+
+	private async Task RequestNotificationPermission()
+	{
+		await ViewModel.RequestNotificationPermissionAsync();
+		StateHasChanged();
+	}
+
+	private async Task RequestExactAlarmPermission()
+	{
+		await ViewModel.RequestExactAlarmPermissionAsync();
+		StateHasChanged();
+	}
+
+	private MudBlazor.Color GetSwitchUncheckedColor()
+	{
+		return MudBlazor.Color.Tertiary;
+	}
+
+	/// <inheritdoc/>
+	public void Dispose()
+	{
+		_timer?.Dispose();
+		_timer = null;
+	}
+}

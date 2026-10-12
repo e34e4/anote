@@ -41,6 +41,7 @@ namespace SilentNotes.ViewModels
         private readonly IMessengerService _messengerService;
         private readonly ICloudStorageClientFactory _cloudStorageClientFactory;
         private readonly IBookySyncService _bookySyncService;
+        private readonly IDeviceSmsService _deviceSmsService;
         private readonly SliderStepConverter _fontSizeConverter;
         private readonly SliderStepConverter _noteMaxHeightConverter;
         private string _defaultFontFamilyLabel;
@@ -59,7 +60,8 @@ namespace SilentNotes.ViewModels
             IFontService fontService,
             ICloudStorageClientFactory cloudStorageClientFactory,
             IFilePickerService filePickerService,
-            IBookySyncService bookySyncService)
+            IBookySyncService bookySyncService,
+            IDeviceSmsService deviceSmsService)
         {
             Language = languageService;
             _settingsService = settingsService;
@@ -71,6 +73,7 @@ namespace SilentNotes.ViewModels
             _cloudStorageClientFactory = cloudStorageClientFactory;
             _filePickerService = filePickerService;
             _bookySyncService = bookySyncService;
+            _deviceSmsService = deviceSmsService;
             Model = _settingsService.LoadSettingsOrDefault();
             Modifications = new ModificationDetector(() => GetModificationFingerprint(Model));
 
@@ -93,6 +96,33 @@ namespace SilentNotes.ViewModels
             GrantAccessibilityPermissionCommand = new RelayCommand(GrantAccessibilityPermission);
             OpenOverlayPermissionSettingsCommand = new RelayCommand(OpenOverlayPermissionSettings);
             SyncBookyCommand = new AsyncRelayCommand(SyncBooky);
+            SetDefaultSmsAppCommand = new AsyncRelayCommand(SetDefaultSmsApp);
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether the operating system supports choosing a default SMS app.
+        /// </summary>
+        public bool CanSetDefaultSms
+        {
+            get { return _deviceSmsService != null && _deviceSmsService.IsSupported; }
+        }
+
+        /// <summary>Gets a value indicating whether aNote is currently the default SMS app.</summary>
+        public bool IsDefaultSmsApp
+        {
+            get { return _deviceSmsService?.IsDefaultSmsApp ?? false; }
+        }
+
+        /// <summary>Gets the command which asks the system to make aNote the default SMS app.</summary>
+        public ICommand SetDefaultSmsAppCommand { get; }
+
+        private async Task SetDefaultSmsApp()
+        {
+            if (_deviceSmsService == null)
+                return;
+            await _deviceSmsService.RequestPermissionsAsync();
+            await _deviceSmsService.RequestDefaultSmsAppAsync();
+            OnPropertyChanged(nameof(IsDefaultSmsApp), nameof(CanSetDefaultSms));
         }
 
         /// <summary>
