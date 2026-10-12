@@ -23,6 +23,7 @@
 		max-height: 140px;
 		max-width: 100%;
 		border-radius: 4px;
+		cursor: pointer;
 	}
 	.theme-dark .clipboard-card {
 		background-color: #000000;
@@ -49,7 +50,7 @@
 							<div class="flex-grow-1 overflow-hidden">
 								@if (item.IsImage)
 								{
-									<img class="clipboard-image" src="@item.ThumbnailDataUri" />
+									<img class="clipboard-image" src="@item.ThumbnailDataUri" @onclick="() => ViewModel.OpenImageCommand.Execute(item)" title="@LanguageService["clipboard_image_open"]" />
 								}
 								else
 								{
@@ -59,6 +60,10 @@
 							</div>
 							<MudStack Row="true" Spacing="0" Class="flex-shrink-0">
 								<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="@(() => ViewModel.CopyCommand.Execute(item))" title="@LanguageService["clipboard_copy"]" />
+								@if (item.IsImage && ViewModel.CanHandleImages)
+								{
+									<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="@(() => ViewModel.SaveImageCommand.Execute(item))" title="@LanguageService["clipboard_image_save"]" />
+								}
 								<MudIconButton Icon="@(item.IsFavorite ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)" Color="@(item.IsFavorite ? Color.Tertiary : Color.Default)" Size="Size.Small" OnClick="@(() => ViewModel.ToggleFavoriteCommand.Execute(item))" title="@LanguageService["clipboard_favorite"]" />
 								<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ViewModel.DeleteCommand.Execute(item))" title="@LanguageService["clipboard_delete"]" />
 							</MudStack>
@@ -80,7 +85,7 @@
 								<div class="flex-grow-1 overflow-hidden">
 									@if (item.IsImage)
 									{
-										<img class="clipboard-image" src="@item.ThumbnailDataUri" />
+										<img class="clipboard-image" src="@item.ThumbnailDataUri" @onclick="() => ViewModel.OpenImageCommand.Execute(item)" title="@LanguageService["clipboard_image_open"]" />
 									}
 									else
 									{
@@ -90,6 +95,10 @@
 								</div>
 								<MudStack Row="true" Spacing="0" Class="flex-shrink-0">
 									<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="@(() => ViewModel.CopyCommand.Execute(item))" title="@LanguageService["clipboard_copy"]" />
+									@if (item.IsImage && ViewModel.CanHandleImages)
+									{
+										<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="@(() => ViewModel.SaveImageCommand.Execute(item))" title="@LanguageService["clipboard_image_save"]" />
+									}
 									<MudIconButton Icon="@Icons.Material.Filled.Star" Color="Color.Tertiary" Size="Size.Small" OnClick="@(() => ViewModel.ToggleFavoriteCommand.Execute(item))" title="@LanguageService["clipboard_unfavorite"]" />
 									<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ViewModel.DeleteCommand.Execute(item))" title="@LanguageService["clipboard_delete"]" />
 								</MudStack>

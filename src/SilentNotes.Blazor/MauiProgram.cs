@@ -157,6 +157,7 @@ public static class MauiProgram
         services.AddSingleton<IClockService>((serviceProvider) => new ClockService(
             serviceProvider.GetService<IXmlFileService>()));
         services.AddSingleton<IDeviceSmsService>((serviceProvider) => new DeviceSmsService());
+        services.AddSingleton<IImageFileService>((serviceProvider) => new ImageFileService());
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<ISnackbar>(),
@@ -207,6 +208,8 @@ public static class MauiProgram
         services.AddSingleton<IDeviceSmsService>((serviceProvider) => new DeviceSmsService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IRepositoryStorageService>()));
+        services.AddSingleton<IImageFileService>((serviceProvider) => new ImageFileService(
+            serviceProvider.GetService<IAppContextService>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<IAppContextService>(),

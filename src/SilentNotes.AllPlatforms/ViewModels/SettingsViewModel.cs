@@ -703,9 +703,18 @@ namespace SilentNotes.ViewModels
                     _feedbackService.ShowToast(Language["booky_sync_not_configured"]);
                     break;
                 case BookySyncResult.Failed:
-                    _feedbackService.ShowToast(Language["booky_sync_failed"], FeedbackSeverity.Warning);
+                    _feedbackService.ShowToast(BuildSyncErrorMessage(Language["booky_sync_failed"]), FeedbackSeverity.Warning);
                     break;
             }
+        }
+
+        /// <summary>
+        /// Appends the message of the last synchronization error, to help diagnosing the problem.
+        /// </summary>
+        private string BuildSyncErrorMessage(string baseMessage)
+        {
+            string detail = _bookySyncService?.LastError;
+            return string.IsNullOrWhiteSpace(detail) ? baseMessage : baseMessage + " — " + detail;
         }
 
         /// <summary>

@@ -577,14 +577,21 @@
 		if (ViewModel.ShoppingModeActive)
 			return;
 
-		if (!await FilePickerService.PickImage())
-			return;
+		try
+		{
+			if (!await FilePickerService.PickImage())
+				return;
 
-		byte[] bytes = await FilePickerService.ReadPickedFile();
-		if ((bytes == null) || (bytes.Length == 0))
-			return;
+			byte[] bytes = await FilePickerService.ReadPickedFile();
+			if ((bytes == null) || (bytes.Length == 0))
+				return;
 
-		await _jsModule.InvokeVoidAsync("insertImageFromBase64", Convert.ToBase64String(bytes));
+			await _jsModule.InvokeVoidAsync("insertImageFromBase64", Convert.ToBase64String(bytes));
+		}
+		catch (Exception)
+		{
+			FeedbackService.ShowToast(LanguageService["note_image_failed"], FeedbackSeverity.Warning);
+		}
 	}
 
 	private async Task ShareNote()

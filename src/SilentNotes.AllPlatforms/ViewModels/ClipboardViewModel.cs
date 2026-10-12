@@ -23,6 +23,9 @@ namespace SilentNotes.ViewModels
         private readonly IClipboardHistoryService _historyService;
         private readonly IClipboardService _clipboardService;
         private readonly ISettingsService _settingsService;
+        private readonly IImageFileService _imageFileService;
+        private readonly IFeedbackService _feedbackService;
+        private readonly ILanguageService _languageService;
         private List<ClipboardItemViewModel> _items = new List<ClipboardItemViewModel>();
         private string _newItemText;
         private string _filter;
@@ -30,11 +33,20 @@ namespace SilentNotes.ViewModels
         /// <summary>
         /// Initializes a new instance of the <see cref="ClipboardViewModel"/> class.
         /// </summary>
-        public ClipboardViewModel(IClipboardHistoryService historyService, IClipboardService clipboardService, ISettingsService settingsService)
+        public ClipboardViewModel(
+            IClipboardHistoryService historyService,
+            IClipboardService clipboardService,
+            ISettingsService settingsService,
+            IImageFileService imageFileService,
+            IFeedbackService feedbackService,
+            ILanguageService languageService)
         {
             _historyService = historyService;
             _clipboardService = clipboardService;
             _settingsService = settingsService;
+            _imageFileService = imageFileService;
+            _feedbackService = feedbackService;
+            _languageService = languageService;
 
             CopyCommand = new AsyncRelayCommand<ClipboardItemViewModel>(CopyAsync);
             ToggleFavoriteCommand = new RelayCommand<ClipboardItemViewModel>(ToggleFavorite);
@@ -42,8 +54,48 @@ namespace SilentNotes.ViewModels
             ClearAllCommand = new RelayCommand(ClearAll);
             ClearNonFavoritesCommand = new RelayCommand(ClearNonFavorites);
             AddTextCommand = new RelayCommand(AddText);
+            OpenImageCommand = new AsyncRelayCommand<ClipboardItemViewModel>(OpenImageAsync);
+            SaveImageCommand = new AsyncRelayCommand<ClipboardItemViewModel>(SaveImageAsync);
 
             Reload();
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether images can be opened and saved with this platform.
+        /// </summary>
+        public bool CanHandleImages
+        {
+            get { return (_imageFileService != null) && _imageFileService.IsSupported; }
+        }
+
+        /// <summary>Gets the command to open an image clip with an external viewer app.</summary>
+        public ICommand OpenImageCommand { get; }
+
+        /// <summary>Gets the command to save an image clip as a JPEG picture.</summary>
+        public ICommand SaveImageCommand { get; }
+
+        private async Task OpenImageAsync(ClipboardItemViewModel item)
+        {
+            if ((item == null) || !item.IsImage)
+                return;
+
+            string path = _historyService.GetFullImagePath(item.Model.ImageFileName);
+            bool opened = await _imageFileService.OpenImageAsync(path);
+            if (!opened)
+                _feedbackService?.ShowToast(_languageService["clipboard_image_open_failed"], FeedbackSeverity.Warning);
+        }
+
+        private async Task SaveImageAsync(ClipboardItemViewModel item)
+        {
+            if ((item == null) || !item.IsImage)
+                return;
+
+            string path = _historyService.GetFullImagePath(item.Model.ImageFileName);
+            string savedPath = await _imageFileService.SaveImageToPicturesAsync(path);
+            if (string.IsNullOrEmpty(savedPath))
+                _feedbackService?.ShowToast(_languageService["clipboard_image_save_failed"], FeedbackSeverity.Warning);
+            else
+                _feedbackService?.ShowToast(_languageService.LoadTextFmt("clipboard_image_saved", savedPath));
         }
 
         /// <summary>

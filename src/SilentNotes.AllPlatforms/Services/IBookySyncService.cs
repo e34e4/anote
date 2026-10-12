@@ -21,6 +21,12 @@ namespace SilentNotes.Services
         bool IsConfigured { get; }
 
         /// <summary>
+        /// Gets the message of the last error, which helps to diagnose a failed synchronization.
+        /// It is empty after a successful synchronization.
+        /// </summary>
+        string LastError { get; }
+
+        /// <summary>
         /// Downloads the shared bookmarks file, merges it into the bookmark list of the repository
         /// and uploads the merged list back to the shared file.
         /// </summary>

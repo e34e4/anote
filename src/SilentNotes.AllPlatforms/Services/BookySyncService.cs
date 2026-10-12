@@ -37,6 +37,9 @@ namespace SilentNotes.Services
         }
 
         /// <inheritdoc/>
+        public string LastError { get; private set; }
+
+        /// <inheritdoc/>
         public bool IsConfigured
         {
             get
@@ -69,6 +72,7 @@ namespace SilentNotes.Services
         private async Task<BookySyncResult> SyncInternalAsync(bool overwriteRemote, ICollection<Guid> excludedBookmarkIds)
         {
             CloudStorageCredentials credentials = null;
+            LastError = null;
             try
             {
                 SettingsModel settings = _settingsService.LoadSettingsOrDefault();
@@ -94,7 +98,10 @@ namespace SilentNotes.Services
                         byte[] bytes = await client.DownloadFileAsync(fileName, credentials);
                         remote = BookyJsonFormat.Parse(Encoding.UTF8.GetString(bytes));
                         if (remote == null)
+                        {
+                            LastError = "The bookmarks file on the server has an unexpected format.";
                             return BookySyncResult.Failed;
+                        }
                     }
 
                     // A bookmark which was deleted locally must not be resurrected from the file.
@@ -118,8 +125,9 @@ namespace SilentNotes.Services
                     _messengerService?.Send(new BookyChangedMessage());
                 return BookySyncResult.Success;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                LastError = ex.Message;
                 return BookySyncResult.Failed;
             }
             finally

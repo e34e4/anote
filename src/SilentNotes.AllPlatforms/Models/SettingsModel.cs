@@ -385,11 +385,27 @@ namespace SilentNotes.Models
         public string BookySyncUsername { get; set; }
 
         /// <summary>
-        /// Gets or sets the password for the WebDAV server of the Booky sync. The password is
-        /// encrypted before it is stored on the local device.
+        /// Gets or sets the password for the WebDAV server of the Booky sync, in plain text. Use
+        /// <see cref="SerializeableBookySyncPassword"/> for the value stored on the device.
+        /// </summary>
+        [XmlIgnore]
+        public string BookySyncPassword { get; set; }
+
+        /// <summary>
+        /// Gets or sets the encrypted password of the Booky sync, as it is stored on the local
+        /// device. Keeping this in a separate property (like the cloud storage credentials do)
+        /// makes repeated saving idempotent.
         /// </summary>
         [XmlElement("booky_sync_password")]
-        public string BookySyncPassword { get; set; }
+        public string SerializeableBookySyncPassword { get; set; }
+
+        /// <summary>
+        /// Gets a value indicating whether the encrypted Booky password should be serialized.
+        /// </summary>
+        public bool SerializeableBookySyncPasswordSpecified
+        {
+            get { return !string.IsNullOrEmpty(SerializeableBookySyncPassword); }
+        }
 
         /// <summary>
         /// Gets a value indicating whether a cloud storage is set.

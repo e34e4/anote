@@ -366,7 +366,11 @@ namespace SilentNotes.ViewModels
                     _feedbackService.ShowToast(_languageService["booky_sync_not_configured"]);
                     break;
                 case BookySyncResult.Failed:
-                    _feedbackService.ShowToast(_languageService["booky_sync_failed"], FeedbackSeverity.Warning);
+                    string detail = _bookySyncService?.LastError;
+                    string message = string.IsNullOrWhiteSpace(detail)
+                        ? _languageService["booky_sync_failed"]
+                        : _languageService["booky_sync_failed"] + " — " + detail;
+                    _feedbackService.ShowToast(message, FeedbackSeverity.Warning);
                     break;
             }
         }

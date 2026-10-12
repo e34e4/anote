@@ -8,7 +8,6 @@ using System.IO;
 using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
-using AndroidX.DocumentFile.Provider;
 using SilentNotes.Services;
 using Uri = Android.Net.Uri;
 
@@ -78,12 +77,18 @@ namespace SilentNotes.Platforms.Services
             if (_pickedUri == null)
                 throw new Exception("Pick a file first before it can be read.");
 
-            DocumentFile file = DocumentFile.FromSingleUri(_appContext.RootActivity, _pickedUri);
-            using (Stream stream = _appContext.RootActivity.ContentResolver.OpenInputStream(file.Uri))
+            // Read the stream sequentially instead of using its Length, because providers like
+            // Google Photos return a stream which does not support the Length property.
+            using (Stream stream = _appContext.RootActivity.ContentResolver.OpenInputStream(_pickedUri))
             {
-                byte[] result = new byte[stream.Length];
-                await stream.ReadAsync(result, 0, (int)stream.Length);
-                return result;
+                if (stream == null)
+                    throw new Exception("The picked file could not be opened.");
+
+                using (var memory = new MemoryStream())
+                {
+                    await stream.CopyToAsync(memory);
+                    return memory.ToArray();
+                }
             }
         }
     }
