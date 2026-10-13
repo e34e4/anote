@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SilentNotes.Models;
 using SilentNotes.Services;
 
 namespace SilentNotesTest.Services
@@ -72,9 +73,10 @@ namespace SilentNotesTest.Services
             service.AddText("4", 3);
 
             var model = service.LoadHistoryOrDefault();
-            Assert.AreEqual(3, model.Items.Count);
-            Assert.IsFalse(model.Items.Any(i => i.Text == "1"));
-            Assert.IsTrue(model.Items.Any(i => i.Text == "4"));
+            // Trimmed items are kept as tombstones, so the deletion can be synchronized.
+            Assert.AreEqual(3, model.Items.Count(i => !i.IsDeleted));
+            Assert.IsTrue(model.Items.Single(i => i.Text == "1").IsDeleted);
+            Assert.IsFalse(model.Items.Single(i => i.Text == "4").IsDeleted);
         }
 
         [TestMethod]
@@ -91,9 +93,9 @@ namespace SilentNotesTest.Services
 
             var model = service.LoadHistoryOrDefault();
             // 1 favorite + only 2 non-favorites are kept
-            Assert.AreEqual(3, model.Items.Count);
-            Assert.IsTrue(model.Items.Any(i => (i.Text == "fav") && i.IsFavorite));
-            Assert.IsFalse(model.Items.Any(i => i.Text == "2"));
+            Assert.AreEqual(3, model.Items.Count(i => !i.IsDeleted));
+            Assert.IsTrue(model.Items.Any(i => (i.Text == "fav") && i.IsFavorite && !i.IsDeleted));
+            Assert.IsTrue(model.Items.Single(i => i.Text == "2").IsDeleted);
         }
 
         [TestMethod]
@@ -108,12 +110,13 @@ namespace SilentNotesTest.Services
             service.ClearNonFavorites();
 
             var model = service.LoadHistoryOrDefault();
-            Assert.AreEqual(1, model.Items.Count);
-            Assert.AreEqual("keep", model.Items[0].Text);
+            Assert.AreEqual(1, model.Items.Count(i => !i.IsDeleted));
+            Assert.AreEqual("keep", model.Items.Single(i => !i.IsDeleted).Text);
+            Assert.IsTrue(model.Items.Single(i => i.Text == "drop").IsDeleted);
         }
 
         [TestMethod]
-        public void AddAndDeleteImageRemovesFiles()
+        public void DeleteImageKeepsFilesUntilRetentionPeriodIsOver()
         {
             TestableClipboardHistoryService service = CreateService();
             byte[] image = new byte[] { 1, 2, 3, 4, 5 };
@@ -124,8 +127,32 @@ namespace SilentNotesTest.Services
 
             service.Delete(item.Id);
 
-            Assert.IsFalse(File.Exists(service.GetFullImagePath(item.ImageFileName)));
-            Assert.IsFalse(File.Exists(service.GetThumbImagePath(item.ImageFileName)));
+            // Deleting only sets a tombstone, the image files are removed later by the purge.
+            Assert.IsTrue(service.LoadHistoryOrDefault().Items.Single(i => i.Id == item.Id).IsDeleted);
+            Assert.IsTrue(File.Exists(service.GetFullImagePath(item.ImageFileName)));
+            Assert.IsTrue(File.Exists(service.GetThumbImagePath(item.ImageFileName)));
+        }
+
+        [TestMethod]
+        public void AddTextRecoversFromUnfinishedWriteOperation()
+        {
+            TestableClipboardHistoryService service = CreateService();
+            service.AddText("before", 10);
+
+            // Simulate the process being killed after the temporary file was written completely,
+            // but before the ready-file could be removed.
+            string historyPath = Path.Combine(_directory, ClipboardHistoryModel.HistoryFileName);
+            File.WriteAllBytes(historyPath + ".new", File.ReadAllBytes(historyPath));
+            File.WriteAllBytes(historyPath + ".ready", new byte[] { 32 });
+
+            service.AddText("after", 10);
+
+            var model = service.LoadHistoryOrDefault();
+            Assert.AreEqual(2, model.Items.Count);
+            Assert.AreEqual("after", model.Items[0].Text);
+            Assert.AreEqual("before", model.Items[1].Text);
+            Assert.IsFalse(File.Exists(historyPath + ".ready"));
+            Assert.IsFalse(File.Exists(historyPath + ".new"));
         }
 
         private class TestableClipboardHistoryService : ClipboardHistoryServiceBase

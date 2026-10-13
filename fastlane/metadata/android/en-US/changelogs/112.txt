@@ -1,0 +1,7 @@
+aNote version 1.3.6
+
+* Fixed the clipboard history which could stop working completely. When the app
+  was interrupted while writing the history file, a leftover marker file blocked
+  every following write operation, so neither copied text nor manually added
+  items were stored any more. An unfinished writing operation is now completed
+  automatically instead of blocking the file.

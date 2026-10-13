@@ -21,6 +21,10 @@ namespace SilentNotes.Services
         {
             try
             {
+                // An interrupted writing operation must be completed before reading, otherwise the
+                // newest content stays in the temporary file, and its leftover ready-file would
+                // block all following write operations permanently.
+                TryCompletePendingWrite(filePath);
                 xml = XDocument.Load(filePath);
                 return true;
             }
@@ -36,8 +40,7 @@ namespace SilentNotes.Services
         {
             try
             {
-                var writer = new AtomicFileWriter { MinValidFileSize = "</silentnotes>".Length };
-                writer.Write(
+                CreateFileWriter().Write(
                     filePath,
                     (xmlStream) => {
                         XmlUtils.SerializeToXmlStream(serializeableObject, xmlStream, Encoding.UTF8);
@@ -53,9 +56,29 @@ namespace SilentNotes.Services
         /// <inheritdoc/>
         public bool Exists(string filePath)
         {
-            var writer = new AtomicFileWriter { MinValidFileSize = "</silentnotes>".Length };
-            writer.CompletePendingWrite(filePath);
+            TryCompletePendingWrite(filePath);
             return File.Exists(filePath);
+        }
+
+        /// <summary>
+        /// Completes an unfinished atomic writing operation, so a leftover ready-file cannot block
+        /// the file any more. A failing recovery must not prevent reading the intact original file.
+        /// </summary>
+        /// <param name="filePath">The full path of the file to recover.</param>
+        private static void TryCompletePendingWrite(string filePath)
+        {
+            try
+            {
+                CreateFileWriter().CompletePendingWrite(filePath);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private static AtomicFileWriter CreateFileWriter()
+        {
+            return new AtomicFileWriter { MinValidFileSize = "</silentnotes>".Length };
         }
     }
 }
