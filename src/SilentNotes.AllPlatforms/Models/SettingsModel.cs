@@ -67,6 +67,9 @@ namespace SilentNotes.Models
             BookySyncRemotePath = "booky/bookmarks.json";
             BookySyncUsername = string.Empty;
             BookySyncPassword = string.Empty;
+            QrVibrateOnScan = true;
+            QrAutoCopyToClipboard = false;
+            QrKeepHistory = true;
         }
 
         /// <summary>
@@ -209,6 +212,27 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("hide_closed_safe_notes")]
         public bool HideClosedSafeNotes { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the device should vibrate after a QR code was
+        /// scanned or decoded.
+        /// </summary>
+        [XmlElement("qr_vibrate_on_scan")]
+        public bool QrVibrateOnScan { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the result of a QR scan should be copied
+        /// automatically to the clipboard.
+        /// </summary>
+        [XmlElement("qr_auto_copy")]
+        public bool QrAutoCopyToClipboard { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether scanned QR codes should be stored in the
+        /// history of the QR tab.
+        /// </summary>
+        [XmlElement("qr_keep_history")]
+        public bool QrKeepHistory { get; set; }
 
         /// <summary>
         /// Gets or sets the selected encryption algorithm, used to encrypt the repository

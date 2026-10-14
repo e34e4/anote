@@ -20,5 +20,12 @@ namespace SilentNotes.Services
         /// <param name="subject">The subject/title for sending per email.</param>
         /// <returns>Task for async calls.</returns>
         Task ShareHtmlText(string htmlText, string plainText, string subject);
+
+        /// <summary>
+        /// Shares a plain text (e.g. a scanned link) to other apps.
+        /// </summary>
+        /// <param name="text">The text to share.</param>
+        /// <returns>Task for async calls.</returns>
+        Task ShareText(string text);
     }
 }

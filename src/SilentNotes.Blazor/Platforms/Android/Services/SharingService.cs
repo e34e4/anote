@@ -45,5 +45,18 @@ namespace SilentNotes.Platforms.Services
             _appContext.RootActivity.StartActivity(chooserIntent);
             return Task.CompletedTask;
         }
+
+        /// <inheritdoc/>
+        public Task ShareText(string text)
+        {
+            Intent shareIntent = new Intent(Intent.ActionSend);
+            shareIntent.SetType("text/plain");
+            shareIntent.PutExtra(Intent.ExtraText, text);
+
+            Intent chooserIntent = Intent.CreateChooser(shareIntent, "Share");
+            chooserIntent.AddFlags(ActivityFlags.NewTask);
+            _appContext.RootActivity.StartActivity(chooserIntent);
+            return Task.CompletedTask;
+        }
     }
 }

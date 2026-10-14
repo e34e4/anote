@@ -219,5 +219,10 @@
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\ClockViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\SmsViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\WorldClockCatalog.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\QrHistoryModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IQrService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IQrHistoryService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\QrHistoryServiceBase.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\QrViewModel.cs" />
   </ItemGroup>
 </Project>

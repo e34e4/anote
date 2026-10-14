@@ -27,8 +27,23 @@ namespace SilentNotes.Platforms.Services
             await Windows.System.Launcher.LaunchUriAsync(new Uri(url));
         }
 
+        /// <inheritdoc/>
+        public Task ShareText(string text)
+        {
+            // Windows has no simple share dialog which could be called from here, so the text is
+            // copied to the clipboard instead.
+            try
+            {
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetText(text);
+            }
+            catch (Exception)
+            {
+            }
+            return Task.CompletedTask;
+        }
+
         /// <summary>
-        /// Replaces leading space characters in each line with a &nbsp character.
+        /// Replaces leading space characters in each line with a &amp;nbsp character.
         /// </summary>
         /// <param name="text">Text to search for leading spaces.</param>
         /// <returns>Text with replaced leading spaces.</returns>

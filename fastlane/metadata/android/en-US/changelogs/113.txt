@@ -1,0 +1,5 @@
+aNote version 1.3.7
+
+* Added a new QR tab. Scan QR codes with the camera, decode them from an image
+  file, keep a history of scans, and generate your own QR codes from text or a
+  link.

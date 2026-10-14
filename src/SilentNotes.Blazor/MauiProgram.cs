@@ -16,6 +16,7 @@ using SilentNotes.Platforms;
 using SilentNotes.Platforms.Services;
 using SilentNotes.Services;
 using SilentNotes.Workers;
+using ZXing.Net.Maui.Controls;
 
 namespace SilentNotes;
 
@@ -52,6 +53,7 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
+            .UseBarcodeReader()
             .ConfigureLifecycleEvents(events =>
             {
 #if ANDROID
@@ -158,6 +160,9 @@ public static class MauiProgram
             serviceProvider.GetService<IXmlFileService>()));
         services.AddSingleton<IDeviceSmsService>((serviceProvider) => new DeviceSmsService());
         services.AddSingleton<IImageFileService>((serviceProvider) => new ImageFileService());
+        services.AddSingleton<IQrService>((serviceProvider) => new QrService());
+        services.AddSingleton<IQrHistoryService>((serviceProvider) => new QrHistoryService(
+            serviceProvider.GetService<IXmlFileService>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<ISnackbar>(),
@@ -210,6 +215,11 @@ public static class MauiProgram
             serviceProvider.GetService<IRepositoryStorageService>()));
         services.AddSingleton<IImageFileService>((serviceProvider) => new ImageFileService(
             serviceProvider.GetService<IAppContextService>()));
+        services.AddSingleton<IQrService>((serviceProvider) => new QrService(
+            serviceProvider.GetService<IAppContextService>()));
+        services.AddSingleton<IQrHistoryService>((serviceProvider) => new QrHistoryService(
+            serviceProvider.GetService<IAppContextService>(),
+            serviceProvider.GetService<IXmlFileService>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<IAppContextService>(),

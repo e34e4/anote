@@ -33,6 +33,9 @@
 @inject IClockService ClockService
 @inject IDeviceSmsService SmsService
 @inject IImageFileService ImageFileService
+@inject IQrService QrService
+@inject IQrHistoryService QrHistoryService
+@inject ISharingService SharingService
 
 <style type="text/css">
 	.mud-main-content {
@@ -243,6 +246,7 @@
 		<MudButton Class="@GetTabButtonClass(5)" OnClick="@(() => SetActiveTab(5))" Variant="Variant.Text">@LanguageService["tab_cald"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(6)" OnClick="@(() => SetActiveTab(6))" Variant="Variant.Text">@LanguageService["tab_clock"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(7)" OnClick="@(() => SetActiveTab(7))" Variant="Variant.Text">@LanguageService["tab_sms"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(8)" OnClick="@(() => SetActiveTab(8))" Variant="Variant.Text">@LanguageService["tab_qr"]</MudButton>
 	</div>
 </div>
 
@@ -379,10 +383,15 @@
 		@* Clock (alarm, world clock, timer, stopwatch) *@
 		<ClockTab ViewModel="_clockViewModel" />
 	}
-	else
+	else if (_activeTab == 7)
 	{
 		@* Sms *@
 		<SmsTab ViewModel="_smsViewModel" />
+	}
+	else
+	{
+		@* QR code scanner *@
+		<QrTab ViewModel="_qrViewModel" />
 	}
 </MudMainContent>
 
@@ -430,6 +439,7 @@
 	private CalendarViewModel _calendarViewModel;
 	private ClockViewModel _clockViewModel;
 	private SmsViewModel _smsViewModel;
+	private QrViewModel _qrViewModel;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="NoteRepositoryPage"/> class.
@@ -489,6 +499,17 @@
 		_clockViewModel = new ClockViewModel(ClockService, LanguageService, FeedbackService);
 		_ = _clockViewModel.RescheduleAsync();
 		_smsViewModel = new SmsViewModel(SmsService, LanguageService, FeedbackService);
+		_qrViewModel = new QrViewModel(
+			QrService,
+			QrHistoryService,
+			SettingsService,
+			ClipboardService,
+			NativeBrowserService,
+			SharingService,
+			FilePickerService,
+			ImageFileService,
+			LanguageService,
+			FeedbackService);
 
 		// When the app was started by a calendar intent, the calendar tab is opened and shows it.
 		CalendarIntentRequest pendingCalendarIntent = CalendarIntentRequest.Pending;
@@ -699,6 +720,13 @@
 		{
 			// When a conversation is open in the sms tab, the back key closes it first.
 			_smsViewModel.CloseConversation();
+			result = true;
+			refreshNeeded = true;
+		}
+		if (!result && (_activeTab == 8) && (_qrViewModel != null) && _qrViewModel.IsAnyOverlayOpen)
+		{
+			// When an overlay is open in the qr tab, the back key closes it first.
+			_qrViewModel.CloseOverlay();
 			result = true;
 			refreshNeeded = true;
 		}
