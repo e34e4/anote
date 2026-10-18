@@ -150,7 +150,7 @@ namespace SilentNotes.Platforms.Services
                 var checkIntent = new Intent(context, typeof(UrlCheckActivity));
                 checkIntent.SetAction(Intent.ActionView);
                 checkIntent.SetData(Uri.Parse(url));
-                checkIntent.PutExtra(Browser.ExtraCreateNewTab, true);
+                checkIntent.PutExtra(global::Android.Provider.Browser.ExtraCreateNewTab, true);
                 checkIntent.AddFlags(ActivityFlags.NewTask);
                 context.StartActivity(checkIntent);
                 return;
@@ -159,8 +159,8 @@ namespace SilentNotes.Platforms.Services
             Uri webpage = Uri.Parse(url);
             Intent intent = new Intent(Intent.ActionView, webpage);
             intent.AddCategory(Intent.CategoryBrowsable);
-            intent.PutExtra(Browser.ExtraApplicationId, _appContext.Context.PackageName);
-            intent.PutExtra(Browser.ExtraCreateNewTab, true);
+            intent.PutExtra(global::Android.Provider.Browser.ExtraApplicationId, _appContext.Context.PackageName);
+            intent.PutExtra(global::Android.Provider.Browser.ExtraCreateNewTab, true);
             intent.AddFlags(ActivityFlags.NewTask);
             context.StartActivity(intent);
         }

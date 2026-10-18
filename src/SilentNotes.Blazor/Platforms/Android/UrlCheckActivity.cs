@@ -25,6 +25,7 @@ using SilentNotes.Services;
 using SilentNotes.Workers;
 using Color = Android.Graphics.Color;
 using Orientation = Android.Widget.Orientation;
+using ScrollView = Android.Widget.ScrollView;
 using Uri = Android.Net.Uri;
 
 namespace SilentNotes
@@ -67,7 +68,7 @@ namespace SilentNotes
             base.OnCreate(savedInstanceState);
 
             _density = Resources.DisplayMetrics.Density;
-            _preferNewTab = Intent?.GetBooleanExtra(Browser.ExtraCreateNewTab, false) ?? false;
+            _preferNewTab = Intent?.GetBooleanExtra(global::Android.Provider.Browser.ExtraCreateNewTab, false) ?? false;
 
             string initialUrl = ExtractUrlFromIntent(Intent);
             if (string.IsNullOrWhiteSpace(initialUrl))
@@ -311,7 +312,7 @@ namespace SilentNotes
         {
             try
             {
-                var cm = GetSystemService(ClipboardService) as ClipboardManager;
+                var cm = GetSystemService(ClipboardService) as global::Android.Content.ClipboardManager;
                 if (cm != null)
                 {
                     cm.PrimaryClip = ClipData.NewPlainText("URL", CurrentUrl);
@@ -462,8 +463,8 @@ namespace SilentNotes
                 intent.AddFlags(ActivityFlags.NewTask);
                 if (newTab)
                 {
-                    intent.PutExtra(Browser.ExtraApplicationId, PackageName);
-                    intent.PutExtra(Browser.ExtraCreateNewTab, true);
+                    intent.PutExtra(global::Android.Provider.Browser.ExtraApplicationId, PackageName);
+                    intent.PutExtra(global::Android.Provider.Browser.ExtraCreateNewTab, true);
                 }
                 StartActivity(intent);
                 Finish();

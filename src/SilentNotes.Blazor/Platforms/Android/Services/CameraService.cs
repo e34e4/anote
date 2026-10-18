@@ -182,7 +182,7 @@ namespace SilentNotes.Platforms.Services
 
             try
             {
-                global::Android.Net.Uri captureUri = FileProvider.GetUriForFile(
+                global::Android.Net.Uri captureUri = AndroidX.Core.Content.FileProvider.GetUriForFile(
                     context, context.PackageName + ".fileprovider", tempCaptureFile);
 
                 var captureIntent = new Intent(MediaStore.ActionImageCapture);
@@ -394,7 +394,7 @@ namespace SilentNotes.Platforms.Services
                     var shareFile = new Java.IO.File(shareDir, Path.GetFileName(fileName));
                     File.Copy(sourcePath, shareFile.AbsolutePath, overwrite: true);
 
-                    global::Android.Net.Uri uri = FileProvider.GetUriForFile(
+                    global::Android.Net.Uri uri = AndroidX.Core.Content.FileProvider.GetUriForFile(
                         context, context.PackageName + ".fileprovider", shareFile);
 
                     string mime = GetMimeTypeForExtension(Path.GetExtension(fileName));
@@ -448,7 +448,7 @@ namespace SilentNotes.Platforms.Services
                     var shareFile = new Java.IO.File(shareDir, Path.GetFileName(fileName));
                     File.Copy(sourcePath, shareFile.AbsolutePath, overwrite: true);
 
-                    global::Android.Net.Uri uri = FileProvider.GetUriForFile(
+                    global::Android.Net.Uri uri = AndroidX.Core.Content.FileProvider.GetUriForFile(
                         context, context.PackageName + ".fileprovider", shareFile);
 
                     string mime = GetMimeTypeForExtension(Path.GetExtension(fileName));

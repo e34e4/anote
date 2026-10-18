@@ -10,7 +10,7 @@ on:
         description: Build the Android binaries
       build-windows:
         type: boolean
-        default: true
+        default: false
         description: Build the Windows binaries
       publish-release:
         type: boolean
