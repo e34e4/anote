@@ -25,6 +25,9 @@ namespace SilentNotes
         /// <summary>Channel for received SMS messages.</summary>
         public const string SmsChannelId = "anote_sms";
 
+        /// <summary>Channel for incoming and active phone calls.</summary>
+        public const string CallChannelId = "anote_call";
+
         /// <summary>Creates all notification channels, can be called repeatedly.</summary>
         public static void CreateAll(Context context)
         {
@@ -53,6 +56,12 @@ namespace SilentNotes
             smsChannel.EnableVibration(true);
             smsChannel.SetSound(RingtoneManager.GetDefaultUri(RingtoneType.Notification), NotificationAudioAttributes());
             manager.CreateNotificationChannel(smsChannel);
+
+            var callChannel = new NotificationChannel(CallChannelId, "Phone calls", NotificationImportance.High);
+            callChannel.Description = "Incoming and ongoing phone calls";
+            callChannel.EnableVibration(true);
+            callChannel.LockscreenVisibility = NotificationVisibility.Public;
+            manager.CreateNotificationChannel(callChannel);
         }
 
         /// <summary>Gets audio attributes which play on the alarm stream.</summary>

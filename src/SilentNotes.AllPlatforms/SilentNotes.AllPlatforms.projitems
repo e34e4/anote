@@ -224,5 +224,16 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\IQrHistoryService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\QrHistoryServiceBase.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\QrViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\AudioRecordingModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\WebdavFileItemModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\CallLogEntryModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\PhoneIntentRequest.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IAudioRecorderService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IWebdavFileService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\WebdavFileServiceBase.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IDevicePhoneService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\RecViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\FileViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\PhoneViewModel.cs" />
   </ItemGroup>
 </Project>

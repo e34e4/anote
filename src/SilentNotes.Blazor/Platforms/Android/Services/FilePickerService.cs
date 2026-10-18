@@ -91,5 +91,43 @@ namespace SilentNotes.Platforms.Services
                 }
             }
         }
+
+        /// <inheritdoc/>
+        public string GetPickedFileName()
+        {
+            if (_pickedUri == null)
+                return null;
+
+            try
+            {
+                using (var cursor = _appContext.RootActivity.ContentResolver.Query(
+                    _pickedUri, new[] { global::Android.Provider.IOpenableColumns.DisplayName }, null, null, null))
+                {
+                    if ((cursor != null) && cursor.MoveToFirst())
+                    {
+                        int nameIndex = cursor.GetColumnIndex(global::Android.Provider.IOpenableColumns.DisplayName);
+                        if (nameIndex >= 0)
+                        {
+                            string name = cursor.GetString(nameIndex);
+                            if (!string.IsNullOrWhiteSpace(name))
+                                return name;
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            string lastSegment = _pickedUri.LastPathSegment;
+            if (!string.IsNullOrWhiteSpace(lastSegment))
+            {
+                int slash = lastSegment.LastIndexOf('/');
+                int colon = lastSegment.LastIndexOf(':');
+                int sep = Math.Max(slash, colon);
+                return (sep >= 0 && sep + 1 < lastSegment.Length) ? lastSegment.Substring(sep + 1) : lastSegment;
+            }
+            return "file.bin";
+        }
     }
 }

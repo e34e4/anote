@@ -67,6 +67,10 @@ namespace SilentNotes.Models
             BookySyncRemotePath = "booky/bookmarks.json";
             BookySyncUsername = string.Empty;
             BookySyncPassword = string.Empty;
+            FileWebdavUrl = string.Empty;
+            FileWebdavFolder = string.Empty;
+            FileWebdavUsername = string.Empty;
+            FileWebdavPassword = string.Empty;
             QrVibrateOnScan = true;
             QrAutoCopyToClipboard = false;
             QrKeepHistory = true;
@@ -429,6 +433,44 @@ namespace SilentNotes.Models
         public bool SerializeableBookySyncPasswordSpecified
         {
             get { return !string.IsNullOrEmpty(SerializeableBookySyncPassword); }
+        }
+
+        /// <summary>
+        /// Gets or sets the base url of the WebDAV server for the File tab.
+        /// </summary>
+        [XmlElement("file_webdav_url")]
+        public string FileWebdavUrl { get; set; }
+
+        /// <summary>
+        /// Gets or sets the remote folder path on the WebDAV server for the File tab.
+        /// </summary>
+        [XmlElement("file_webdav_folder")]
+        public string FileWebdavFolder { get; set; }
+
+        /// <summary>
+        /// Gets or sets the user name for the WebDAV server of the File tab.
+        /// </summary>
+        [XmlElement("file_webdav_username")]
+        public string FileWebdavUsername { get; set; }
+
+        /// <summary>
+        /// Gets or sets the password for the WebDAV server of the File tab, in plain text.
+        /// </summary>
+        [XmlIgnore]
+        public string FileWebdavPassword { get; set; }
+
+        /// <summary>
+        /// Gets or sets the encrypted password of the File tab WebDAV server, as stored on device.
+        /// </summary>
+        [XmlElement("file_webdav_password")]
+        public string SerializeableFileWebdavPassword { get; set; }
+
+        /// <summary>
+        /// Gets a value indicating whether the encrypted File WebDAV password should be serialized.
+        /// </summary>
+        public bool SerializeableFileWebdavPasswordSpecified
+        {
+            get { return !string.IsNullOrEmpty(SerializeableFileWebdavPassword); }
         }
 
         /// <summary>

@@ -19,6 +19,7 @@
 @inject ICloudStorageClientFactory CloudStorageClientFactory
 @inject IBookySyncService BookySyncService
 @inject IDeviceSmsService DeviceSmsService
+@inject IDevicePhoneService DevicePhoneService
 @inject ISynchronizationService SynchronizationService
 @inject IJSRuntime JSRuntime
 @inject INavigationService Navigation
@@ -444,6 +445,25 @@
 				</div>
 			}
 
+			@if (ViewModel.CanSetDefaultPhone)
+			{
+				<h2 class="h-colored mt-10">@LanguageService["gui_phone"]</h2>
+
+				<div class="css-grid">
+					<div><MudIcon Icon="@Icons.Material.Filled.Phone" Color="Color.Secondary" /></div>
+					<div>
+						<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+							<MudText>@(ViewModel.IsDefaultPhoneApp ? LanguageService["dialer_is_default"] : LanguageService["dialer_set_default"])</MudText>
+							<MudButton OnClick="@(() => ViewModel.SetDefaultPhoneAppCommand.Execute(null))" Color="Color.Primary" Variant="Variant.Filled"
+								Disabled="@ViewModel.IsDefaultPhoneApp" StartIcon="@Icons.Material.Filled.Phone">
+								@LanguageService["gui_phone_set_default"]
+							</MudButton>
+						</MudStack>
+						<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["gui_phone_default_desc"]</MudText>
+					</div>
+				</div>
+			}
+
 
 			<h2 class="h-colored mt-10">@LanguageService["security"]</h2>
 
@@ -493,7 +513,7 @@
 
 	protected override void OnInitialized()
 	{
-		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService);
+		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService);
 	}
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)

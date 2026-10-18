@@ -62,6 +62,13 @@ namespace SilentNotes
         new[] { "android.intent.action.SENDTO" },
         Categories = new[] { "android.intent.category.DEFAULT" },
         DataScheme = "mmsto")]
+    [IntentFilter(
+        new[] { "android.intent.action.DIAL" },
+        Categories = new[] { "android.intent.category.DEFAULT" })]
+    [IntentFilter(
+        new[] { "android.intent.action.DIAL", "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT", "android.intent.category.BROWSABLE" },
+        DataScheme = "tel")]
     public class MainActivity : MauiAppCompatActivity, IOnPreDrawListener
     {
         private readonly ApplicationEventHandler _applicationEventHandler = new ApplicationEventHandler();

@@ -1,0 +1,479 @@
+@using MudBlazor
+@using SilentNotes.Models
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+@implements IDisposable
+
+@inject ILanguageService LanguageService
+@inject IMessengerService MessengerService
+
+<style type="text/css">
+	.phone-root {
+		background-color: #000000;
+		min-height: calc(100vh - 168px);
+		padding: 8px;
+		color: #ffffff;
+	}
+	.phone-toolbar {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 2px 4px 10px 4px;
+	}
+	.phone-section-btn {
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background-color: #000000;
+		color: #cccccc;
+		font-size: 0.85rem;
+		height: 38px;
+		padding: 0 14px;
+		cursor: pointer;
+		touch-action: manipulation;
+	}
+	.phone-section-btn.active {
+		color: #ffffff;
+		border-color: var(--mud-palette-primary);
+		background-color: #101010;
+	}
+	.phone-default-banner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background-color: #0c0c0c;
+		padding: 8px 12px;
+		margin-bottom: 10px;
+		font-size: 0.85rem;
+	}
+	.phone-active-call {
+		border: 1px solid var(--mud-palette-primary);
+		border-radius: 14px;
+		background-color: #0e1a12;
+		padding: 14px;
+		margin-bottom: 12px;
+		text-align: center;
+	}
+	.phone-call-title {
+		font-size: 1.35rem;
+		font-weight: 600;
+	}
+	.phone-call-state {
+		font-size: 0.9rem;
+		color: #9e9e9e;
+		margin: 4px 0 12px 0;
+	}
+	.phone-call-actions {
+		display: flex;
+		justify-content: center;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+	.phone-display {
+		border: 1px solid #222222;
+		border-radius: 12px;
+		background-color: #080808;
+		padding: 10px 12px;
+		margin-bottom: 8px;
+	}
+	.phone-number-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.phone-number-input {
+		flex-grow: 1;
+		background: transparent;
+		border: none;
+		outline: none;
+		color: #ffffff;
+		font-size: 1.7rem;
+		font-family: ui-monospace, "Cascadia Code", monospace;
+		text-align: center;
+		width: 100%;
+	}
+	.phone-matched-contact {
+		text-align: center;
+		font-size: 0.85rem;
+		color: var(--mud-palette-primary);
+		min-height: 1.2rem;
+	}
+	.phone-numpad {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 6px;
+		margin-bottom: 8px;
+	}
+	.phone-key {
+		border: 1px solid #2b2b2b;
+		border-radius: 12px;
+		background-color: #000000;
+		color: #ffffff;
+		height: 54px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		touch-action: manipulation;
+		user-select: none;
+	}
+	.phone-key:active {
+		background-color: #1f1f1f;
+	}
+	.phone-key-digit {
+		font-size: 1.35rem;
+		font-weight: 600;
+		line-height: 1.1;
+	}
+	.phone-key-sub {
+		font-size: 0.65rem;
+		color: #888888;
+		letter-spacing: 0.08em;
+	}
+	.phone-call-bar {
+		display: grid;
+		grid-template-columns: 1fr 2fr 1fr;
+		gap: 8px;
+		margin-bottom: 12px;
+	}
+	.phone-call-btn {
+		border: 1px solid #2e7d32;
+		border-radius: 12px;
+		background-color: #1b5e20;
+		color: #ffffff;
+		height: 50px;
+		font-size: 1.05rem;
+		font-weight: 600;
+		cursor: pointer;
+		touch-action: manipulation;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+	}
+	.phone-call-btn:active {
+		background-color: #2e7d32;
+	}
+	.phone-hangup-btn {
+		border: 1px solid #c62828;
+		border-radius: 12px;
+		background-color: #b71c1c;
+		color: #ffffff;
+		height: 44px;
+		padding: 0 18px;
+		font-weight: 600;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.phone-answer-btn {
+		border: 1px solid #2e7d32;
+		border-radius: 12px;
+		background-color: #1b5e20;
+		color: #ffffff;
+		height: 44px;
+		padding: 0 18px;
+		font-weight: 600;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.phone-log-row {
+		display: flex;
+		align-items: center;
+		padding: 9px 6px;
+		border-bottom: 1px solid #202020;
+		gap: 8px;
+	}
+	.phone-log-main {
+		flex-grow: 1;
+		overflow: hidden;
+		cursor: pointer;
+	}
+	.phone-log-title {
+		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.phone-log-title.missed {
+		color: #ff5252;
+	}
+	.phone-log-meta {
+		font-size: 0.8rem;
+		color: #9e9e9e;
+	}
+</style>
+
+<div class="phone-root">
+	@if (!ViewModel.IsSupported)
+	{
+		<MudAlert Severity="Severity.Info" Dense="true">@LanguageService["dialer_not_supported"]</MudAlert>
+	}
+	else
+	{
+		<div class="phone-toolbar">
+			<button class="phone-section-btn @(!ViewModel.IsHistoryView ? "active" : null)"
+				@onclick="() => ViewModel.ShowNumpadCommand.Execute(null)">@LanguageService["dialer_numpad"]</button>
+			<button class="phone-section-btn @(ViewModel.IsHistoryView ? "active" : null)"
+				@onclick="() => ViewModel.ShowHistoryCommand.Execute(null)">@LanguageService["dialer_history"]</button>
+			<MudSpacer />
+			@if (ViewModel.IsHistoryView && !ViewModel.IsEmpty)
+			{
+				<MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+					StartIcon="@Icons.Material.Filled.DeleteSweep" OnClick="ClearHistoryAsync">
+					@LanguageService["dialer_clear_history"]
+				</MudButton>
+			}
+		</div>
+
+		@* Default Phone App status and button *@
+		<div class="phone-default-banner">
+			<span>@(ViewModel.IsDefaultPhoneApp ? LanguageService["dialer_is_default"] : LanguageService["dialer_needs_default"])</span>
+			@if (!ViewModel.IsDefaultPhoneApp)
+			{
+				<MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="SetDefaultAsync">
+					@LanguageService["dialer_set_default"]
+				</MudButton>
+			}
+			else
+			{
+				<MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+			}
+		</div>
+
+		@if (ViewModel.NeedsPermission)
+		{
+			<MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2">
+				<span>@LanguageService["dialer_needs_permission"]</span>
+				<MudButton Size="Size.Small" Color="Color.Primary" Class="ml-2" OnClick="GrantPermissionAsync">@LanguageService["dialer_grant"]</MudButton>
+			</MudAlert>
+		}
+
+		@* Active / Incoming Call Card *@
+		@if (ViewModel.ActiveCall is ActiveCallModel activeCall)
+		{
+			<div class="phone-active-call">
+				<div class="phone-call-title">@(string.IsNullOrWhiteSpace(activeCall.DisplayName) ? activeCall.Number : activeCall.DisplayName)</div>
+				@if (!string.IsNullOrWhiteSpace(activeCall.DisplayName))
+				{
+					<div class="phone-log-meta">@activeCall.Number</div>
+				}
+				<div class="phone-call-state">@activeCall.State</div>
+				<div class="phone-call-actions">
+					@if (activeCall.IsRinging)
+					{
+						<button class="phone-answer-btn" @onclick="() => ViewModel.AnswerCallCommand.Execute(null)">
+							<MudIcon Icon="@Icons.Material.Filled.Call" Size="Size.Small" />
+							<span>@LanguageService["dialer_answer"]</span>
+						</button>
+					}
+					<button class="phone-hangup-btn" @onclick="() => ViewModel.HangupCallCommand.Execute(null)">
+						<MudIcon Icon="@Icons.Material.Filled.CallEnd" Size="Size.Small" />
+						<span>@LanguageService["dialer_hangup"]</span>
+					</button>
+					<button class="phone-section-btn @(activeCall.IsMuted ? "active" : null)" @onclick="() => ViewModel.ToggleMuteCommand.Execute(null)">
+						@LanguageService["dialer_mute"]
+					</button>
+					<button class="phone-section-btn @(activeCall.IsSpeakerOn ? "active" : null)" @onclick="() => ViewModel.ToggleSpeakerCommand.Execute(null)">
+						@LanguageService["dialer_speaker"]
+					</button>
+				</div>
+			</div>
+		}
+
+		@if (!ViewModel.IsHistoryView)
+		{
+			@* Numpad view *@
+			<div class="phone-display">
+				<div class="phone-number-row">
+					@if (!string.IsNullOrEmpty(ViewModel.DialedNumber))
+					{
+						<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+							OnClick="() => ViewModel.CopyNumberCommand.Execute(ViewModel.DialedNumber)" title="@LanguageService["copy"]" />
+					}
+					<input class="phone-number-input" type="tel" @bind="ViewModel.DialedNumber" @bind:event="oninput" placeholder="@LanguageService["dialer_enter_number"]" />
+					@if (!string.IsNullOrEmpty(ViewModel.DialedNumber))
+					{
+						<MudIconButton Icon="@Icons.Material.Filled.Backspace" Size="Size.Small"
+							OnClick="() => ViewModel.BackspaceCommand.Execute(null)" title="@LanguageService["dialer_backspace"]" />
+					}
+				</div>
+				<div class="phone-matched-contact">@ViewModel.MatchedContactName</div>
+			</div>
+
+			<div class="phone-numpad">
+				<button class="phone-key" @onclick='() => Press("1")'><span class="phone-key-digit">1</span><span class="phone-key-sub">&nbsp;</span></button>
+				<button class="phone-key" @onclick='() => Press("2")'><span class="phone-key-digit">2</span><span class="phone-key-sub">ABC</span></button>
+				<button class="phone-key" @onclick='() => Press("3")'><span class="phone-key-digit">3</span><span class="phone-key-sub">DEF</span></button>
+
+				<button class="phone-key" @onclick='() => Press("4")'><span class="phone-key-digit">4</span><span class="phone-key-sub">GHI</span></button>
+				<button class="phone-key" @onclick='() => Press("5")'><span class="phone-key-digit">5</span><span class="phone-key-sub">JKL</span></button>
+				<button class="phone-key" @onclick='() => Press("6")'><span class="phone-key-digit">6</span><span class="phone-key-sub">MNO</span></button>
+
+				<button class="phone-key" @onclick='() => Press("7")'><span class="phone-key-digit">7</span><span class="phone-key-sub">PQRS</span></button>
+				<button class="phone-key" @onclick='() => Press("8")'><span class="phone-key-digit">8</span><span class="phone-key-sub">TUV</span></button>
+				<button class="phone-key" @onclick='() => Press("9")'><span class="phone-key-digit">9</span><span class="phone-key-sub">WXYZ</span></button>
+
+				<button class="phone-key" @onclick='() => Press("*")'><span class="phone-key-digit">*</span><span class="phone-key-sub">&nbsp;</span></button>
+				<button class="phone-key" @onclick='() => Press("0")' @oncontextmenu='() => Press("+")' @oncontextmenu:preventDefault="true"><span class="phone-key-digit">0</span><span class="phone-key-sub">+</span></button>
+				<button class="phone-key" @onclick='() => Press("#")'><span class="phone-key-digit">#</span><span class="phone-key-sub">&nbsp;</span></button>
+			</div>
+
+			<div class="phone-call-bar">
+				<button class="phone-key" style="height:50px" @onclick='() => Press("+")'>
+					<span class="phone-key-digit">+</span>
+				</button>
+				<button class="phone-call-btn" @onclick="PlaceCallAsync">
+					<MudIcon Icon="@Icons.Material.Filled.Call" />
+					<span>@LanguageService["contact_call"]</span>
+				</button>
+				<button class="phone-key" style="height:50px" @onclick="() => ViewModel.ClearNumberCommand.Execute(null)">
+					<span class="phone-key-sub" style="font-size:0.85rem; color:#cccccc">C</span>
+				</button>
+			</div>
+
+			@if (ViewModel.RecentCallsPreview.Count > 0)
+			{
+				<MudText Typo="Typo.caption" Class="mud-text-secondary ml-1">@LanguageService["dialer_recent"]</MudText>
+				@foreach (var item in ViewModel.RecentCallsPreview)
+				{
+					@RenderCallLogRow(item)
+				}
+			}
+		}
+		else
+		{
+			@* Full Call History view *@
+			<div class="d-flex align-center justify-space-between px-1 mb-1">
+				<MudText Typo="Typo.caption" Class="mud-text-secondary">@ViewModel.CountText</MudText>
+			</div>
+
+			@if (ViewModel.IsEmpty)
+			{
+				<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["dialer_empty"]</MudText>
+			}
+			else if (ViewModel.HasNoMatches)
+			{
+				<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["dialer_no_matches"]</MudText>
+			}
+			else
+			{
+				@foreach (var item in ViewModel.FilteredCallLog)
+				{
+					@RenderCallLogRow(item)
+				}
+			}
+		}
+	}
+</div>
+
+@code {
+	[Parameter]
+	public PhoneViewModel ViewModel { get; set; }
+
+	protected override async Task OnInitializedAsync()
+	{
+		MessengerService.Register<AfterResumeMessage>(this, (r, m) => InvokeAsync(RefreshAsync));
+		MessengerService.Register<PhoneCallChangedMessage>(this, (r, m) => InvokeAsync(RefreshAsync));
+		if (ViewModel != null)
+			await ViewModel.InitializeAsync();
+	}
+
+	private RenderFragment RenderCallLogRow(CallLogItemViewModel item) => __builder =>
+	{
+		<div class="phone-log-row" @key="item.Model.Id">
+			<MudIcon Icon="@GetDirectionIcon(item.Direction)" Color="@(item.IsMissed ? Color.Error : Color.Secondary)" Size="Size.Small" />
+			<div class="phone-log-main" @onclick="() => ViewModel.FillNumberCommand.Execute(item.Number)">
+				<div class="phone-log-title @(item.IsMissed ? "missed" : null)">@item.Title</div>
+				<div class="phone-log-meta">
+					@if (!string.IsNullOrEmpty(item.Subtitle))
+					{
+						<span>@item.Subtitle · </span>
+					}
+					<span>@item.TimeText</span>
+					@if (!string.IsNullOrEmpty(item.DurationText))
+					{
+						<span> · @item.DurationText</span>
+					}
+				</div>
+			</div>
+			<MudIconButton Icon="@Icons.Material.Filled.Call" Color="Color.Success" Size="Size.Small"
+				OnClick="() => CallSpecificAsync(item.Number)" title="@LanguageService["contact_call"]" />
+			<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+				OnClick="() => DeleteEntryAsync(item)" title="@LanguageService["dialer_delete"]" />
+		</div>
+	};
+
+	private static string GetDirectionIcon(CallDirection direction)
+	{
+		return direction switch
+		{
+			CallDirection.Outgoing => Icons.Material.Filled.CallMade,
+			CallDirection.Missed => Icons.Material.Filled.CallMissed,
+			CallDirection.Rejected => Icons.Material.Filled.CallMissed,
+			_ => Icons.Material.Filled.CallReceived,
+		};
+	}
+
+	private void Press(string digit)
+	{
+		ViewModel.DigitCommand.Execute(digit);
+	}
+
+	private async Task RefreshAsync()
+	{
+		if (ViewModel != null)
+		{
+			await ViewModel.ReloadAsync();
+			StateHasChanged();
+		}
+	}
+
+	private async Task PlaceCallAsync()
+	{
+		await ViewModel.PlaceCallAsync();
+		StateHasChanged();
+	}
+
+	private async Task CallSpecificAsync(string number)
+	{
+		await ViewModel.CallSpecificNumberAsync(number);
+		StateHasChanged();
+	}
+
+	private async Task GrantPermissionAsync()
+	{
+		await ViewModel.GrantPermissionAsync();
+		StateHasChanged();
+	}
+
+	private async Task SetDefaultAsync()
+	{
+		await ViewModel.SetDefaultAppAsync();
+		StateHasChanged();
+	}
+
+	private async Task DeleteEntryAsync(CallLogItemViewModel item)
+	{
+		await ViewModel.DeleteEntryAsync(item);
+		StateHasChanged();
+	}
+
+	private async Task ClearHistoryAsync()
+	{
+		await ViewModel.ClearHistoryAsync();
+		StateHasChanged();
+	}
+
+	public void Dispose()
+	{
+		MessengerService.Unregister<AfterResumeMessage>(this);
+		MessengerService.Unregister<PhoneCallChangedMessage>(this);
+	}
+}

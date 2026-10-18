@@ -182,6 +182,21 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Message to inform the main page that a phone/dialer intent was received, so the Phone tab
+    /// can be opened.
+    /// </summary>
+    public class PhoneIntentMessage
+    {
+    }
+
+    /// <summary>
+    /// Message to inform the Phone tab that a phone call state or call history has changed.
+    /// </summary>
+    public class PhoneCallChangedMessage
+    {
+    }
+
+    /// <summary>
     /// Enumeration of possible sources of a sent message.
     /// </summary>
     public enum MessageSender

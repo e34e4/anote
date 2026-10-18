@@ -1,0 +1,278 @@
+@using MudBlazor
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+
+@inject ILanguageService LanguageService
+
+<style type="text/css">
+	.file-root {
+		background-color: #000000;
+		min-height: calc(100vh - 168px);
+		padding: 10px;
+		color: #ffffff;
+	}
+	.file-toolbar {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 2px 4px 10px 4px;
+		border-bottom: 1px solid #202020;
+	}
+	.file-path {
+		font-family: ui-monospace, "Cascadia Code", monospace;
+		font-size: 0.85rem;
+		color: #cccccc;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		flex-grow: 1;
+	}
+	.file-btn {
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background-color: #000000;
+		color: #ffffff;
+		height: 40px;
+		padding: 0 14px;
+		font-size: 0.9rem;
+		cursor: pointer;
+		touch-action: manipulation;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.file-btn.primary {
+		border-color: var(--mud-palette-primary);
+		color: var(--mud-palette-primary);
+	}
+	.file-btn:active {
+		background-color: #1f1f1f;
+	}
+	.file-row {
+		display: flex;
+		align-items: center;
+		padding: 10px 6px;
+		border-bottom: 1px solid #202020;
+		gap: 8px;
+	}
+	.file-row-main {
+		flex-grow: 1;
+		overflow: hidden;
+		cursor: pointer;
+	}
+	.file-row-name {
+		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.file-row-meta {
+		font-size: 0.8rem;
+		color: #9e9e9e;
+	}
+	.file-overlay {
+		position: fixed;
+		z-index: 1400;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		overflow-y: auto;
+		background-color: #000000;
+		padding: 14px;
+		color: #ffffff;
+	}
+	.file-overlay-header {
+		display: flex;
+		align-items: center;
+		margin-bottom: 12px;
+	}
+	.file-overlay-title {
+		font-size: 1.15rem;
+		font-weight: 600;
+		margin-left: 4px;
+	}
+</style>
+
+<div class="file-root">
+	<div class="file-toolbar">
+		@if (ViewModel.CanNavigateUp)
+		{
+			<MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small" Color="Color.Inherit"
+				Disabled="@ViewModel.IsBusy" OnClick="NavigateUpAsync" title="@LanguageService["file_up"]" />
+		}
+		<div class="file-path" title="@ViewModel.CurrentPathDisplay">@ViewModel.CurrentPathDisplay</div>
+
+		<MudIconButton Icon="@Icons.Material.Filled.UploadFile" Size="Size.Small" Color="Color.Primary"
+			Disabled="@ViewModel.IsBusy" OnClick="UploadFileAsync" title="@LanguageService["file_upload"]" />
+		<MudIconButton Icon="@Icons.Material.Filled.CreateNewFolder" Size="Size.Small" Color="Color.Inherit"
+			Disabled="@(!ViewModel.IsConfigured || ViewModel.IsBusy)" OnClick="() => ViewModel.OpenNewFolderCommand.Execute(null)" title="@LanguageService["file_new_folder"]" />
+		<MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Color="Color.Inherit"
+			Disabled="@(!ViewModel.IsConfigured || ViewModel.IsBusy)" OnClick="RefreshAsync" title="@LanguageService["file_refresh"]" />
+		<MudIconButton Icon="@Icons.Material.Filled.Settings" Size="Size.Small" Color="Color.Inherit"
+			OnClick="() => ViewModel.OpenSettingsCommand.Execute(null)" title="@LanguageService["file_settings"]" />
+	</div>
+
+	@if (ViewModel.IsNewFolderOpen)
+	{
+		<div class="d-flex align-center gap-2 my-2">
+			<MudTextField T="string" @bind-Value="ViewModel.NewFolderName" Placeholder="@LanguageService["file_folder_name"]"
+				Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1" Immediate="true" />
+			<MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Primary" Size="Size.Small" OnClick="CreateFolderAsync" />
+			<MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="() => ViewModel.CloseOverlayCommand.Execute(null)" />
+		</div>
+	}
+
+	@if (!ViewModel.IsConfigured)
+	{
+		<div class="pa-6 text-center">
+			<MudText Class="mb-3 mud-text-secondary">@LanguageService["file_not_configured"]</MudText>
+			<button class="file-btn primary" @onclick="() => ViewModel.OpenSettingsCommand.Execute(null)">
+				<MudIcon Icon="@Icons.Material.Filled.Settings" Size="Size.Small" />
+				<span>@LanguageService["file_configure_webdav"]</span>
+			</button>
+		</div>
+	}
+	else if (ViewModel.IsBusy)
+	{
+		<div class="d-flex justify-center align-center pa-8">
+			<MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Medium" />
+			<MudText Class="ml-3">@LanguageService["file_working"]</MudText>
+		</div>
+	}
+	else if (!string.IsNullOrEmpty(ViewModel.LastError))
+	{
+		<MudAlert Severity="Severity.Warning" Dense="true" Class="my-3">
+			<div>@ViewModel.LastError</div>
+			<div class="mt-2">
+				<MudButton Size="Size.Small" Color="Color.Primary" OnClick="RefreshAsync">@LanguageService["file_retry"]</MudButton>
+				<MudButton Size="Size.Small" Color="Color.Inherit" Class="ml-2" OnClick="() => ViewModel.OpenSettingsCommand.Execute(null)">@LanguageService["file_settings"]</MudButton>
+			</div>
+		</MudAlert>
+	}
+	else if (ViewModel.IsEmpty)
+	{
+		<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["file_empty"]</MudText>
+	}
+	else if (ViewModel.HasNoMatches)
+	{
+		<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["file_no_matches"]</MudText>
+	}
+	else
+	{
+		@foreach (var item in ViewModel.FilteredItems)
+		{
+			<div class="file-row" @key="item.Name">
+				<MudIcon Icon="@(item.IsDirectory ? Icons.Material.Filled.Folder : Icons.Material.Filled.InsertDriveFile)"
+					Color="@(item.IsDirectory ? Color.Warning : Color.Secondary)" />
+
+				<div class="file-row-main" @onclick="() => OpenItemAsync(item)">
+					<div class="file-row-name">@item.Name</div>
+					<div class="file-row-meta">@item.MetaText</div>
+				</div>
+
+				@if (!item.IsDirectory)
+				{
+					<MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small"
+						OnClick="() => DownloadFileAsync(item)" title="@LanguageService["file_download"]" />
+					<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small"
+						OnClick="() => ShareFileAsync(item)" title="@LanguageService["share"]" />
+				}
+				<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+					OnClick="() => DeleteItemAsync(item)" title="@LanguageService["file_delete"]" />
+			</div>
+		}
+	}
+</div>
+
+@if (ViewModel.IsSettingsOpen)
+{
+	<div class="file-overlay">
+		<div class="file-overlay-header">
+			<MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Color="Color.Inherit"
+				OnClick="() => ViewModel.CloseOverlayCommand.Execute(null)" title="@LanguageService["back"]" />
+			<div class="file-overlay-title">@LanguageService["file_settings"]</div>
+		</div>
+
+		<MudStack Spacing="3">
+			<MudTextField T="string" @bind-Value="ViewModel.EditUrl" Label="@LanguageService["file_webdav_url"]"
+				Placeholder="https://example.com/remote.php/dav/files/user" Variant="Variant.Outlined" />
+			<MudTextField T="string" @bind-Value="ViewModel.EditFolder" Label="@LanguageService["file_webdav_folder"]"
+				Placeholder="files" Variant="Variant.Outlined" />
+			<MudTextField T="string" @bind-Value="ViewModel.EditUsername" Label="@LanguageService["cloud_username"]"
+				Variant="Variant.Outlined" />
+			<MudTextField T="string" @bind-Value="ViewModel.EditPassword" Label="@LanguageService["cloud_password"]"
+				InputType="InputType.Password" Variant="Variant.Outlined" />
+
+			<div class="d-flex justify-end gap-2 mt-2">
+				<button class="file-btn" @onclick="() => ViewModel.CloseOverlayCommand.Execute(null)">@LanguageService["cancel"]</button>
+				<button class="file-btn primary" @onclick="SaveSettingsAsync">@LanguageService["file_save_connect"]</button>
+			</div>
+		</MudStack>
+	</div>
+}
+
+@code {
+	[Parameter]
+	public FileViewModel ViewModel { get; set; }
+
+	protected override async Task OnInitializedAsync()
+	{
+		if (ViewModel != null)
+			await ViewModel.InitializeAsync();
+	}
+
+	private async Task RefreshAsync()
+	{
+		await ViewModel.RefreshAsync();
+		StateHasChanged();
+	}
+
+	private async Task UploadFileAsync()
+	{
+		await ViewModel.UploadFileAsync();
+		StateHasChanged();
+	}
+
+	private async Task NavigateUpAsync()
+	{
+		await ViewModel.NavigateUpAsync();
+		StateHasChanged();
+	}
+
+	private async Task OpenItemAsync(WebdavFileItemViewModel item)
+	{
+		await ViewModel.OpenItemAsync(item);
+		StateHasChanged();
+	}
+
+	private async Task DownloadFileAsync(WebdavFileItemViewModel item)
+	{
+		await ViewModel.DownloadFileToDeviceAsync(item);
+		StateHasChanged();
+	}
+
+	private async Task ShareFileAsync(WebdavFileItemViewModel item)
+	{
+		await ViewModel.ShareFileAsync(item);
+		StateHasChanged();
+	}
+
+	private async Task DeleteItemAsync(WebdavFileItemViewModel item)
+	{
+		await ViewModel.DeleteItemAsync(item);
+		StateHasChanged();
+	}
+
+	private async Task CreateFolderAsync()
+	{
+		await ViewModel.CreateFolderAsync();
+		StateHasChanged();
+	}
+
+	private async Task SaveSettingsAsync()
+	{
+		await ViewModel.SaveSettingsAsync();
+		StateHasChanged();
+	}
+}

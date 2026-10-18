@@ -32,6 +32,10 @@ If you want to help, please read the [contribution guidelines](CONTRIBUTING.md).
 * ✔ Show the calendars of the device with their events and reminders.
 * ✔ Alarms, a world clock, a timer and a stopwatch.
 * ✔ Read and write SMS, and act as the default SMS app.
+* ✔ Scan and create QR codes.
+* ✔ Record sound, play it back and save recordings to the device.
+* ✔ Exchange files with a WebDAV server.
+* ✔ Place calls and optionally act as the default Phone app.
 * ✔ A plain black theme, which is friendly to AMOLED displays.
 * ✔ aNote does not collect user information and requires no unnecessary privileges.
 
@@ -48,8 +52,8 @@ If you want to help, please read the [contribution guidelines](CONTRIBUTING.md).
 
 ## The tabs
 
-The app is organized in eight tabs, two rows of four buttons:
-**Notes · Clip · Booky · Phone** and **Calc · Cald · Clock · Sms**.
+The app is organized in twelve tabs across three rows:
+**Notes · Clip · Booky · Phone**, **Calc · Cald · Clock · Sms · QR**, and **Rec · File · Dialer**.
 
 ### Notes
 
@@ -142,6 +146,26 @@ To **receive** incoming messages (and to be able to store or delete messages) aN
 **default SMS app**. The button "Set as default SMS app" in the Sms tab opens the system dialog for
 that. MMS are not supported.
 
+### QR
+
+Scan QR codes with the camera, decode them from an image file, keep a history of scans, and generate
+your own QR codes from text or a link.
+
+### Rec — sound recordings
+
+Record audio with pause and resume, play recordings back, rename them, share them, or save a copy
+to `Music/Recordings` on the device. Microphone permission is requested when you start recording.
+
+### File — WebDAV exchange
+
+Browse, upload, download, create folders and delete files on a WebDAV server. Credentials can be set
+in the tab itself, or you can reuse the Booky sync WebDAV settings.
+
+### Dialer — phone app
+
+A numpad and call history to place calls. Optionally set aNote as the default Phone app so it can
+handle incoming and outgoing calls via Android's dialer role.
+
 ## Permissions and accessibility
 
 aNote asks for as little as possible, and most permissions are only requested when you actually use
@@ -154,6 +178,10 @@ the corresponding tab:
 * **Calendar** (read/write) — for the Cald tab, requested when you open it.
 * **SMS** (read/send/receive) — for the Sms tab. To receive and to delete messages aNote must be set
   as the default SMS app.
+* **Camera** — for the QR tab, requested when you scan a code.
+* **Microphone** — for the Rec tab, requested when you start a recording.
+* **Phone / call log** — for the Dialer tab (place calls, read call history). To handle incoming
+  calls aNote can be set as the default Phone app.
 * **Display over other apps** — only for the floating button overlay.
 * **Vibration / wake lock / boot completed** — to ring, vibrate and to reschedule the alarms after a
   reboot.
@@ -164,8 +192,8 @@ it can capture the URL of the page currently open in a browser so it can be used
 address for a new bookmark. It is only active while the corresponding options are switched on, and it
 can be disabled again at any time in the Android settings.
 
-aNote does not need access to your contacts, your location, the camera or the microphone, and it
-does not collect any user information.
+aNote does not need access to your contacts or your location, and it does not collect any user
+information.
 
 ## Security
 

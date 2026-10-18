@@ -163,6 +163,9 @@ public static class MauiProgram
         services.AddSingleton<IQrService>((serviceProvider) => new QrService());
         services.AddSingleton<IQrHistoryService>((serviceProvider) => new QrHistoryService(
             serviceProvider.GetService<IXmlFileService>()));
+        services.AddSingleton<IAudioRecorderService>((serviceProvider) => new AudioRecorderService());
+        services.AddSingleton<IWebdavFileService>((serviceProvider) => new WebdavFileService());
+        services.AddSingleton<IDevicePhoneService>((serviceProvider) => new DevicePhoneService());
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<ISnackbar>(),
@@ -220,6 +223,14 @@ public static class MauiProgram
         services.AddSingleton<IQrHistoryService>((serviceProvider) => new QrHistoryService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IXmlFileService>()));
+        services.AddSingleton<IAudioRecorderService>((serviceProvider) => new AudioRecorderService(
+            serviceProvider.GetService<IAppContextService>()));
+        services.AddSingleton<IWebdavFileService>((serviceProvider) => new WebdavFileService(
+            serviceProvider.GetService<IAppContextService>()));
+        services.AddSingleton<IDevicePhoneService>((serviceProvider) => new DevicePhoneService(
+            serviceProvider.GetService<IAppContextService>(),
+            serviceProvider.GetService<IRepositoryStorageService>(),
+            serviceProvider.GetService<IActivityResultAwaiter>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<IAppContextService>(),

@@ -205,6 +205,9 @@ namespace SilentNotes.Services
             settings.SerializeableBookySyncPassword = string.IsNullOrEmpty(settings.BookySyncPassword)
                 ? null
                 : EncryptProperty(settings.BookySyncPassword);
+            settings.SerializeableFileWebdavPassword = string.IsNullOrEmpty(settings.FileWebdavPassword)
+                ? null
+                : EncryptProperty(settings.FileWebdavPassword);
         }
 
         /// <summary>
@@ -217,6 +220,8 @@ namespace SilentNotes.Services
             settings.Credentials?.DecryptAfterDeserialization(DecryptProperty);
             if (!string.IsNullOrEmpty(settings.SerializeableBookySyncPassword))
                 settings.BookySyncPassword = DecryptProperty(settings.SerializeableBookySyncPassword);
+            if (!string.IsNullOrEmpty(settings.SerializeableFileWebdavPassword))
+                settings.FileWebdavPassword = DecryptProperty(settings.SerializeableFileWebdavPassword);
 
             if (!settings.RememberLastTagFilter)
                 settings.FilterTags = null;

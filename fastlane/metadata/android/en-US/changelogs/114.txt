@@ -1,0 +1,9 @@
+aNote version 1.3.8
+
+* Added a third row of tabs: Rec, File and Phone.
+* Rec: record sound with pause/resume, play it back, rename, share or save
+  recordings to Music/Recordings.
+* File: exchange files with a WebDAV server (browse, upload, download, create
+  folders, delete). Credentials can be set in the tab or reused from Booky sync.
+* Phone: numpad and call history, place calls, and optionally set aNote as the
+  default Phone app to handle incoming and outgoing calls.

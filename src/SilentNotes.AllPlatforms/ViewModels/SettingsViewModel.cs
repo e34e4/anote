@@ -42,6 +42,7 @@ namespace SilentNotes.ViewModels
         private readonly ICloudStorageClientFactory _cloudStorageClientFactory;
         private readonly IBookySyncService _bookySyncService;
         private readonly IDeviceSmsService _deviceSmsService;
+        private readonly IDevicePhoneService _devicePhoneService;
         private readonly SliderStepConverter _fontSizeConverter;
         private readonly SliderStepConverter _noteMaxHeightConverter;
         private string _defaultFontFamilyLabel;
@@ -61,7 +62,8 @@ namespace SilentNotes.ViewModels
             ICloudStorageClientFactory cloudStorageClientFactory,
             IFilePickerService filePickerService,
             IBookySyncService bookySyncService,
-            IDeviceSmsService deviceSmsService)
+            IDeviceSmsService deviceSmsService,
+            IDevicePhoneService devicePhoneService = null)
         {
             Language = languageService;
             _settingsService = settingsService;
@@ -74,6 +76,7 @@ namespace SilentNotes.ViewModels
             _filePickerService = filePickerService;
             _bookySyncService = bookySyncService;
             _deviceSmsService = deviceSmsService;
+            _devicePhoneService = devicePhoneService;
             Model = _settingsService.LoadSettingsOrDefault();
             Modifications = new ModificationDetector(() => GetModificationFingerprint(Model));
 
@@ -97,6 +100,33 @@ namespace SilentNotes.ViewModels
             OpenOverlayPermissionSettingsCommand = new RelayCommand(OpenOverlayPermissionSettings);
             SyncBookyCommand = new AsyncRelayCommand(SyncBooky);
             SetDefaultSmsAppCommand = new AsyncRelayCommand(SetDefaultSmsApp);
+            SetDefaultPhoneAppCommand = new AsyncRelayCommand(SetDefaultPhoneApp);
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether the operating system supports choosing a default Phone app.
+        /// </summary>
+        public bool CanSetDefaultPhone
+        {
+            get { return _devicePhoneService != null && _devicePhoneService.IsSupported; }
+        }
+
+        /// <summary>Gets a value indicating whether aNote is currently the default Phone app.</summary>
+        public bool IsDefaultPhoneApp
+        {
+            get { return _devicePhoneService?.IsDefaultDialerApp ?? false; }
+        }
+
+        /// <summary>Gets the command which asks the system to make aNote the default Phone app.</summary>
+        public ICommand SetDefaultPhoneAppCommand { get; }
+
+        private async Task SetDefaultPhoneApp()
+        {
+            if (_devicePhoneService == null)
+                return;
+            await _devicePhoneService.RequestPermissionsAsync();
+            await _devicePhoneService.RequestDefaultDialerAppAsync();
+            OnPropertyChanged(nameof(IsDefaultPhoneApp), nameof(CanSetDefaultPhone));
         }
 
         /// <summary>

@@ -55,6 +55,9 @@ namespace SilentNotes.Platforms
             // Check whether the app was started because an alarm is ringing.
             ConsumeClockIntent(activity.Intent);
 
+            // Check whether the app was started by a phone/dial intent or incoming call.
+            ConsumePhoneIntent(activity.Intent);
+
             // Prevent notes from being visible in list of recent apps and screenshots
             ISettingsService settingsService = Ioc.Instance.GetService<ISettingsService>();
             SettingsModel settings = settingsService.LoadSettingsOrDefault();
@@ -71,6 +74,33 @@ namespace SilentNotes.Platforms
             ConsumeSharedTextParameter(intent);
             ConsumeCalendarIntent(intent);
             ConsumeClockIntent(intent);
+            ConsumePhoneIntent(intent);
+        }
+
+        private void ConsumePhoneIntent(Intent intent)
+        {
+            if (intent == null)
+                return;
+
+            bool openPhone = intent.GetBooleanExtra(PhoneInCallService.ExtraOpenPhone, false);
+            string action = intent.Action;
+            global::Android.Net.Uri data = intent.Data;
+
+            if (openPhone)
+            {
+                intent.RemoveExtra(PhoneInCallService.ExtraOpenPhone);
+                PhoneIntentRequest.Pending = new PhoneIntentRequest();
+                Ioc.Instance.GetService<IMessengerService>()?.Send(new PhoneIntentMessage());
+                return;
+            }
+
+            if ((action == Intent.ActionDial) ||
+                ((action == Intent.ActionView) && string.Equals(data?.Scheme, "tel", StringComparison.OrdinalIgnoreCase)))
+            {
+                string number = data?.SchemeSpecificPart;
+                PhoneIntentRequest.Pending = new PhoneIntentRequest { PhoneNumber = number };
+                Ioc.Instance.GetService<IMessengerService>()?.Send(new PhoneIntentMessage());
+            }
         }
 
         /// <summary>

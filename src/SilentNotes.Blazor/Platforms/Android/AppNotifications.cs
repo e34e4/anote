@@ -24,6 +24,9 @@ namespace SilentNotes
         /// <summary>Notification id of the received message.</summary>
         public const int SmsNotificationId = 7403;
 
+        /// <summary>Notification id of an incoming or active phone call.</summary>
+        public const int CallNotificationId = 7404;
+
         /// <summary>Gets the system notification manager.</summary>
         public static NotificationManager GetManager(Context context)
         {

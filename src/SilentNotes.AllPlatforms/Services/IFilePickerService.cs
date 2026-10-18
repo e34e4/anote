@@ -42,5 +42,11 @@ namespace SilentNotes.Services
         /// </summary>
         /// <returns>Returns the content of the read file.</returns>
         Task<byte[]> ReadPickedFile();
+
+        /// <summary>
+        /// Gets the file name of the formerly picked file, or null if unavailable.
+        /// </summary>
+        /// <returns>File name with extension.</returns>
+        string GetPickedFileName();
     }
 }

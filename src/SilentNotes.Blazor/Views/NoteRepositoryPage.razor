@@ -36,12 +36,15 @@
 @inject IQrService QrService
 @inject IQrHistoryService QrHistoryService
 @inject ISharingService SharingService
+@inject IAudioRecorderService AudioRecorderService
+@inject IWebdavFileService WebdavFileService
+@inject IDevicePhoneService DevicePhoneService
 
 <style type="text/css">
 	.mud-main-content {
 		@(ThemeService.CssNoteRepositoryBackground)
 		background-attachment: fixed;
-		padding-top: 128px !important;
+		padding-top: 168px !important;
 	}
 	.app-header {
 		position: fixed;
@@ -175,6 +178,36 @@
 			</MudPaper>
 			<MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(() => _smsViewModel.ComposeNewCommand.Execute(null))" title="@LanguageService["sms_new_message"]" />
 		}
+		else if (_activeTab == 9)
+		{
+			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Style="background-color: var(--mud-palette-appbar-text)" MaxHeight="36px" Elevation="0">
+				<MudInput @bind-Value="_recViewModel.Filter"
+					Class="filter-input ml-2 mr-1 my-0"
+					Style="color: #000000"
+					Adornment="Adornment.End" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+					Immediate="true" Clearable="true" Placeholder="@LanguageService["rec_search"]" />
+			</MudPaper>
+		}
+		else if (_activeTab == 10)
+		{
+			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Style="background-color: var(--mud-palette-appbar-text)" MaxHeight="36px" Elevation="0">
+				<MudInput @bind-Value="_fileViewModel.Filter"
+					Class="filter-input ml-2 mr-1 my-0"
+					Style="color: #000000"
+					Adornment="Adornment.End" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+					Immediate="true" Clearable="true" Placeholder="@LanguageService["file_search"]" />
+			</MudPaper>
+		}
+		else if (_activeTab == 11)
+		{
+			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Style="background-color: var(--mud-palette-appbar-text)" MaxHeight="36px" Elevation="0">
+				<MudInput @bind-Value="_phoneViewModel.Filter"
+					Class="filter-input ml-2 mr-1 my-0"
+					Style="color: #000000"
+					Adornment="Adornment.End" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+					Immediate="true" Clearable="true" Placeholder="@LanguageService["dialer_search"]" />
+			</MudPaper>
+		}
 
 		<MudSpacer />
 
@@ -247,6 +280,11 @@
 		<MudButton Class="@GetTabButtonClass(6)" OnClick="@(() => SetActiveTab(6))" Variant="Variant.Text">@LanguageService["tab_clock"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(7)" OnClick="@(() => SetActiveTab(7))" Variant="Variant.Text">@LanguageService["tab_sms"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(8)" OnClick="@(() => SetActiveTab(8))" Variant="Variant.Text">@LanguageService["tab_qr"]</MudButton>
+	</div>
+	<div class="app-header-row app-header-tabs">
+		<MudButton Class="@GetTabButtonClass(9)" OnClick="@(() => SetActiveTab(9))" Variant="Variant.Text">@LanguageService["tab_rec"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(10)" OnClick="@(() => SetActiveTab(10))" Variant="Variant.Text">@LanguageService["tab_file"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(11)" OnClick="@(() => SetActiveTab(11))" Variant="Variant.Text">@LanguageService["tab_dialer"]</MudButton>
 	</div>
 </div>
 
@@ -388,10 +426,25 @@
 		@* Sms *@
 		<SmsTab ViewModel="_smsViewModel" />
 	}
-	else
+	else if (_activeTab == 8)
 	{
 		@* QR code scanner *@
 		<QrTab ViewModel="_qrViewModel" />
+	}
+	else if (_activeTab == 9)
+	{
+		@* Sound recording *@
+		<RecTab ViewModel="_recViewModel" />
+	}
+	else if (_activeTab == 10)
+	{
+		@* File exchange over WebDAV *@
+		<FileTab ViewModel="_fileViewModel" />
+	}
+	else
+	{
+		@* Phone dialer and call history *@
+		<PhoneTab ViewModel="_phoneViewModel" />
 	}
 </MudMainContent>
 
@@ -440,6 +493,9 @@
 	private ClockViewModel _clockViewModel;
 	private SmsViewModel _smsViewModel;
 	private QrViewModel _qrViewModel;
+	private RecViewModel _recViewModel;
+	private FileViewModel _fileViewModel;
+	private PhoneViewModel _phoneViewModel;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="NoteRepositoryPage"/> class.
@@ -510,6 +566,22 @@
 			ImageFileService,
 			LanguageService,
 			FeedbackService);
+		_recViewModel = new RecViewModel(
+			AudioRecorderService,
+			LanguageService,
+			FeedbackService);
+		_fileViewModel = new FileViewModel(
+			WebdavFileService,
+			SettingsService,
+			FilePickerService,
+			LanguageService,
+			FeedbackService);
+		_phoneViewModel = new PhoneViewModel(
+			DevicePhoneService,
+			noteRepositoryModel,
+			ClipboardService,
+			LanguageService,
+			FeedbackService);
 
 		// When the app was started by a calendar intent, the calendar tab is opened and shows it.
 		CalendarIntentRequest pendingCalendarIntent = CalendarIntentRequest.Pending;
@@ -529,6 +601,15 @@
 			_activeTab = 6;
 		}
 
+		// When the app was started by a dial/tel intent or incoming call, the phone tab is opened.
+		PhoneIntentRequest pendingPhoneIntent = PhoneIntentRequest.Pending;
+		if (pendingPhoneIntent != null)
+		{
+			PhoneIntentRequest.Pending = null;
+			_phoneViewModel.HandleIntent(pendingPhoneIntent);
+			_activeTab = 11;
+		}
+
 		MessengerService.Register<BringNoteIntoViewMessage>(
 			this, (recipient, message) => _pendingScrollIntoView = message);
 		MessengerService.Register<SynchronizationIsRunningChangedMessage>(
@@ -541,6 +622,8 @@
 			this, (recipient, message) => OnClockIntent());
 		MessengerService.Register<SmsChangedMessage>(
 			this, (recipient, message) => OnSmsChanged());
+		MessengerService.Register<PhoneIntentMessage>(
+			this, (recipient, message) => OnPhoneIntent());
 
 		if (loadResult == RepositoryStorageLoadResult.InvalidRepository)
 			throw new Exception("Invalid repository");
@@ -597,6 +680,7 @@
 		MessengerService.Unregister<CalendarIntentMessage>(this);
 		MessengerService.Unregister<ClockIntentMessage>(this);
 		MessengerService.Unregister<SmsChangedMessage>(this);
+		MessengerService.Unregister<PhoneIntentMessage>(this);
 	}
 
 	/// <summary>
@@ -655,6 +739,21 @@
 	{
 		_smsViewModel?.Reload();
 		InvokeAsync(StateHasChanged);
+	}
+
+	private void OnPhoneIntent()
+	{
+		InvokeAsync(() =>
+		{
+			PhoneIntentRequest request = PhoneIntentRequest.Pending;
+			if (request == null)
+				return;
+
+			PhoneIntentRequest.Pending = null;
+			_activeTab = 11;
+			_phoneViewModel?.HandleIntent(request);
+			StateHasChanged();
+		});
 	}
 
 	/// <inheritdoc/>
@@ -727,6 +826,13 @@
 		{
 			// When an overlay is open in the qr tab, the back key closes it first.
 			_qrViewModel.CloseOverlay();
+			result = true;
+			refreshNeeded = true;
+		}
+		if (!result && (_activeTab == 10) && (_fileViewModel != null) && _fileViewModel.IsAnyOverlayOpen)
+		{
+			// When an overlay is open in the file tab, the back key closes it first.
+			_fileViewModel.CloseOverlay();
 			result = true;
 			refreshNeeded = true;
 		}

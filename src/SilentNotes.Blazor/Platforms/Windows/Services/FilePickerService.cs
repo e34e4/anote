@@ -75,6 +75,12 @@ namespace SilentNotes.Platforms.Services
             }
         }
 
+        /// <inheritdoc/>
+        public string GetPickedFileName()
+        {
+            return _pickedFile?.Name;
+        }
+
         private nint GetMainWindowHandle()
         {
             return ((MauiWinUIWindow)App.Current.Windows[0].Handler.PlatformView).WindowHandle;
