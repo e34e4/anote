@@ -4,6 +4,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using System;
+using System.Linq;
+using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
 using Android.Graphics.Drawables;
@@ -33,6 +35,8 @@ namespace SilentNotes
         private static DateTime? _connectedAtUtc;
         private static bool _isMuted;
         private static bool _isSpeakerOn;
+        private static PhoneSpamEntryModel _currentCallSpam;
+        private static string _lastBlockedBanner;
 
         private CallCallback _callback;
 
@@ -66,11 +70,41 @@ namespace SilentNotes
         {
             base.OnCallAdded(call);
             _instance = this;
+            CallState state = GetCallState(call);
+            string number = ExtractNumber(call);
+
+            // Check blocklist masks (+7903*, etc.) and spam auto-blocking on incoming ringing calls
+            if (state == CallState.Ringing && !string.IsNullOrWhiteSpace(number))
+            {
+                try
+                {
+                    var spamService = Ioc.Instance.GetService<IPhoneSpamService>();
+                    if (spamService != null)
+                    {
+                        bool isContact = IsNumberInRepositoryContacts(number);
+                        IncomingCallDecision decision = spamService.EvaluateIncomingCall(number, isContact);
+                        if (decision.ShouldBlock)
+                        {
+                            _lastBlockedBanner = $"{number}: {decision.BlockReason}";
+                            call.Reject(false, null);
+                            NotifyCallChanged();
+                            return;
+                        }
+                        _currentCallSpam = decision.SpamEntry ?? spamService.LookupLocal(number);
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
+            else
+            {
+                _currentCallSpam = Ioc.Instance.GetService<IPhoneSpamService>()?.LookupLocal(number);
+            }
+
             _currentCall = call;
             _isMuted = false;
             _isSpeakerOn = false;
-
-            CallState state = GetCallState(call);
             _connectedAtUtc = (state == CallState.Active) ? DateTime.UtcNow : null;
 
             try
@@ -84,6 +118,9 @@ namespace SilentNotes
             UpdateCallNotification();
             OpenAppOnPhoneTab();
             NotifyCallChanged();
+
+            if (!string.IsNullOrWhiteSpace(number))
+                _ = LookupCallerOnlineInBackgroundAsync(call, number);
         }
 
         /// <inheritdoc/>
@@ -103,6 +140,7 @@ namespace SilentNotes
                 _connectedAtUtc = null;
                 _isMuted = false;
                 _isSpeakerOn = false;
+                _currentCallSpam = null;
             }
 
             AppNotifications.GetManager(this)?.Cancel(AppNotifications.CallNotificationId);
@@ -129,6 +167,7 @@ namespace SilentNotes
                 return null;
 
             string number = ExtractNumber(call);
+            PhoneSpamEntryModel spam = _currentCallSpam ?? Ioc.Instance.GetService<IPhoneSpamService>()?.LookupLocal(number);
             return new ActiveCallModel
             {
                 Number = number,
@@ -139,8 +178,12 @@ namespace SilentNotes
                 IsMuted = _isMuted,
                 IsSpeakerOn = _isSpeakerOn,
                 ConnectedAtUtc = _connectedAtUtc,
+                SpamSummary = spam?.SummaryText,
+                IsSpam = spam?.IsSpam ?? false,
             };
         }
+
+        internal static string LastBlockedBanner => _lastBlockedBanner;
 
         internal static void AnswerCurrentCall()
         {
@@ -249,7 +292,10 @@ namespace SilentNotes
 
                 Notification.Builder builder = AppNotifications.CreateBuilder(this, NotificationChannels.CallChannelId);
                 builder.SetContentTitle(title);
-                builder.SetContentText(FormatState(state));
+                string stateText = FormatState(state);
+                if (_currentCallSpam != null && !string.IsNullOrWhiteSpace(_currentCallSpam.SummaryText))
+                    stateText = $"{stateText} · {_currentCallSpam.SummaryText}";
+                builder.SetContentText(stateText);
                 builder.SetSmallIcon(AppNotifications.SmallIcon(this));
                 builder.SetCategory(Notification.CategoryCall);
                 builder.SetPriority((int)NotificationPriority.Max);
@@ -326,6 +372,73 @@ namespace SilentNotes
             catch (Exception)
             {
             }
+        }
+
+        private async Task LookupCallerOnlineInBackgroundAsync(Call call, string number)
+        {
+            try
+            {
+                var spamService = Ioc.Instance.GetService<IPhoneSpamService>();
+                if (spamService == null)
+                    return;
+
+                PhoneSpamEntryModel entry = await spamService.LookupOnlineAsync(number);
+                if (entry == null || !ReferenceEquals(_currentCall, call))
+                    return;
+
+                _currentCallSpam = entry;
+                if (GetCallState(call) == CallState.Ringing &&
+                    spamService.AutoBlockSpam &&
+                    entry.IsSpam &&
+                    (!spamService.SkipContactsWhenBlocking || !IsNumberInRepositoryContacts(number)))
+                {
+                    _lastBlockedBanner = $"{number}: Spam ({entry.SummaryText})";
+                    call.Reject(false, null);
+                    NotifyCallChanged();
+                    return;
+                }
+
+                UpdateCallNotification();
+                NotifyCallChanged();
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private static bool IsNumberInRepositoryContacts(string number)
+        {
+            try
+            {
+                var repoService = Ioc.Instance.GetService<IRepositoryStorageService>();
+                if (repoService == null)
+                    return false;
+                repoService.LoadRepositoryOrDefault(out NoteRepositoryModel repo);
+                if (repo?.Contacts == null)
+                    return false;
+
+                string norm = new string((number ?? string.Empty).Where(char.IsDigit).ToArray());
+                if (norm.Length > 9)
+                    norm = norm.Substring(norm.Length - 9);
+                if (string.IsNullOrEmpty(norm))
+                    return false;
+
+                foreach (ContactModel c in repo.Contacts)
+                {
+                    foreach (string p in c.Phones)
+                    {
+                        string pn = new string((p ?? string.Empty).Where(char.IsDigit).ToArray());
+                        if (pn.Length > 9)
+                            pn = pn.Substring(pn.Length - 9);
+                        if (!string.IsNullOrEmpty(pn) && pn == norm)
+                            return true;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+            return false;
         }
 
         private static CallState GetCallState(Call call)

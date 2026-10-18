@@ -1,3 +1,4 @@
+@using System.Globalization
 @using MudBlazor
 @using SilentNotes.Models
 @using SilentNotes.Services
@@ -17,17 +18,18 @@
 	.phone-toolbar {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		padding: 2px 4px 10px 4px;
+		gap: 5px;
+		padding: 2px 2px 10px 2px;
+		flex-wrap: wrap;
 	}
 	.phone-section-btn {
 		border: 1px solid #2b2b2b;
 		border-radius: 10px;
 		background-color: #000000;
 		color: #cccccc;
-		font-size: 0.85rem;
-		height: 38px;
-		padding: 0 14px;
+		font-size: 0.8rem;
+		height: 36px;
+		padding: 0 11px;
 		cursor: pointer;
 		touch-action: manipulation;
 	}
@@ -47,6 +49,13 @@
 		padding: 8px 12px;
 		margin-bottom: 10px;
 		font-size: 0.85rem;
+	}
+	.phone-card {
+		border: 1px solid #242424;
+		border-radius: 12px;
+		background-color: #090909;
+		padding: 10px 12px;
+		margin-bottom: 10px;
 	}
 	.phone-active-call {
 		border: 1px solid var(--mud-palette-primary);
@@ -188,7 +197,7 @@
 		align-items: center;
 		padding: 9px 6px;
 		border-bottom: 1px solid #202020;
-		gap: 8px;
+		gap: 6px;
 	}
 	.phone-log-main {
 		flex-grow: 1;
@@ -200,6 +209,9 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		display: flex;
+		align-items: center;
+		gap: 6px;
 	}
 	.phone-log-title.missed {
 		color: #ff5252;
@@ -207,6 +219,52 @@
 	.phone-log-meta {
 		font-size: 0.8rem;
 		color: #9e9e9e;
+	}
+	.phone-badge-spam {
+		display: inline-block;
+		background-color: #5c1010;
+		border: 1px solid #d32f2f;
+		color: #ffcdd2;
+		font-size: 0.68rem;
+		font-weight: 700;
+		padding: 1px 6px;
+		border-radius: 6px;
+	}
+	.phone-badge-blocked {
+		display: inline-block;
+		background-color: #4a2c00;
+		border: 1px solid #ff9800;
+		color: #ffe0b2;
+		font-size: 0.68rem;
+		font-weight: 700;
+		padding: 1px 6px;
+		border-radius: 6px;
+	}
+	.phone-badge-safe {
+		display: inline-block;
+		background-color: #0d3b14;
+		border: 1px solid #4caf50;
+		color: #c8e6c9;
+		font-size: 0.68rem;
+		font-weight: 700;
+		padding: 1px 6px;
+		border-radius: 6px;
+	}
+	.phone-input-box {
+		background-color: #111111;
+		border: 1px solid #2e2e2e;
+		border-radius: 8px;
+		color: #ffffff;
+		padding: 7px 10px;
+		font-size: 0.9rem;
+		width: 100%;
+		outline: none;
+	}
+	.phone-chip-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin-top: 6px;
 	}
 </style>
 
@@ -218,10 +276,14 @@
 	else
 	{
 		<div class="phone-toolbar">
-			<button class="phone-section-btn @(!ViewModel.IsHistoryView ? "active" : null)"
+			<button class="phone-section-btn @(ViewModel.IsNumpadView ? "active" : null)"
 				@onclick="() => ViewModel.ShowNumpadCommand.Execute(null)">@LanguageService["dialer_numpad"]</button>
 			<button class="phone-section-btn @(ViewModel.IsHistoryView ? "active" : null)"
 				@onclick="() => ViewModel.ShowHistoryCommand.Execute(null)">@LanguageService["dialer_history"]</button>
+			<button class="phone-section-btn @(ViewModel.IsBlocklistView ? "active" : null)"
+				@onclick="() => ViewModel.ShowBlocklistCommand.Execute(null)">@LanguageService["dialer_blocklist"] (@ViewModel.BlockRules.Count)</button>
+			<button class="phone-section-btn @(ViewModel.IsSpamDbView ? "active" : null)"
+				@onclick="() => ViewModel.ShowSpamDbCommand.Execute(null)">@LanguageService["dialer_spam_db"] (@ViewModel.SpamDatabaseStatus.LocalRecordCount)</button>
 			<MudSpacer />
 			@if (ViewModel.IsHistoryView && !ViewModel.IsEmpty)
 			{
@@ -264,6 +326,12 @@
 				{
 					<div class="phone-log-meta">@activeCall.Number</div>
 				}
+				@if (!string.IsNullOrWhiteSpace(activeCall.SpamSummary))
+				{
+					<div class="mt-1">
+						<span class="@(activeCall.IsSpam ? "phone-badge-spam" : "phone-badge-safe")">@activeCall.SpamSummary</span>
+					</div>
+				}
 				<div class="phone-call-state">@activeCall.State</div>
 				<div class="phone-call-actions">
 					@if (activeCall.IsRinging)
@@ -287,7 +355,7 @@
 			</div>
 		}
 
-		@if (!ViewModel.IsHistoryView)
+		@if (ViewModel.IsNumpadView)
 		{
 			@* Numpad view *@
 			<div class="phone-display">
@@ -296,6 +364,8 @@
 					{
 						<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
 							OnClick="() => ViewModel.CopyNumberCommand.Execute(ViewModel.DialedNumber)" title="@LanguageService["copy"]" />
+						<MudIconButton Icon="@Icons.Material.Filled.ManageSearch" Size="Size.Small" Color="Color.Info"
+							OnClick="() => CheckDialedNumberAonAsync()" title="@LanguageService["dialer_aon_check"]" />
 					}
 					<input class="phone-number-input" type="tel" @bind="ViewModel.DialedNumber" @bind:event="oninput" placeholder="@LanguageService["dialer_enter_number"]" />
 					@if (!string.IsNullOrEmpty(ViewModel.DialedNumber))
@@ -304,7 +374,20 @@
 							OnClick="() => ViewModel.BackspaceCommand.Execute(null)" title="@LanguageService["dialer_backspace"]" />
 					}
 				</div>
-				<div class="phone-matched-contact">@ViewModel.MatchedContactName</div>
+				<div class="phone-matched-contact">
+					@if (!string.IsNullOrEmpty(ViewModel.MatchedContactName))
+					{
+						<span>@ViewModel.MatchedContactName</span>
+					}
+					@if (ViewModel.DialedBlockedRule is PhoneBlockRuleModel matchedRule)
+					{
+						<span class="phone-badge-blocked ml-1">@LanguageService["dialer_blocked_badge"]: @matchedRule.Pattern</span>
+					}
+					@if (ViewModel.DialedSpamInfo is PhoneSpamEntryModel dialedSpam)
+					{
+						<span class="@(dialedSpam.IsSpam ? "phone-badge-spam" : "phone-badge-safe") ml-1">@dialedSpam.SummaryText</span>
+					}
+				</div>
 			</div>
 
 			<div class="phone-numpad">
@@ -347,7 +430,7 @@
 				}
 			}
 		}
-		else
+		else if (ViewModel.IsHistoryView)
 		{
 			@* Full Call History view *@
 			<div class="d-flex align-center justify-space-between px-1 mb-1">
@@ -370,6 +453,200 @@
 				}
 			}
 		}
+		else if (ViewModel.IsBlocklistView)
+		{
+			@* Blocklist view with mask support (+7903*, etc.) *@
+			<div class="phone-card">
+				<MudSwitch @bind-Value="ViewModel.IsBlocklistEnabled" Color="Color.Primary"
+					Label="@LanguageService["dialer_block_enable"]" />
+				<MudSwitch @bind-Value="ViewModel.AutoBlockSpam" Color="Color.Warning"
+					Label="@LanguageService["dialer_spam_auto_block"]" />
+				<MudSwitch @bind-Value="ViewModel.SkipContactsWhenBlocking" Color="Color.Secondary"
+					Label="@LanguageService["dialer_skip_contacts"]" />
+			</div>
+
+			<div class="phone-card">
+				<div class="d-flex flex-column gap-2">
+					<input class="phone-input-box" type="text" @bind="ViewModel.NewBlockPattern" @bind:event="oninput"
+						placeholder="@LanguageService["dialer_block_pattern_hint"]" />
+					<div class="d-flex align-center gap-2">
+						<input class="phone-input-box" type="text" @bind="ViewModel.NewBlockLabel" @bind:event="oninput"
+							placeholder="@LanguageService["dialer_block_label_hint"]" />
+						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+							StartIcon="@Icons.Material.Filled.Block" OnClick="AddBlockRule">
+							@LanguageService["dialer_block_add"]
+						</MudButton>
+					</div>
+					<div class="phone-chip-row">
+						<button class="phone-section-btn" @onclick='() => PresetMask("+7903*", "Билайн +7903*")'>+7903*</button>
+						<button class="phone-section-btn" @onclick='() => PresetMask("+7495*", "Москва +7495*")'>+7495*</button>
+						<button class="phone-section-btn" @onclick='() => PresetMask("+7499*", "Москва +7499*")'>+7499*</button>
+						<button class="phone-section-btn" @onclick='() => PresetMask("+7800*", "8-800*")'>+7800*</button>
+						@if (!string.IsNullOrWhiteSpace(ViewModel.DialedNumber))
+						{
+							string dialMask = PhoneViewModel.BuildPrefixMask(ViewModel.DialedNumber);
+							if (!string.IsNullOrEmpty(dialMask))
+							{
+								<button class="phone-section-btn" @onclick="() => PresetMask(dialMask, dialMask)">@dialMask</button>
+							}
+						}
+					</div>
+				</div>
+			</div>
+
+			@if (ViewModel.BlockRules.Count == 0)
+			{
+				<MudText Align="Align.Center" Class="ma-6 mud-text-secondary">@LanguageService["dialer_block_empty"]</MudText>
+			}
+			else
+			{
+				@foreach (PhoneBlockRuleModel rule in ViewModel.BlockRules)
+				{
+					<div class="phone-log-row" @key="rule.Id">
+						<MudIconButton Icon="@(rule.IsEnabled ? Icons.Material.Filled.Block : Icons.Material.Filled.RadioButtonUnchecked)"
+							Color="@(rule.IsEnabled ? Color.Warning : Color.Default)" Size="Size.Small"
+							OnClick="() => ToggleBlockRule(rule)" />
+						<div class="phone-log-main" @onclick="() => ToggleBlockRule(rule)">
+							<div class="phone-log-title">
+								<span style="font-family: ui-monospace, monospace">@rule.Pattern</span>
+								@if (!string.IsNullOrWhiteSpace(rule.Label))
+								{
+									<span class="phone-log-meta">(@rule.Label)</span>
+								}
+							</div>
+							<div class="phone-log-meta">
+								<span>Blocked: @rule.BlockedCount</span>
+								@if (rule.LastBlockedAtUtc.HasValue)
+								{
+									<span> · @rule.LastBlockedAtUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</span>
+								}
+							</div>
+						</div>
+						<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+							OnClick="() => DeleteBlockRule(rule)" title="@LanguageService["dialer_delete"]" />
+					</div>
+				}
+			}
+		}
+		else if (ViewModel.IsSpamDbView)
+		{
+			@* AGContacts / Russian AON Spam DB view *@
+			<div class="phone-card">
+				<div class="d-flex align-center justify-space-between flex-wrap gap-2">
+					<div>
+						<div style="font-weight:600; font-size:0.92rem">
+							AGContacts / Чей номер+ (callerid.mbagc.ru) &amp; RU AON
+						</div>
+						<div class="phone-log-meta">
+							<span>Local: @ViewModel.SpamDatabaseStatus.LocalRecordCount</span>
+							<span> · Shards: @ViewModel.SpamDatabaseStatus.CachedShardCount</span>
+							@if (ViewModel.SpamDatabaseStatus.RemoteTotalRecords > 0)
+							{
+								<span> · Server: @ViewModel.SpamDatabaseStatus.RemoteTotalRecords.ToString("N0", CultureInfo.InvariantCulture)</span>
+							}
+							@if (!string.IsNullOrEmpty(ViewModel.SpamDatabaseStatus.AccumulativeVersion))
+							{
+								<span> · Ver: @ViewModel.SpamDatabaseStatus.AccumulativeVersion</span>
+							}
+							@if (ViewModel.SpamDatabaseStatus.LastUpdatedUtc.HasValue)
+							{
+								<span> · Updated: @ViewModel.SpamDatabaseStatus.LastUpdatedUtc.Value.ToLocalTime().ToString("MM-dd HH:mm", CultureInfo.InvariantCulture)</span>
+							}
+						</div>
+					</div>
+					<div class="d-flex align-center gap-2">
+						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+							Disabled="@ViewModel.IsUpdatingSpamDb"
+							StartIcon="@Icons.Material.Filled.CloudDownload" OnClick="UpdateSpamDbAsync">
+							@LanguageService["dialer_spam_update"]
+						</MudButton>
+						<MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small"
+							StartIcon="@Icons.Material.Filled.UploadFile" OnClick="ImportSpamFileAsync">
+							@LanguageService["dialer_spam_import"]
+						</MudButton>
+					</div>
+				</div>
+				@if (!string.IsNullOrWhiteSpace(ViewModel.SpamUpdateProgressText))
+				{
+					<div class="phone-log-meta mt-2" style="color:#81c784">@ViewModel.SpamUpdateProgressText</div>
+				}
+				<div class="mt-2">
+					<input class="phone-input-box" type="url" @bind="ViewModel.CustomSpamSourceUrl" @bind:event="onchange"
+						placeholder="@LanguageService["dialer_spam_custom_url"]" />
+				</div>
+			</div>
+
+			@* Live Russian AON & MNP number checker (4PDA 1071145 services) *@
+			<div class="phone-card">
+				<div class="d-flex align-center gap-2">
+					<input class="phone-input-box" type="tel" @bind="ViewModel.LookupNumberInput" @bind:event="oninput"
+						placeholder="+79036189086" />
+					<MudButton Variant="Variant.Filled" Color="Color.Info" Size="Size.Small"
+						Disabled="@ViewModel.IsLookingUpNumber"
+						StartIcon="@Icons.Material.Filled.Search" OnClick="() => CheckNumberOnlineAsync(null)">
+						@LanguageService["dialer_aon_check"]
+					</MudButton>
+					<MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+						OnClick="() => MarkLookupAsSpam()">
+						@LanguageService["dialer_spam_mark"]
+					</MudButton>
+				</div>
+				<div class="phone-chip-row">
+					<button class="phone-section-btn" @onclick='() => ViewModel.OpenExternalLookup("mbagc")'>Чей номер+</button>
+					<button class="phone-section-btn" @onclick='() => ViewModel.OpenExternalLookup("zvonilime")'>zvonili.me</button>
+					<button class="phone-section-btn" @onclick='() => ViewModel.OpenExternalLookup("whocalls")'>whocalls.ru</button>
+					<button class="phone-section-btn" @onclick='() => ViewModel.OpenExternalLookup("yandex")'>Яндекс.Поиск</button>
+					<button class="phone-section-btn" @onclick='() => ViewModel.OpenExternalLookup("2gis")'>2ГИС</button>
+					<button class="phone-section-btn" @onclick='() => ViewModel.OpenExternalLookup("niir")'>НИИР MNP</button>
+				</div>
+				@if (!string.IsNullOrWhiteSpace(ViewModel.LastLookupStatusText))
+				{
+					<div class="mt-2">
+						@if (ViewModel.LastLookupResult is PhoneSpamEntryModel res)
+						{
+							<span class="@(res.IsSpam ? "phone-badge-spam" : "phone-badge-safe")">@res.SummaryText</span>
+						}
+						else
+						{
+							<span class="phone-log-meta">@ViewModel.LastLookupStatusText</span>
+						}
+					</div>
+				}
+			</div>
+
+			@if (ViewModel.FilteredSpamEntries.Count == 0)
+			{
+				<MudText Align="Align.Center" Class="ma-6 mud-text-secondary">@LanguageService["dialer_spam_empty"]</MudText>
+			}
+			else
+			{
+				@foreach (PhoneSpamEntryModel entry in ViewModel.FilteredSpamEntries)
+				{
+					<div class="phone-log-row" @key="entry.Number">
+						<span class="@(entry.IsSpam ? "phone-badge-spam" : "phone-badge-safe")">
+							@(entry.IsSpam ? LanguageService["dialer_spam_badge"] : "INFO")
+						</span>
+						<div class="phone-log-main" @onclick="() => SelectSpamEntryForLookup(entry.Number)">
+							<div class="phone-log-title">
+								<span style="font-family: ui-monospace, monospace">+@entry.Number</span>
+								@if (!string.IsNullOrWhiteSpace(entry.Category))
+								{
+									<span class="phone-log-meta">· @entry.Category</span>
+								}
+							</div>
+							<div class="phone-log-meta">
+								@entry.SummaryText
+							</div>
+						</div>
+						<MudIconButton Icon="@Icons.Material.Filled.Block" Color="Color.Warning" Size="Size.Small"
+							OnClick="() => QuickBlockFromHistory(entry.Number, entry.Category)"
+							title="@LanguageService["dialer_block_number"]" />
+						<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+							OnClick="() => RemoveSpamEntry(entry)" title="@LanguageService["dialer_delete"]" />
+					</div>
+				}
+			}
+		}
 	}
 </div>
 
@@ -387,10 +664,21 @@
 
 	private RenderFragment RenderCallLogRow(CallLogItemViewModel item) => __builder =>
 	{
+		string prefixMask = PhoneViewModel.BuildPrefixMask(item.Number);
 		<div class="phone-log-row" @key="item.Model.Id">
 			<MudIcon Icon="@GetDirectionIcon(item.Direction)" Color="@(item.IsMissed ? Color.Error : Color.Secondary)" Size="Size.Small" />
 			<div class="phone-log-main" @onclick="() => ViewModel.FillNumberCommand.Execute(item.Number)">
-				<div class="phone-log-title @(item.IsMissed ? "missed" : null)">@item.Title</div>
+				<div class="phone-log-title @(item.IsMissed ? "missed" : null)">
+					<span>@item.Title</span>
+					@if (item.IsBlocked)
+					{
+						<span class="phone-badge-blocked">@LanguageService["dialer_blocked_badge"]</span>
+					}
+					@if (item.SpamInfo != null)
+					{
+						<span class="@(item.IsSpam ? "phone-badge-spam" : "phone-badge-safe")">@item.SpamInfo.Category</span>
+					}
+				</div>
 				<div class="phone-log-meta">
 					@if (!string.IsNullOrEmpty(item.Subtitle))
 					{
@@ -401,8 +689,23 @@
 					{
 						<span> · @item.DurationText</span>
 					}
+					@if (item.SpamInfo != null && !string.IsNullOrWhiteSpace(item.SpamInfo.SummaryText))
+					{
+						<span> · @item.SpamInfo.SummaryText</span>
+					}
 				</div>
 			</div>
+			<MudIconButton Icon="@Icons.Material.Filled.ManageSearch" Color="Color.Info" Size="Size.Small"
+				OnClick="() => CheckNumberOnlineAsync(item.Number)" title="@LanguageService["dialer_aon_check"]" />
+			@if (!string.IsNullOrEmpty(prefixMask))
+			{
+				<MudIconButton Icon="@Icons.Material.Filled.FilterAlt" Color="Color.Warning" Size="Size.Small"
+					OnClick="() => QuickBlockPrefix(item.Number)"
+					title="@LanguageService.LoadTextFmt("dialer_block_prefix", prefixMask)" />
+			}
+			<MudIconButton Icon="@Icons.Material.Filled.Block" Color="Color.Error" Size="Size.Small"
+				OnClick="() => QuickBlockFromHistory(item.Number, item.SpamInfo?.Category)"
+				title="@LanguageService["dialer_block_number"]" />
 			<MudIconButton Icon="@Icons.Material.Filled.Call" Color="Color.Success" Size="Size.Small"
 				OnClick="() => CallSpecificAsync(item.Number)" title="@LanguageService["contact_call"]" />
 			<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
@@ -424,6 +727,86 @@
 	private void Press(string digit)
 	{
 		ViewModel.DigitCommand.Execute(digit);
+	}
+
+	private void AddBlockRule()
+	{
+		ViewModel.AddBlockRuleFromInputs();
+		StateHasChanged();
+	}
+
+	private void PresetMask(string pattern, string label)
+	{
+		ViewModel.NewBlockPattern = pattern;
+		ViewModel.NewBlockLabel = label;
+		ViewModel.AddBlockRuleFromInputs();
+		StateHasChanged();
+	}
+
+	private void ToggleBlockRule(PhoneBlockRuleModel rule)
+	{
+		ViewModel.ToggleBlockRule(rule);
+		StateHasChanged();
+	}
+
+	private void DeleteBlockRule(PhoneBlockRuleModel rule)
+	{
+		ViewModel.DeleteBlockRule(rule);
+		StateHasChanged();
+	}
+
+	private void QuickBlockFromHistory(string number, string label)
+	{
+		ViewModel.QuickBlockNumber(number, label);
+		StateHasChanged();
+	}
+
+	private void QuickBlockPrefix(string number)
+	{
+		ViewModel.QuickBlockPrefix(number);
+		StateHasChanged();
+	}
+
+	private async Task UpdateSpamDbAsync()
+	{
+		await ViewModel.UpdateSpamDatabaseAsync(() => InvokeAsync(StateHasChanged));
+		StateHasChanged();
+	}
+
+	private async Task ImportSpamFileAsync()
+	{
+		await ViewModel.ImportSpamFileAsync();
+		StateHasChanged();
+	}
+
+	private async Task CheckDialedNumberAonAsync()
+	{
+		await ViewModel.CheckNumberOnlineAsync(ViewModel.DialedNumber);
+		StateHasChanged();
+	}
+
+	private async Task CheckNumberOnlineAsync(string number)
+	{
+		await ViewModel.CheckNumberOnlineAsync(number);
+		StateHasChanged();
+	}
+
+	private void MarkLookupAsSpam()
+	{
+		ViewModel.MarkNumberAsSpam(ViewModel.LookupNumberInput);
+		StateHasChanged();
+	}
+
+	private void SelectSpamEntryForLookup(string number)
+	{
+		ViewModel.LookupNumberInput = "+" + number;
+		StateHasChanged();
+	}
+
+	private void RemoveSpamEntry(PhoneSpamEntryModel entry)
+	{
+		ViewModel.RemoveSpamEntry(entry);
+		StateHasChanged();
 	}
 
 	private async Task RefreshAsync()

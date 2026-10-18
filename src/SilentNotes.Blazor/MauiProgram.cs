@@ -119,6 +119,8 @@ public static class MauiProgram
         services.AddSingleton<IInternetStateService>((serviceProvider) => new InternetStateService());
         services.AddSingleton<ISafeKeyService>((serviceProvider) => new SafeKeyService());
         services.AddSingleton<IFontService>((serviceProvider) => new FontService());
+        services.AddSingleton<IPhoneSpamService>((serviceProvider) => new PhoneSpamService(
+            serviceProvider.GetService<ISettingsService>()));
 
         // Scoped services (some Blazor services like NavigationManager or IJSRuntime are scoped)
         // Workaround: It seems that scoped services are recreated when gotten from Ioc, therefore

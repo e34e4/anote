@@ -39,6 +39,7 @@
 @inject IAudioRecorderService AudioRecorderService
 @inject IWebdavFileService WebdavFileService
 @inject IDevicePhoneService DevicePhoneService
+@inject IPhoneSpamService PhoneSpamService
 
 <style type="text/css">
 	.mud-main-content {
@@ -578,6 +579,9 @@
 			FeedbackService);
 		_phoneViewModel = new PhoneViewModel(
 			DevicePhoneService,
+			PhoneSpamService,
+			FilePickerService,
+			NativeBrowserService,
 			noteRepositoryModel,
 			ClipboardService,
 			LanguageService,

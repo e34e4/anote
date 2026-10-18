@@ -70,5 +70,11 @@ namespace SilentNotes.Models
 
         /// <summary>Gets or sets the UTC time when the call became active, if connected.</summary>
         public DateTime? ConnectedAtUtc { get; set; }
+
+        /// <summary>Gets or sets the caller ID / spam summary from the spam database or AON lookup.</summary>
+        public string SpamSummary { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether the caller is flagged as spam.</summary>
+        public bool IsSpam { get; set; }
     }
 }

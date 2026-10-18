@@ -74,6 +74,10 @@ namespace SilentNotes.Models
             QrVibrateOnScan = true;
             QrAutoCopyToClipboard = false;
             QrKeepHistory = true;
+            PhoneBlocklistEnabled = true;
+            PhoneAutoBlockSpam = false;
+            PhoneSkipContactsWhenBlocking = true;
+            PhoneCustomSpamUrl = string.Empty;
         }
 
         /// <summary>
@@ -472,6 +476,33 @@ namespace SilentNotes.Models
         {
             get { return !string.IsNullOrEmpty(SerializeableFileWebdavPassword); }
         }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether incoming calls matching the Phone blocklist
+        /// (including wildcard masks like +7903*) are automatically rejected.
+        /// </summary>
+        [XmlElement("phone_blocklist_enabled")]
+        public bool PhoneBlocklistEnabled { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether incoming calls flagged as negative/spam in the
+        /// spam database are automatically rejected.
+        /// </summary>
+        [XmlElement("phone_auto_block_spam")]
+        public bool PhoneAutoBlockSpam { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether numbers present in the repository contacts are
+        /// exempt from automatic blocking.
+        /// </summary>
+        [XmlElement("phone_skip_contacts_when_blocking")]
+        public bool PhoneSkipContactsWhenBlocking { get; set; }
+
+        /// <summary>
+        /// Gets or sets an optional custom URL (TXT/CSV/XML) to include when updating the spam database.
+        /// </summary>
+        [XmlElement("phone_custom_spam_url")]
+        public string PhoneCustomSpamUrl { get; set; }
 
         /// <summary>
         /// Gets a value indicating whether a cloud storage is set.
