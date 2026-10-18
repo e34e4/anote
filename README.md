@@ -36,6 +36,9 @@ If you want to help, please read the [contribution guidelines](CONTRIBUTING.md).
 * ✔ Record sound, play it back and save recordings to the device.
 * ✔ Exchange files with a WebDAV server.
 * ✔ Place calls and optionally act as the default Phone app.
+* ✔ Take photos in JPG, PNG or WEBP format with a configurable quality percentage (1–100%).
+* ✔ Act as the default system browser (URLCheck mode) to inspect, clean and route links to any installed browser.
+* ✔ Floating button quick menu for all tabs, system keyboard switching, and customizable directional swipe / long-press / double-click app launcher gestures.
 * ✔ A plain black theme, which is friendly to AMOLED displays.
 * ✔ aNote does not collect user information and requires no unnecessary privileges.
 
@@ -52,8 +55,8 @@ If you want to help, please read the [contribution guidelines](CONTRIBUTING.md).
 
 ## The tabs
 
-The app is organized in twelve tabs across three rows:
-**Notes · Clip · Booky · Phone**, **Calc · Cald · Clock · Sms · QR**, and **Rec · File · Dialer**.
+The app is organized in thirteen tabs across three rows:
+**Notes · Clip · Booky · Phone**, **Calc · Cald · Clock · Sms · QR**, and **Rec · File · Dialer · Camera**.
 
 ### Notes
 

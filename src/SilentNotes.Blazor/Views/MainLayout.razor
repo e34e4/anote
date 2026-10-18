@@ -94,6 +94,13 @@
 		MessengerService.Register<AfterResumeMessage>(
 			this, (recipient, message) => EnvironmentService.ClipboardMonitor?.CaptureNow());
 
+		MessengerService.Register<TabIntentMessage>(
+			this, (recipient, message) => InvokeAsync(() =>
+			{
+				if (TabIntentRequest.Pending != null)
+					NavigationService.NavigateTo(RouteNames.NoteRepository);
+			}));
+
 		SettingsModel settings = SettingsService.LoadSettingsOrDefault();
 		if (settings.AlwaysEnglish)
 			(LanguageService as ILanguageTestService)?.SetAlwaysEnglish(true);
@@ -172,5 +179,6 @@
 	{
 		MessengerService.Unregister<RedrawMainPageMessage>(this);
 		MessengerService.Unregister<AfterResumeMessage>(this);
+		MessengerService.Unregister<TabIntentMessage>(this);
 	}
 }

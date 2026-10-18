@@ -6,3 +6,12 @@ aNote version 1.3.9
   callerid.mbagc.ru LZMA protobuf shards and Russian spam sources) plus live
   Russian AON and MNP lookup (zvonili.me, whocalls.ru, voprosoff.net,
   zvonili.com, callfilter.app, voxlink, htmlweb, Яндекс.Поиск, 2ГИС, НИИР).
+* Camera: added a Camera tab in the third row with live viewfinder, lens/flash/zoom
+  controls, and selectable photo format (JPG, PNG, WEBP) and quality (1-100%).
+* Browser / URLCheck: added ability to set aNote as the default system browser
+  to inspect, clean tracking parameters, unshorten, and open clicked links in
+  any installed browser.
+* Floating button: tapping opens a quick menu of all aNote tabs plus a system
+  Keyboard Switcher button; configurable swipe up/down/left/right, long press,
+  and double click gestures can launch any installed app.
+

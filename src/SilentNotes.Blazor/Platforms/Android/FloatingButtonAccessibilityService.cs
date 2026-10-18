@@ -9,31 +9,31 @@ using System.Linq;
 using Android.AccessibilityServices;
 using Android.App;
 using Android.Content;
+using Android.Content.PM;
 using Android.Graphics;
-using Android.Net;
+using Android.Graphics.Drawables;
 using Android.OS;
 using Android.Runtime;
 using Android.Views;
 using Android.Views.Accessibility;
+using Android.Views.InputMethods;
 using Android.Widget;
 using Microsoft.Extensions.DependencyInjection;
 using SilentNotes.Models;
 using SilentNotes.Platforms.Services;
 using SilentNotes.Services;
 using SilentNotes.Workers;
+using Color = Android.Graphics.Color;
+using Orientation = Android.Widget.Orientation;
 
 namespace SilentNotes.Platforms
 {
     /// <summary>
     /// An accessibility service which draws a small floating button on top of other applications.
-    /// The button can be dragged around and opens the application when tapped.
+    /// Tapping the button opens a popup grid menu of all aNote tabs plus a Keyboard Switcher button.
+    /// Swiping up/down/left/right, long-pressing, or double-clicking the button executes user-configured
+    /// app launches or built-in actions.
     /// </summary>
-    /// <remarks>
-    /// The overlay is drawn with the window type <see cref="WindowManagerTypes.AccessibilityOverlay"/>
-    /// which is granted together with the accessibility permission, so no SYSTEM_ALERT_WINDOW
-    /// permission is required. Android does not allow to enable an accessibility service
-    /// programmatically, the user has to enable it in the system settings.
-    /// </remarks>
     [Service(
         Exported = true,
         Label = "aNote",
@@ -42,12 +42,34 @@ namespace SilentNotes.Platforms
     [MetaData("android.accessibilityservice", Resource = "@xml/accessibility_service_config")]
     public class FloatingButtonAccessibilityService : AccessibilityService
     {
+        /// <summary>Intent extra specifying which zero-based tab index to open in MainActivity.</summary>
+        public const string ExtraOpenTab = "aNoteOpenTab";
+
         private const string PreferencesName = "anote_floating_button";
         private const string PreferenceKeyX = "x";
         private const string PreferenceKeyY = "y";
         private const string LogTag = "aNoteFloating";
         private const int LongPressDelayMs = 600;
+        private const int DoubleTapTimeoutMs = 260;
+        private const int SwipeMaxDurationMs = 480;
         private const int SelectionMaxAgeSeconds = 120;
+
+        private static readonly (int Index, string Icon, string Key, string Fallback)[] TabDefinitions = new[]
+        {
+            (0, "📝", "tab_notes", "Notes"),
+            (1, "📋", "tab_clipboard", "Clip"),
+            (2, "🔖", "tab_booky", "Booky"),
+            (3, "👤", "tab_phone", "Contacts"),
+            (4, "🧮", "tab_calc", "Calc"),
+            (5, "📅", "tab_cald", "Cald"),
+            (6, "⏰", "tab_clock", "Clock"),
+            (7, "💬", "tab_sms", "Sms"),
+            (8, "🔳", "tab_qr", "QR"),
+            (9, "🎙️", "tab_rec", "Rec"),
+            (10, "📁", "tab_file", "File"),
+            (11, "📞", "tab_dialer", "Dialer"),
+            (12, "📷", "tab_camera", "Camera"),
+        };
 
         private static readonly string[] BrowserPackages = new[]
         {
@@ -77,6 +99,7 @@ namespace SilentNotes.Platforms
         private IWindowManager _windowManager;
         private ImageView _overlayView;
         private WindowManagerLayoutParams _overlayParams;
+        private global::Android.Views.View _menuOverlayView;
         private bool _captureEnabled;
 
         private IServiceProvider _serviceProvider;
@@ -126,19 +149,12 @@ namespace SilentNotes.Platforms
         /// Enables or disables the capture of the browser url. Called when the user changes the
         /// setting while the service is already connected.
         /// </summary>
-        /// <param name="enabled">True to capture the browser url.</param>
         internal void SetCaptureEnabled(bool enabled)
         {
             _captureEnabled = enabled;
             BrowserUrlTracker.CaptureEnabled = enabled;
         }
 
-        /// <summary>
-        /// Obtains the Android window manager from the service context. The returned system service
-        /// is only a generic <see cref="Java.Lang.Object"/>, so it must be wrapped explicitly as
-        /// <see cref="IWindowManager"/>.
-        /// </summary>
-        /// <returns>The window manager, or null if it could not be resolved.</returns>
         private IWindowManager ResolveWindowManager()
         {
             try
@@ -164,13 +180,8 @@ namespace SilentNotes.Platforms
             if (e == null)
                 return;
 
-            // Remember the last text selection, because many applications (e.g. web pages) do not
-            // expose the selection through their accessibility nodes.
             RememberTextSelection(e);
 
-            // Besides drawing the floating button, the service can remember the url of the page
-            // which is currently open in a supported browser, so it can be used as the default url
-            // when a bookmark is created.
             if (!_captureEnabled)
                 return;
 
@@ -181,14 +192,6 @@ namespace SilentNotes.Platforms
             RefreshFromPackage(packageName);
         }
 
-        /// <summary>
-        /// Remembers the text which was selected last, using the accessibility selection events.
-        /// </summary>
-        /// <remarks>
-        /// The selection is deliberately not cleared when windows change, because showing the
-        /// selection toolbar itself already produces such events, which would discard the selection
-        /// before the user can long press the floating button.
-        /// </remarks>
         private void RememberTextSelection(AccessibilityEvent e)
         {
             try
@@ -216,9 +219,6 @@ namespace SilentNotes.Platforms
             }
         }
 
-        /// <summary>
-        /// Gets the text which was selected most recently, or null if there was no recent selection.
-        /// </summary>
         private string GetRecentSelection()
         {
             if (string.IsNullOrEmpty(_lastSelectionText))
@@ -237,6 +237,7 @@ namespace SilentNotes.Platforms
         public override bool OnUnbind(Intent intent)
         {
             StopClipboardCapture();
+            HideMenuOverlay();
             HideOverlay();
             Instance = null;
             BrowserUrlTracker.ServiceEnabled = false;
@@ -248,6 +249,7 @@ namespace SilentNotes.Platforms
         public override void OnDestroy()
         {
             StopClipboardCapture();
+            HideMenuOverlay();
             HideOverlay();
             Instance = null;
             BrowserUrlTracker.ServiceEnabled = false;
@@ -255,10 +257,6 @@ namespace SilentNotes.Platforms
             base.OnDestroy();
         }
 
-        /// <summary>
-        /// Starts or stops the clipboard capture, according to the persisted setting. Called when
-        /// the service connects.
-        /// </summary>
         private void RefreshClipboardSettings()
         {
             if (ShouldMonitorClipboard())
@@ -267,11 +265,6 @@ namespace SilentNotes.Platforms
                 StopClipboardCapture();
         }
 
-        /// <summary>
-        /// Enables or disables the clipboard capture. Called by the application when the user
-        /// changes the setting, because the service keeps its own copy of the settings.
-        /// </summary>
-        /// <param name="enabled">True to capture clipboard changes, false to stop capturing.</param>
         internal void SetClipboardMonitoringEnabled(bool enabled)
         {
             if (enabled)
@@ -294,8 +287,6 @@ namespace SilentNotes.Platforms
                 _clipboardCapture = new ClipboardCapture(this, GetServiceProvider());
                 _clipboardListener = new ClipboardChangedListener(() => _clipboardCapture?.CaptureCurrentClip());
                 _clipboardManager.AddPrimaryClipChangedListener(_clipboardListener);
-
-                // Read the current clip once, so the history is seeded immediately.
                 _clipboardCapture.CaptureCurrentClip();
             }
             catch (Exception ex)
@@ -319,11 +310,6 @@ namespace SilentNotes.Platforms
             _clipboardListener = null;
         }
 
-        /// <summary>
-        /// Captures the text which is currently selected in the focused field of the active
-        /// application and stores it in the clipboard history. This is triggered by a long press on
-        /// the floating button.
-        /// </summary>
         internal void CaptureSelectedText()
         {
             string text = ReadSelectedText();
@@ -350,12 +336,6 @@ namespace SilentNotes.Platforms
             }
         }
 
-        /// <summary>
-        /// Reads the text which is currently selected in the active application. The text and its
-        /// selection are read from the accessibility tree, so the clipboard is not involved and the
-        /// other application keeps the focus.
-        /// </summary>
-        /// <returns>The selected text, or null if no text is selected.</returns>
         private string ReadSelectedText()
         {
             try
@@ -383,9 +363,6 @@ namespace SilentNotes.Platforms
             }
         }
 
-        /// <summary>
-        /// Searches the accessibility tree for the node which contains a text selection.
-        /// </summary>
         private static AccessibilityNodeInfo FindNodeWithSelection(AccessibilityNodeInfo node, int depth)
         {
             if ((node == null) || (depth > 30))
@@ -405,9 +382,6 @@ namespace SilentNotes.Platforms
             return null;
         }
 
-        /// <summary>
-        /// Listener which is notified by the clipboard manager whenever the clipboard changes.
-        /// </summary>
         private class ClipboardChangedListener : Java.Lang.Object, ClipboardManager.IOnPrimaryClipChangedListener
         {
             private readonly System.Action _callback;
@@ -496,7 +470,6 @@ namespace SilentNotes.Platforms
                 if (!string.IsNullOrEmpty(url))
                     return url;
 
-                // The omnibox sometimes shows the host without a scheme while browsing https.
                 if (LooksLikeHostPath(normalized))
                     return "https://" + normalized;
             }
@@ -607,6 +580,7 @@ namespace SilentNotes.Platforms
         /// </summary>
         internal void HideOverlay()
         {
+            HideMenuOverlay();
             if (_overlayView == null || _windowManager == null)
                 return;
 
@@ -623,33 +597,355 @@ namespace SilentNotes.Platforms
         }
 
         /// <summary>
-        /// Reads the persisted setting, whether the floating button should be shown.
+        /// Toggles the popup grid menu containing buttons for all aNote tabs and the Keyboard Switcher.
         /// </summary>
-        /// <returns>True if the floating button should be shown.</returns>
+        internal void ToggleMenuOverlay()
+        {
+            if (_menuOverlayView != null)
+                HideMenuOverlay();
+            else
+                ShowMenuOverlay();
+        }
+
+        internal void ShowMenuOverlay()
+        {
+            if (_menuOverlayView != null || _windowManager == null)
+                return;
+
+            try
+            {
+                float density = Resources.DisplayMetrics.Density;
+                ILanguageService language = GetServiceProvider()?.GetService<ILanguageService>();
+
+                var backdrop = new FrameLayout(this);
+                backdrop.SetBackgroundColor(Color.ParseColor("#66000000"));
+                backdrop.Click += (s, e) => HideMenuOverlay();
+
+                var card = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Vertical,
+                    Clickable = true,
+                };
+                int cardPad = (int)(12 * density);
+                card.SetPadding(cardPad, cardPad, cardPad, cardPad);
+
+                var cardBg = new GradientDrawable();
+                cardBg.SetColor(Color.ParseColor("#EE101010"));
+                cardBg.SetCornerRadius(16 * density);
+                cardBg.SetStroke((int)(1.5f * density), Color.ParseColor("#3A3A3A"));
+                card.Background = cardBg;
+
+                // Header row: Title + Close button
+                var headerRow = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Horizontal,
+                };
+                headerRow.SetGravity(GravityFlags.CenterVertical);
+                headerRow.SetPadding((int)(4 * density), 0, (int)(4 * density), (int)(8 * density));
+
+                var titleView = new TextView(this)
+                {
+                    Text = "aNote Quick Menu",
+                    TextSize = 14f,
+                };
+                titleView.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+                titleView.SetTextColor(Color.White);
+                headerRow.AddView(titleView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+                var closeBtn = new TextView(this)
+                {
+                    Text = "✕",
+                    TextSize = 14f,
+                    Gravity = GravityFlags.Center,
+                };
+                closeBtn.SetTextColor(Color.ParseColor("#BDBDBD"));
+                int closePad = (int)(6 * density);
+                closeBtn.SetPadding(closePad, (int)(2 * density), closePad, (int)(2 * density));
+                closeBtn.Click += (s, e) => HideMenuOverlay();
+                headerRow.AddView(closeBtn);
+                card.AddView(headerRow);
+
+                // Grid of 13 tab buttons + 1 Keyboard Switcher button (4 columns)
+                const int columns = 4;
+                var allButtons = new List<(string Icon, string Label, System.Action OnClick, bool IsAccent)>();
+
+                foreach (var tab in TabDefinitions)
+                {
+                    int tabIdx = tab.Index;
+                    string label = language?[tab.Key];
+                    if (string.IsNullOrWhiteSpace(label) || label == tab.Key)
+                        label = tab.Fallback;
+                    allButtons.Add((tab.Icon, label, () =>
+                    {
+                        HideMenuOverlay();
+                        OpenApplicationAtTab(tabIdx);
+                    }, false));
+                }
+
+                // Keyboard Switcher button (Kunzisoft KeyboardSwitcher functionality)
+                string kbLabel = language?["floating_menu_keyboard"];
+                if (string.IsNullOrWhiteSpace(kbLabel) || kbLabel == "floating_menu_keyboard")
+                    kbLabel = "Keyboard";
+                allButtons.Add(("⌨️", kbLabel, () =>
+                {
+                    HideMenuOverlay();
+                    ShowKeyboardSwitcher();
+                }, true));
+
+                for (int i = 0; i < allButtons.Count; i += columns)
+                {
+                    var row = new LinearLayout(this)
+                    {
+                        Orientation = Orientation.Horizontal,
+                    };
+
+                    for (int col = 0; col < columns; col++)
+                    {
+                        int idx = i + col;
+                        var cellParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+                        int margin = (int)(3 * density);
+                        cellParams.SetMargins(margin, margin, margin, margin);
+
+                        if (idx < allButtons.Count)
+                        {
+                            var item = allButtons[idx];
+                            global::Android.Views.View btnView = CreateMenuGridButton(item.Icon, item.Label, item.IsAccent, item.OnClick, density);
+                            row.AddView(btnView, cellParams);
+                        }
+                        else
+                        {
+                            row.AddView(new global::Android.Views.View(this), cellParams);
+                        }
+                    }
+
+                    card.AddView(row, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+                }
+
+                int cardWidth = (int)(Math.Min(Resources.DisplayMetrics.WidthPixels * 0.90f, 340 * density));
+                var cardParams = new FrameLayout.LayoutParams(
+                    cardWidth,
+                    ViewGroup.LayoutParams.WrapContent,
+                    GravityFlags.Center);
+                backdrop.AddView(card, cardParams);
+
+                var menuLayoutParams = new WindowManagerLayoutParams(
+                    ViewGroup.LayoutParams.MatchParent,
+                    ViewGroup.LayoutParams.MatchParent,
+                    WindowManagerTypes.AccessibilityOverlay,
+                    WindowManagerFlags.NotFocusable | WindowManagerFlags.LayoutInScreen,
+                    Format.Translucent)
+                {
+                    Gravity = GravityFlags.Center,
+                };
+
+                _menuOverlayView = backdrop;
+                _windowManager.AddView(_menuOverlayView, menuLayoutParams);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not show floating menu overlay: " + ex);
+                _menuOverlayView = null;
+            }
+        }
+
+        internal void HideMenuOverlay()
+        {
+            if (_menuOverlayView == null || _windowManager == null)
+                return;
+
+            try
+            {
+                _windowManager.RemoveView(_menuOverlayView);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not hide floating menu overlay: " + ex);
+            }
+            _menuOverlayView = null;
+        }
+
+        private global::Android.Views.View CreateMenuGridButton(
+            string icon,
+            string label,
+            bool isAccent,
+            System.Action onClick,
+            float density)
+        {
+            var box = new LinearLayout(this)
+            {
+                Orientation = Orientation.Vertical,
+            };
+            box.SetGravity(GravityFlags.Center);
+            int padV = (int)(8 * density);
+            int padH = (int)(4 * density);
+            box.SetPadding(padH, padV, padH, padV);
+
+            var bg = new GradientDrawable();
+            bg.SetCornerRadius(10 * density);
+            bg.SetColor(Color.ParseColor(isAccent ? "#1E293B" : "#1C1C1C"));
+            bg.SetStroke((int)(1 * density), Color.ParseColor(isAccent ? "#38BDF8" : "#2E2E2E"));
+            box.Background = bg;
+
+            var iconTv = new TextView(this)
+            {
+                Text = icon,
+                TextSize = 18f,
+                Gravity = GravityFlags.Center,
+            };
+            box.AddView(iconTv);
+
+            var labelTv = new TextView(this)
+            {
+                Text = label,
+                TextSize = 11f,
+                Gravity = GravityFlags.Center,
+            };
+            labelTv.SetSingleLine(true);
+            labelTv.SetTextColor(Color.ParseColor(isAccent ? "#38BDF8" : "#FFFFFF"));
+            box.AddView(labelTv);
+
+            box.Click += (s, e) => onClick?.Invoke();
+            return box;
+        }
+
+        /// <summary>
+        /// Displays the system keyboard switcher dialog (like Kunzisoft's KeyboardSwitcher app).
+        /// </summary>
+        internal void ShowKeyboardSwitcher()
+        {
+            try
+            {
+                // First attempt direct InputMethodManager call, then open KeyboardSwitcherActivity
+                // which acquires foreground window focus required on Android 9+ to show the picker.
+                var imm = GetSystemService(InputMethodService) as InputMethodManager;
+                imm?.ShowInputMethodPicker();
+            }
+            catch (Exception)
+            {
+            }
+
+            try
+            {
+                var intent = new Intent(this, typeof(KeyboardSwitcherActivity));
+                intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.ClearTop | ActivityFlags.NoAnimation);
+                StartActivity(intent);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not launch KeyboardSwitcherActivity: " + ex);
+            }
+        }
+
+        /// <summary>
+        /// Executes a gesture action configured in Settings (swipe up/down/left/right, long press,
+        /// or double click).
+        /// </summary>
+        internal bool ExecuteConfiguredGesture(string actionValue)
+        {
+            if (string.IsNullOrWhiteSpace(actionValue) || string.Equals(actionValue, ":none", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            string trimmed = actionValue.Trim();
+            try
+            {
+                if (string.Equals(trimmed, ":capture_text", StringComparison.OrdinalIgnoreCase))
+                {
+                    CaptureSelectedText();
+                    return true;
+                }
+                if (string.Equals(trimmed, ":open_anote", StringComparison.OrdinalIgnoreCase))
+                {
+                    OpenApplication();
+                    return true;
+                }
+                if (string.Equals(trimmed, ":show_menu", StringComparison.OrdinalIgnoreCase))
+                {
+                    ToggleMenuOverlay();
+                    return true;
+                }
+                if (string.Equals(trimmed, ":keyboard_switcher", StringComparison.OrdinalIgnoreCase))
+                {
+                    ShowKeyboardSwitcher();
+                    return true;
+                }
+                if (trimmed.StartsWith(":tab:", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (int.TryParse(trimmed.Substring(":tab:".Length), out int tabIdx))
+                    {
+                        OpenApplicationAtTab(tabIdx);
+                        return true;
+                    }
+                }
+
+                return LaunchInstalledApp(trimmed);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not execute gesture action '" + trimmed + "': " + ex);
+                return false;
+            }
+        }
+
+        private bool LaunchInstalledApp(string packageName)
+        {
+            try
+            {
+                PackageManager pm = PackageManager;
+                if (pm == null)
+                    return false;
+
+                Intent launchIntent = pm.GetLaunchIntentForPackage(packageName);
+                if (launchIntent == null)
+                {
+                    var queryIntent = new Intent(Intent.ActionMain, null);
+                    queryIntent.AddCategory(Intent.CategoryLauncher);
+                    queryIntent.SetPackage(packageName);
+                    #pragma warning disable CS0618
+                    IList<ResolveInfo> matches = pm.QueryIntentActivities(queryIntent, 0);
+                    #pragma warning restore CS0618
+                    ActivityInfo act = matches?.FirstOrDefault()?.ActivityInfo;
+                    if (act != null)
+                    {
+                        launchIntent = new Intent(Intent.ActionMain);
+                        launchIntent.AddCategory(Intent.CategoryLauncher);
+                        launchIntent.SetComponent(new ComponentName(act.PackageName, act.Name));
+                    }
+                }
+
+                if (launchIntent == null)
+                {
+                    Toast.MakeText(this, "Cannot launch " + packageName, ToastLength.Short)?.Show();
+                    return false;
+                }
+
+                launchIntent.AddFlags(ActivityFlags.NewTask);
+                StartActivity(launchIntent);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Failed to launch app " + packageName + ": " + ex);
+                return false;
+            }
+        }
+
         private bool ShouldShowFloatingButton()
         {
             return LoadSettings()?.ShowFloatingButton ?? false;
         }
 
-        /// <summary>
-        /// Reads the persisted setting, whether the browser url should be captured.
-        /// </summary>
-        /// <returns>True if the browser url should be captured.</returns>
         private bool ShouldCaptureBrowserUrl()
         {
             return LoadSettings()?.BookyUrlCaptureEnabled ?? false;
         }
 
-        /// <summary>
-        /// Reads the persisted setting, whether the clipboard should be monitored.
-        /// </summary>
-        /// <returns>True if the clipboard should be monitored.</returns>
         private bool ShouldMonitorClipboard()
         {
             return LoadSettings()?.ClipboardMonitoringEnabled ?? false;
         }
 
-        private SettingsModel LoadSettings()
+        internal SettingsModel LoadSettings()
         {
             try
             {
@@ -662,11 +958,6 @@ namespace SilentNotes.Platforms
             }
         }
 
-        /// <summary>
-        /// Gets a service provider for the service. The service can run independently of the
-        /// application, so it builds its own service provider once.
-        /// </summary>
-        /// <returns>The service provider, or null if it could not be built.</returns>
         private IServiceProvider GetServiceProvider()
         {
             if (_serviceProvider != null)
@@ -689,11 +980,6 @@ namespace SilentNotes.Platforms
             }
         }
 
-        /// <summary>
-        /// Brings the application to the foreground. Because the service is not an activity, the
-        /// intent needs the NewTask flag. The MainActivity uses the SingleTask launch mode, so an
-        /// already running instance is reused.
-        /// </summary>
         private void OpenApplication()
         {
             Intent intent = new Intent(this, typeof(MainActivity));
@@ -701,8 +987,17 @@ namespace SilentNotes.Platforms
             StartActivity(intent);
         }
 
+        internal void OpenApplicationAtTab(int tabIndex)
+        {
+            Intent intent = new Intent(this, typeof(MainActivity));
+            intent.PutExtra(ExtraOpenTab, tabIndex);
+            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop);
+            StartActivity(intent);
+        }
+
         /// <summary>
-        /// Handles dragging of the floating button and opening the application on a tap.
+        /// Handles single tap (popup menu), double click, long press, directional swipes
+        /// (up/down/left/right), and dragging of the floating button.
         /// </summary>
         private class OverlayTouchListener : Java.Lang.Object, global::Android.Views.View.IOnTouchListener
         {
@@ -711,9 +1006,12 @@ namespace SilentNotes.Platforms
             private float _touchStartRawY;
             private int _paramsStartX;
             private int _paramsStartY;
+            private long _downTimestampMs;
             private bool _isDragging;
             private bool _longPressFired;
             private System.Action _longPressAction;
+            private System.Action _singleTapAction;
+            private long _lastTapUpTimeMs;
             private float _touchSlop;
 
             public OverlayTouchListener(FloatingButtonAccessibilityService service)
@@ -721,11 +1019,6 @@ namespace SilentNotes.Platforms
                 _service = service;
             }
 
-            /// <summary>
-            /// Gets the movement which is tolerated while holding the button, before the gesture is
-            /// treated as a drag. Uses the system touch slop (a real finger always drifts a little),
-            /// doubled to make it comfortable to hold the button for a long press.
-            /// </summary>
             private float GetTouchSlop(global::Android.Views.View view)
             {
                 if (_touchSlop <= 0f)
@@ -733,7 +1026,6 @@ namespace SilentNotes.Platforms
                 return _touchSlop;
             }
 
-            /// <inheritdoc/>
             public bool OnTouch(global::Android.Views.View view, MotionEvent motionEvent)
             {
                 switch (motionEvent.ActionMasked)
@@ -743,6 +1035,7 @@ namespace SilentNotes.Platforms
                         _touchStartRawY = motionEvent.RawY;
                         _paramsStartX = _service._overlayParams.X;
                         _paramsStartY = _service._overlayParams.Y;
+                        _downTimestampMs = SystemClock.UptimeMillis();
                         _isDragging = false;
                         _longPressFired = false;
                         ScheduleLongPress();
@@ -769,10 +1062,17 @@ namespace SilentNotes.Platforms
                     case MotionEventActions.Up:
                         CancelLongPress();
                         if (_longPressFired)
-                            return true; // The long press already captured the selected text.
+                            return true;
 
                         if (_isDragging)
                         {
+                            float totalDx = motionEvent.RawX - _touchStartRawX;
+                            float totalDy = motionEvent.RawY - _touchStartRawY;
+                            long durationMs = SystemClock.UptimeMillis() - _downTimestampMs;
+
+                            if (TryHandleSwipeGesture(view, totalDx, totalDy, durationMs))
+                                return true;
+
                             var preferences = _service.GetSharedPreferences(PreferencesName, FileCreationMode.Private);
                             preferences.Edit()
                                 .PutInt(PreferenceKeyX, _service._overlayParams.X)
@@ -781,7 +1081,7 @@ namespace SilentNotes.Platforms
                         }
                         else
                         {
-                            _service.OpenApplication();
+                            HandleTap();
                         }
                         return true;
 
@@ -794,13 +1094,93 @@ namespace SilentNotes.Platforms
                 }
             }
 
+            private bool TryHandleSwipeGesture(global::Android.Views.View view, float dx, float dy, long durationMs)
+            {
+                if (durationMs > SwipeMaxDurationMs)
+                    return false;
+
+                float density = _service.Resources.DisplayMetrics.Density;
+                float minSwipeDistance = 28f * density;
+                float absX = Math.Abs(dx);
+                float absY = Math.Abs(dy);
+                if (Math.Max(absX, absY) < minSwipeDistance)
+                    return false;
+
+                SettingsModel settings = _service.LoadSettings();
+                if (settings == null)
+                    return false;
+
+                string configuredAction = null;
+                if (absX >= absY)
+                {
+                    configuredAction = dx > 0
+                        ? settings.FloatingGestureSwipeRight
+                        : settings.FloatingGestureSwipeLeft;
+                }
+                else
+                {
+                    configuredAction = dy > 0
+                        ? settings.FloatingGestureSwipeDown
+                        : settings.FloatingGestureSwipeUp;
+                }
+
+                if (string.IsNullOrWhiteSpace(configuredAction) ||
+                    string.Equals(configuredAction, ":none", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                // Snap the floating button back to its position before the swipe gesture
+                _service._overlayParams.X = _paramsStartX;
+                _service._overlayParams.Y = _paramsStartY;
+                _service._windowManager.UpdateViewLayout(view, _service._overlayParams);
+
+                return _service.ExecuteConfiguredGesture(configuredAction);
+            }
+
+            private void HandleTap()
+            {
+                SettingsModel settings = _service.LoadSettings();
+                string doubleClickAction = settings?.FloatingGestureDoubleClick;
+                bool hasDoubleClick = !string.IsNullOrWhiteSpace(doubleClickAction) &&
+                    !string.Equals(doubleClickAction, ":none", StringComparison.OrdinalIgnoreCase);
+
+                if (!hasDoubleClick)
+                {
+                    _service.ToggleMenuOverlay();
+                    return;
+                }
+
+                long now = SystemClock.UptimeMillis();
+                if ((now - _lastTapUpTimeMs) <= DoubleTapTimeoutMs && _singleTapAction != null)
+                {
+                    CancelSingleTap();
+                    _lastTapUpTimeMs = 0;
+                    _service.ExecuteConfiguredGesture(doubleClickAction);
+                    return;
+                }
+
+                _lastTapUpTimeMs = now;
+                CancelSingleTap();
+                _singleTapAction = () =>
+                {
+                    _singleTapAction = null;
+                    _service.ToggleMenuOverlay();
+                };
+                _service._gestureHandler?.PostDelayed(_singleTapAction, DoubleTapTimeoutMs);
+            }
+
             private void ScheduleLongPress()
             {
                 CancelLongPress();
                 _longPressAction = () =>
                 {
                     _longPressFired = true;
-                    _service.CaptureSelectedText();
+                    SettingsModel settings = _service.LoadSettings();
+                    string longPressAction = settings?.FloatingGestureLongPress;
+                    if (string.IsNullOrWhiteSpace(longPressAction))
+                        longPressAction = ":capture_text";
+                    _service.ExecuteConfiguredGesture(longPressAction);
                 };
                 _service._gestureHandler?.PostDelayed(_longPressAction, LongPressDelayMs);
             }
@@ -811,6 +1191,15 @@ namespace SilentNotes.Platforms
                 {
                     _service._gestureHandler?.RemoveCallbacks(_longPressAction);
                     _longPressAction = null;
+                }
+            }
+
+            private void CancelSingleTap()
+            {
+                if (_singleTapAction != null)
+                {
+                    _service._gestureHandler?.RemoveCallbacks(_singleTapAction);
+                    _singleTapAction = null;
                 }
             }
         }

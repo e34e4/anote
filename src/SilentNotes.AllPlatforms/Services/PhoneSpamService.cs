@@ -14,7 +14,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using Microsoft.Maui.Storage;
 using SilentNotes.Models;
 
 namespace SilentNotes.Services
@@ -1621,7 +1620,7 @@ namespace SilentNotes.Services
 
                 try
                 {
-                    string rulesPath = Path.Combine(FileSystem.AppDataDirectory, BlocklistFileName);
+                    string rulesPath = Path.Combine(GetAppDataDirectoryPath(), BlocklistFileName);
                     if (File.Exists(rulesPath))
                     {
                         var loaded = JsonSerializer.Deserialize<List<PhoneBlockRuleModel>>(File.ReadAllText(rulesPath));
@@ -1635,7 +1634,7 @@ namespace SilentNotes.Services
 
                 try
                 {
-                    string dbPath = Path.Combine(FileSystem.AppDataDirectory, SpamDbFileName);
+                    string dbPath = Path.Combine(GetAppDataDirectoryPath(), SpamDbFileName);
                     if (File.Exists(dbPath))
                     {
                         var loaded = JsonSerializer.Deserialize<List<PhoneSpamEntryModel>>(File.ReadAllText(dbPath));
@@ -1655,7 +1654,7 @@ namespace SilentNotes.Services
 
                 try
                 {
-                    string metaPath = Path.Combine(FileSystem.AppDataDirectory, SpamMetaFileName);
+                    string metaPath = Path.Combine(GetAppDataDirectoryPath(), SpamMetaFileName);
                     if (File.Exists(metaPath))
                     {
                         var loadedMeta = JsonSerializer.Deserialize<PhoneSpamDatabaseStatus>(File.ReadAllText(metaPath));
@@ -1673,7 +1672,7 @@ namespace SilentNotes.Services
         {
             try
             {
-                string rulesPath = Path.Combine(FileSystem.AppDataDirectory, BlocklistFileName);
+                string rulesPath = Path.Combine(GetAppDataDirectoryPath(), BlocklistFileName);
                 File.WriteAllText(rulesPath, JsonSerializer.Serialize(_blockRules));
             }
             catch (Exception)
@@ -1685,14 +1684,14 @@ namespace SilentNotes.Services
         {
             try
             {
-                string dbPath = Path.Combine(FileSystem.AppDataDirectory, SpamDbFileName);
+                string dbPath = Path.Combine(GetAppDataDirectoryPath(), SpamDbFileName);
                 List<PhoneSpamEntryModel> list = _spamEntries.Values
                     .OrderByDescending(e => e.UpdatedAtUtc)
                     .Take(25000)
                     .ToList();
                 File.WriteAllText(dbPath, JsonSerializer.Serialize(list));
 
-                string metaPath = Path.Combine(FileSystem.AppDataDirectory, SpamMetaFileName);
+                string metaPath = Path.Combine(GetAppDataDirectoryPath(), SpamMetaFileName);
                 File.WriteAllText(metaPath, JsonSerializer.Serialize(_status));
             }
             catch (Exception)
@@ -1700,9 +1699,17 @@ namespace SilentNotes.Services
             }
         }
 
+        private static string GetAppDataDirectoryPath()
+        {
+            string dir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrEmpty(dir))
+                dir = Path.GetTempPath();
+            return dir;
+        }
+
         private static string GetShardDirectoryPath()
         {
-            return Path.Combine(FileSystem.AppDataDirectory, OcidbShardFolderName);
+            return Path.Combine(GetAppDataDirectoryPath(), OcidbShardFolderName);
         }
 
         private static string SanitizeShardFileName(string prefix)

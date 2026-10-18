@@ -58,6 +58,9 @@ namespace SilentNotes.Platforms
             // Check whether the app was started by a phone/dial intent or incoming call.
             ConsumePhoneIntent(activity.Intent);
 
+            // Check whether the app was started from the floating button menu to open a specific tab.
+            ConsumeTabIntent(activity.Intent);
+
             // Prevent notes from being visible in list of recent apps and screenshots
             ISettingsService settingsService = Ioc.Instance.GetService<ISettingsService>();
             SettingsModel settings = settingsService.LoadSettingsOrDefault();
@@ -75,6 +78,21 @@ namespace SilentNotes.Platforms
             ConsumeCalendarIntent(intent);
             ConsumeClockIntent(intent);
             ConsumePhoneIntent(intent);
+            ConsumeTabIntent(intent);
+        }
+
+        private void ConsumeTabIntent(Intent intent)
+        {
+            if (intent == null || !intent.HasExtra(FloatingButtonAccessibilityService.ExtraOpenTab))
+                return;
+
+            int tabIndex = intent.GetIntExtra(FloatingButtonAccessibilityService.ExtraOpenTab, -1);
+            intent.RemoveExtra(FloatingButtonAccessibilityService.ExtraOpenTab);
+            if (tabIndex < 0)
+                return;
+
+            TabIntentRequest.Pending = new TabIntentRequest { TabIndex = tabIndex };
+            Ioc.Instance.GetService<IMessengerService>()?.Send(new TabIntentMessage());
         }
 
         private void ConsumePhoneIntent(Intent intent)

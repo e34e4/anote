@@ -1,0 +1,394 @@
+@using MudBlazor
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+@implements IDisposable
+
+@inject ILanguageService LanguageService
+@inject IMessengerService MessengerService
+
+<style type="text/css">
+	.cam-root {
+		background-color: #000000;
+		min-height: calc(100vh - 168px);
+		padding: 10px;
+		color: #ffffff;
+	}
+	.cam-card {
+		border: 1px solid #2b2b2b;
+		border-radius: 14px;
+		background-color: #0d0d0d;
+		padding: 14px;
+		margin-bottom: 12px;
+	}
+	.cam-section-label {
+		font-size: 0.78rem;
+		color: #9e9e9e;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin-bottom: 6px;
+	}
+	.cam-format-row {
+		display: flex;
+		gap: 8px;
+		margin-bottom: 14px;
+	}
+	.cam-fmt-btn {
+		flex: 1 1 0;
+		height: 42px;
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background-color: #000000;
+		color: #bdbdbd;
+		font-size: 0.95rem;
+		font-weight: 700;
+		cursor: pointer;
+		touch-action: manipulation;
+	}
+	.cam-fmt-btn.active {
+		border-color: var(--mud-palette-primary);
+		color: #ffffff;
+		background-color: #161616;
+	}
+	.cam-quality-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 4px;
+	}
+	.cam-quality-val {
+		font-family: ui-monospace, "Cascadia Code", monospace;
+		font-weight: 700;
+		color: var(--mud-palette-primary);
+		font-size: 1rem;
+	}
+	.cam-presets-row {
+		display: flex;
+		gap: 6px;
+		flex-wrap: wrap;
+		margin-top: 4px;
+		margin-bottom: 10px;
+	}
+	.cam-preset-chip {
+		border: 1px solid #2b2b2b;
+		border-radius: 8px;
+		background-color: #000000;
+		color: #bdbdbd;
+		font-size: 0.78rem;
+		padding: 4px 10px;
+		cursor: pointer;
+	}
+	.cam-preset-chip.active {
+		border-color: var(--mud-palette-primary);
+		color: var(--mud-palette-primary);
+	}
+	.cam-options-row {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		padding-top: 8px;
+		border-top: 1px solid #1f1f1f;
+	}
+	.cam-opt-btn {
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background-color: #000000;
+		color: #ffffff;
+		height: 38px;
+		padding: 0 12px;
+		font-size: 0.85rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		cursor: pointer;
+	}
+	.cam-actions-row {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+		margin-bottom: 14px;
+	}
+	.cam-shutter-btn {
+		flex: 2 1 180px;
+		height: 54px;
+		border: 1px solid var(--mud-palette-primary);
+		border-radius: 12px;
+		background-color: #101010;
+		color: var(--mud-palette-primary);
+		font-size: 1.05rem;
+		font-weight: 700;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		cursor: pointer;
+		touch-action: manipulation;
+	}
+	.cam-shutter-btn:active {
+		background-color: #1f1f1f;
+	}
+	.cam-secondary-btn {
+		flex: 1 1 120px;
+		height: 54px;
+		border: 1px solid #2b2b2b;
+		border-radius: 12px;
+		background-color: #080808;
+		color: #ffffff;
+		font-size: 0.9rem;
+		font-weight: 600;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		cursor: pointer;
+		touch-action: manipulation;
+	}
+	.cam-photo-row {
+		border: 1px solid #202020;
+		border-radius: 12px;
+		background-color: #0a0a0a;
+		padding: 10px;
+		margin-bottom: 8px;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+	.cam-thumb {
+		width: 64px;
+		height: 64px;
+		border-radius: 8px;
+		object-fit: cover;
+		background-color: #161616;
+		flex-shrink: 0;
+		cursor: pointer;
+	}
+	.cam-photo-main {
+		flex-grow: 1;
+		overflow: hidden;
+		cursor: pointer;
+	}
+	.cam-photo-title {
+		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.cam-photo-meta {
+		font-size: 0.78rem;
+		color: #9e9e9e;
+		margin-top: 2px;
+	}
+	.cam-badge {
+		display: inline-block;
+		padding: 1px 6px;
+		border-radius: 5px;
+		font-size: 0.7rem;
+		font-weight: 700;
+		background-color: #1e293b;
+		color: #38bdf8;
+		margin-right: 4px;
+	}
+</style>
+
+<div class="cam-root">
+	@if (!ViewModel.IsSupported)
+	{
+		<MudAlert Severity="Severity.Info" Dense="true">@LanguageService["camera_not_supported"]</MudAlert>
+	}
+	else
+	{
+		@if (ViewModel.NeedsPermission)
+		{
+			<MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+				<span>@LanguageService["camera_needs_permission"]</span>
+				<MudButton Size="Size.Small" Color="Color.Primary" Class="ml-2" OnClick="GrantPermissionAsync">@LanguageService["camera_grant"]</MudButton>
+			</MudAlert>
+		}
+
+		<div class="cam-card">
+			<div class="cam-section-label">@LanguageService["camera_format_label"]</div>
+			<div class="cam-format-row">
+				<button class="cam-fmt-btn @(ViewModel.PhotoFormat == "jpg" ? "active" : null)" @onclick="@(() => ViewModel.SelectFormat("jpg"))">JPG</button>
+				<button class="cam-fmt-btn @(ViewModel.PhotoFormat == "png" ? "active" : null)" @onclick="@(() => ViewModel.SelectFormat("png"))">PNG</button>
+				<button class="cam-fmt-btn @(ViewModel.PhotoFormat == "webp" ? "active" : null)" @onclick="@(() => ViewModel.SelectFormat("webp"))">WEBP</button>
+			</div>
+
+			<div class="cam-quality-header">
+				<span class="cam-section-label" style="margin-bottom:0;">@LanguageService["camera_quality_label"]</span>
+				<span class="cam-quality-val">@(ViewModel.PhotoQuality)%</span>
+			</div>
+			<MudSlider T="int" @bind-Value="ViewModel.PhotoQuality" Min="1" Max="100" Step="1" Color="Color.Primary" />
+
+			<div class="cam-presets-row">
+				@foreach (int preset in new[] { 25, 50, 75, 85, 90, 95, 100 })
+				{
+					<button class="cam-preset-chip @(ViewModel.PhotoQuality == preset ? "active" : null)" @onclick="@(() => ViewModel.SelectQualityPreset(preset))">@(preset)%</button>
+				}
+			</div>
+
+			<div class="cam-options-row">
+				<div style="display:flex; gap:6px; flex-wrap:wrap;">
+					<button class="cam-opt-btn" @onclick="() => ViewModel.ToggleLensCommand.Execute(null)">
+						<MudIcon Icon="@Icons.Material.Filled.Cameraswitch" Size="Size.Small" />
+						<span>@(ViewModel.UseFrontLens ? LanguageService["camera_lens_front"] : LanguageService["camera_lens_back"])</span>
+					</button>
+					<button class="cam-opt-btn" @onclick="() => ViewModel.CycleFlashModeCommand.Execute(null)">
+						<MudIcon Icon="@Icons.Material.Filled.FlashOn" Size="Size.Small" />
+						<span>@ViewModel.FlashModeLabel</span>
+					</button>
+				</div>
+				<MudSwitch T="bool" @bind-Value="ViewModel.AutoSaveToGallery" Color="Color.Primary" Label="@LanguageService["camera_auto_save_gallery"]" Dense="true" />
+			</div>
+		</div>
+
+		<div class="cam-actions-row">
+			<button class="cam-shutter-btn" disabled="@ViewModel.IsBusy" @onclick="TakePhotoAsync">
+				<MudIcon Icon="@Icons.Material.Filled.PhotoCamera" />
+				<span>@LanguageService["camera_take_photo"] (@ViewModel.PhotoFormat.ToUpperInvariant() @(ViewModel.PhotoQuality)%)</span>
+			</button>
+			<button class="cam-secondary-btn" disabled="@ViewModel.IsBusy" @onclick="TakeSystemPhotoAsync" title="@LanguageService["camera_system_camera"]">
+				<MudIcon Icon="@Icons.Material.Filled.CameraAlt" Size="Size.Small" />
+				<span>@LanguageService["camera_system_camera"]</span>
+			</button>
+			<button class="cam-secondary-btn" disabled="@ViewModel.IsBusy" @onclick="ConvertImageAsync" title="@LanguageService["camera_convert_image"]">
+				<MudIcon Icon="@Icons.Material.Filled.Transform" Size="Size.Small" />
+				<span>@LanguageService["camera_convert_image"]</span>
+			</button>
+		</div>
+
+		<div style="display:flex; align-items:center; justify-content:space-between; padding: 2px 4px 8px 4px;">
+			<MudText Typo="Typo.caption" Class="mud-text-secondary">@ViewModel.CountText</MudText>
+		</div>
+
+		@if (ViewModel.IsEmpty)
+		{
+			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["camera_empty"]</MudText>
+		}
+		else if (ViewModel.HasNoMatches)
+		{
+			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["camera_no_matches"]</MudText>
+		}
+		else
+		{
+			@foreach (var item in ViewModel.FilteredPhotos)
+			{
+				<div class="cam-photo-row" @key="item.FileName">
+					@if (ViewModel.IsRenaming(item))
+					{
+						<MudTextField T="string" @bind-Value="ViewModel.DraftNewName" Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1" Immediate="true" />
+						<MudIconButton Icon="@Icons.Material.Filled.Save" Color="Color.Primary" Size="Size.Small" OnClick="() => ViewModel.SaveRenameCommand.Execute(null)" />
+						<MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="() => ViewModel.CancelRenameCommand.Execute(null)" />
+					}
+					else
+					{
+						@if (!string.IsNullOrEmpty(item.ThumbnailDataUrl))
+						{
+							<img class="cam-thumb" src="@item.ThumbnailDataUrl" alt="@item.DisplayTitle" @onclick="() => OpenPhotoAsync(item)" />
+						}
+						else
+						{
+							<div class="cam-thumb" style="display:flex;align-items:center;justify-content:center;" @onclick="() => OpenPhotoAsync(item)">
+								<MudIcon Icon="@Icons.Material.Filled.Image" Color="Color.Secondary" />
+							</div>
+						}
+
+						<div class="cam-photo-main" @onclick="() => OpenPhotoAsync(item)">
+							<div class="cam-photo-title">@item.DisplayTitle</div>
+							<div class="cam-photo-meta">
+								<span class="cam-badge">@item.FormatBadge @item.QualityText</span>
+								@if (!string.IsNullOrEmpty(item.DimensionsText))
+								{
+									<span>@item.DimensionsText · </span>
+								}
+								<span>@item.SizeText · @item.DateText</span>
+							</div>
+						</div>
+
+						<MudIconButton Icon="@Icons.Material.Filled.Transform" Size="Size.Small" OnClick="() => ReencodePhotoAsync(item)" title="@LanguageService["camera_reencode"]" />
+						<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => ViewModel.StartRenameCommand.Execute(item)" title="@LanguageService["camera_rename"]" />
+						<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="() => SaveToGalleryAsync(item)" title="@LanguageService["camera_save_gallery"]" />
+						<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" OnClick="() => SharePhotoAsync(item)" title="@LanguageService["share"]" />
+						<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => DeletePhotoAsync(item)" title="@LanguageService["camera_delete"]" />
+					}
+				</div>
+			}
+		}
+	}
+</div>
+
+@code {
+	[Parameter]
+	public CameraViewModel ViewModel { get; set; }
+
+	protected override void OnInitialized()
+	{
+		if (ViewModel != null)
+			ViewModel.StateChanged += OnViewModelStateChanged;
+		MessengerService.Register<AfterResumeMessage>(this, (r, m) => InvokeAsync(() => { ViewModel?.Reload(); StateHasChanged(); }));
+	}
+
+	private void OnViewModelStateChanged()
+	{
+		InvokeAsync(StateHasChanged);
+	}
+
+	private async Task GrantPermissionAsync()
+	{
+		await ViewModel.GrantPermissionAsync();
+		StateHasChanged();
+	}
+
+	private async Task TakePhotoAsync()
+	{
+		await ViewModel.TakePhotoAsync();
+		StateHasChanged();
+	}
+
+	private async Task TakeSystemPhotoAsync()
+	{
+		await ViewModel.TakeSystemPhotoAsync();
+		StateHasChanged();
+	}
+
+	private async Task ConvertImageAsync()
+	{
+		await ViewModel.ConvertImageAsync();
+		StateHasChanged();
+	}
+
+	private async Task ReencodePhotoAsync(CameraPhotoItemViewModel item)
+	{
+		await ViewModel.ReencodePhotoAsync(item);
+		StateHasChanged();
+	}
+
+	private async Task OpenPhotoAsync(CameraPhotoItemViewModel item)
+	{
+		await ViewModel.OpenPhotoAsync(item);
+	}
+
+	private async Task SaveToGalleryAsync(CameraPhotoItemViewModel item)
+	{
+		await ViewModel.SaveToGalleryAsync(item);
+		StateHasChanged();
+	}
+
+	private async Task SharePhotoAsync(CameraPhotoItemViewModel item)
+	{
+		await ViewModel.SharePhotoAsync(item);
+	}
+
+	private async Task DeletePhotoAsync(CameraPhotoItemViewModel item)
+	{
+		await ViewModel.DeletePhotoAsync(item);
+		StateHasChanged();
+	}
+
+	public void Dispose()
+	{
+		if (ViewModel != null)
+			ViewModel.StateChanged -= OnViewModelStateChanged;
+		MessengerService.Unregister<AfterResumeMessage>(this);
+	}
+}

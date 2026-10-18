@@ -168,6 +168,7 @@ public static class MauiProgram
         services.AddSingleton<IAudioRecorderService>((serviceProvider) => new AudioRecorderService());
         services.AddSingleton<IWebdavFileService>((serviceProvider) => new WebdavFileService());
         services.AddSingleton<IDevicePhoneService>((serviceProvider) => new DevicePhoneService());
+        services.AddSingleton<ICameraService>((serviceProvider) => new CameraService());
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<ISnackbar>(),
@@ -197,9 +198,10 @@ public static class MauiProgram
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IXmlFileService>(),
             serviceProvider.GetService<IDataProtectionService>()));
-        services.AddSingleton<INativeBrowserService>((serviceProvider) => new NativeBrowserService(
-            serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<IActivityResultAwaiter>((ServiceProvider) => new ActivityResultAwaiter());
+        services.AddSingleton<INativeBrowserService>((serviceProvider) => new NativeBrowserService(
+            serviceProvider.GetService<IAppContextService>(),
+            serviceProvider.GetService<IActivityResultAwaiter>()));
         services.AddSingleton<IFolderPickerService>((serviceProvider) => new FolderPickerService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IActivityResultAwaiter>()));
@@ -232,6 +234,9 @@ public static class MauiProgram
         services.AddSingleton<IDevicePhoneService>((serviceProvider) => new DevicePhoneService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IRepositoryStorageService>(),
+            serviceProvider.GetService<IActivityResultAwaiter>()));
+        services.AddSingleton<ICameraService>((serviceProvider) => new CameraService(
+            serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IActivityResultAwaiter>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(

@@ -20,6 +20,7 @@
 @inject IBookySyncService BookySyncService
 @inject IDeviceSmsService DeviceSmsService
 @inject IDevicePhoneService DevicePhoneService
+@inject INativeBrowserService NativeBrowserService
 @inject ISynchronizationService SynchronizationService
 @inject IJSRuntime JSRuntime
 @inject INavigationService Navigation
@@ -284,10 +285,59 @@
 					<div>
 						<MudSwitch @bind-Value="@ViewModel.ShowFloatingButton"
 							Label="@LanguageService["gui_show_floating_button"]" Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
-						<MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AccessibilityNew"
-							OnClick="@(() => ViewModel.OpenAccessibilitySettingsCommand.Execute(null))">
-							@LanguageService["gui_open_accessibility_settings"]
-						</MudButton>
+						<MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
+							<MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AccessibilityNew"
+								OnClick="@(() => ViewModel.OpenAccessibilitySettingsCommand.Execute(null))">
+								@LanguageService["gui_open_accessibility_settings"]
+							</MudButton>
+							<MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Keyboard"
+								OnClick="@(() => ViewModel.ShowKeyboardSwitcherCommand.Execute(null))">
+								@LanguageService["floating_menu_keyboard"]
+							</MudButton>
+						</MudStack>
+					</div>
+
+					<div><MudIcon Icon="@Icons.Material.Filled.Swipe" Color="Color.Secondary" /></div>
+					<div>
+						<MudText Typo="Typo.subtitle2" Class="mb-2">@LanguageService["gui_floating_gestures"]</MudText>
+						<MudStack Spacing="2">
+							<MudSelect T="string" Label="@LanguageService["gui_floating_gesture_swipe_up"]" @bind-Value="ViewModel.FloatingGestureSwipeUp" Variant="Variant.Outlined" Margin="Margin.Dense">
+								@foreach (var item in ViewModel.FloatingGestureOptions)
+								{
+									<MudSelectItem T="string" Value="@item.Value">@item.Description</MudSelectItem>
+								}
+							</MudSelect>
+							<MudSelect T="string" Label="@LanguageService["gui_floating_gesture_swipe_down"]" @bind-Value="ViewModel.FloatingGestureSwipeDown" Variant="Variant.Outlined" Margin="Margin.Dense">
+								@foreach (var item in ViewModel.FloatingGestureOptions)
+								{
+									<MudSelectItem T="string" Value="@item.Value">@item.Description</MudSelectItem>
+								}
+							</MudSelect>
+							<MudSelect T="string" Label="@LanguageService["gui_floating_gesture_swipe_right"]" @bind-Value="ViewModel.FloatingGestureSwipeRight" Variant="Variant.Outlined" Margin="Margin.Dense">
+								@foreach (var item in ViewModel.FloatingGestureOptions)
+								{
+									<MudSelectItem T="string" Value="@item.Value">@item.Description</MudSelectItem>
+								}
+							</MudSelect>
+							<MudSelect T="string" Label="@LanguageService["gui_floating_gesture_swipe_left"]" @bind-Value="ViewModel.FloatingGestureSwipeLeft" Variant="Variant.Outlined" Margin="Margin.Dense">
+								@foreach (var item in ViewModel.FloatingGestureOptions)
+								{
+									<MudSelectItem T="string" Value="@item.Value">@item.Description</MudSelectItem>
+								}
+							</MudSelect>
+							<MudSelect T="string" Label="@LanguageService["gui_floating_gesture_long_press"]" @bind-Value="ViewModel.FloatingGestureLongPress" Variant="Variant.Outlined" Margin="Margin.Dense">
+								@foreach (var item in ViewModel.FloatingGestureOptions)
+								{
+									<MudSelectItem T="string" Value="@item.Value">@item.Description</MudSelectItem>
+								}
+							</MudSelect>
+							<MudSelect T="string" Label="@LanguageService["gui_floating_gesture_double_click"]" @bind-Value="ViewModel.FloatingGestureDoubleClick" Variant="Variant.Outlined" Margin="Margin.Dense">
+								@foreach (var item in ViewModel.FloatingGestureOptions)
+								{
+									<MudSelectItem T="string" Value="@item.Value">@item.Description</MudSelectItem>
+								}
+							</MudSelect>
+						</MudStack>
 					</div>
 				}
 				@* Clipboard monitoring (uses the Android accessibility service) *@
@@ -464,6 +514,25 @@
 				</div>
 			}
 
+			@if (ViewModel.CanSetDefaultBrowser)
+			{
+				<h2 class="h-colored mt-10">@LanguageService["gui_browser"]</h2>
+
+				<div class="css-grid">
+					<div><MudIcon Icon="@Icons.Material.Filled.Public" Color="Color.Secondary" /></div>
+					<div>
+						<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+							<MudText>@(ViewModel.IsDefaultBrowserApp ? LanguageService["browser_is_default"] : LanguageService["browser_set_default"])</MudText>
+							<MudButton OnClick="@(() => ViewModel.SetDefaultBrowserAppCommand.Execute(null))" Color="Color.Primary" Variant="Variant.Filled"
+								Disabled="@ViewModel.IsDefaultBrowserApp" StartIcon="@Icons.Material.Filled.OpenInBrowser">
+								@LanguageService["gui_browser_set_default"]
+							</MudButton>
+						</MudStack>
+						<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["gui_browser_default_desc"]</MudText>
+					</div>
+				</div>
+			}
+
 
 			<h2 class="h-colored mt-10">@LanguageService["security"]</h2>
 
@@ -513,7 +582,7 @@
 
 	protected override void OnInitialized()
 	{
-		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService);
+		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService, NativeBrowserService);
 	}
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)

@@ -197,6 +197,14 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Message to inform the main page that a specific tab should be activated (e.g. from the
+    /// floating button quick menu).
+    /// </summary>
+    public class TabIntentMessage
+    {
+    }
+
+    /// <summary>
     /// Enumeration of possible sources of a sent message.
     /// </summary>
     public enum MessageSender

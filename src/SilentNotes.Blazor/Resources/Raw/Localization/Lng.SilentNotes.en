@@ -526,3 +526,54 @@ gui_phone = Phone
 gui_phone_set_default = Set aNote as the default Phone app
 gui_phone_default_desc = When aNote is the default Phone app it handles incoming and outgoing phone calls and manages the call history.
 
+tab_camera = Camera
+camera_search = Search photos…
+camera_not_supported = Camera capture is only available on Android.
+camera_needs_permission = aNote needs camera permission to take photos.
+camera_grant = Allow camera
+camera_format_label = Photo file format
+camera_quality_label = Photo quality percentage
+camera_lens_back = Back lens
+camera_lens_front = Front lens
+camera_flash_auto = Flash: Auto
+camera_flash_on = Flash: On
+camera_flash_off = Flash: Off
+camera_flash_torch = Torch: On
+camera_auto_save_gallery = Auto-save to Gallery
+camera_take_photo = Take photo
+camera_system_camera = System camera
+camera_convert_image = Convert image
+camera_reencode = Re-encode with selected format & quality
+camera_rename = Rename photo
+camera_rename_failed = Could not rename the photo
+camera_save_gallery = Save to Pictures/aNote
+camera_exported = Saved to {0}
+camera_export_failed = Could not save to Gallery
+camera_convert_failed = Could not encode image
+camera_photo_saved_fmt = Saved {0} ({1} {2}%)
+camera_count = {0} photos
+camera_empty = No photos yet. Select JPG, PNG or WEBP and quality % above, then tap Take photo.
+camera_no_matches = No matching photos.
+camera_delete = Delete photo
+camera_delete_confirm = Delete photo {0}?
+
+gui_browser = Default Browser (URLCheck)
+browser_is_default = aNote is the default browser (URLCheck active)
+browser_set_default = Set aNote as default browser to inspect links before opening
+gui_browser_set_default = Set as default Browser
+gui_browser_default_desc = When aNote is the default system browser, clicking any link opens the URLCheck overlay where you can inspect, clean tracking parameters, unshorten, and choose which installed browser opens the link.
+
+floating_menu_keyboard = Switch Keyboard
+gui_floating_gestures = Floating button gestures
+gui_floating_gesture_none = None (disabled)
+gui_floating_gesture_capture_text = Capture selected text to clipboard
+gui_floating_gesture_open_anote = Open aNote
+gui_floating_gesture_show_menu = Show quick tabs & keyboard menu
+gui_floating_gesture_swipe_up = Swipe up
+gui_floating_gesture_swipe_down = Swipe down
+gui_floating_gesture_swipe_right = Swipe right
+gui_floating_gesture_swipe_left = Swipe left
+gui_floating_gesture_long_press = Long press
+gui_floating_gesture_double_click = Double click
+
+

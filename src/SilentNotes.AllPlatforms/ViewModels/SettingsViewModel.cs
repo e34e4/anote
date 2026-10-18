@@ -43,6 +43,7 @@ namespace SilentNotes.ViewModels
         private readonly IBookySyncService _bookySyncService;
         private readonly IDeviceSmsService _deviceSmsService;
         private readonly IDevicePhoneService _devicePhoneService;
+        private readonly INativeBrowserService _nativeBrowserService;
         private readonly SliderStepConverter _fontSizeConverter;
         private readonly SliderStepConverter _noteMaxHeightConverter;
         private string _defaultFontFamilyLabel;
@@ -63,7 +64,8 @@ namespace SilentNotes.ViewModels
             IFilePickerService filePickerService,
             IBookySyncService bookySyncService,
             IDeviceSmsService deviceSmsService,
-            IDevicePhoneService devicePhoneService = null)
+            IDevicePhoneService devicePhoneService = null,
+            INativeBrowserService nativeBrowserService = null)
         {
             Language = languageService;
             _settingsService = settingsService;
@@ -77,6 +79,7 @@ namespace SilentNotes.ViewModels
             _bookySyncService = bookySyncService;
             _deviceSmsService = deviceSmsService;
             _devicePhoneService = devicePhoneService;
+            _nativeBrowserService = nativeBrowserService;
             Model = _settingsService.LoadSettingsOrDefault();
             Modifications = new ModificationDetector(() => GetModificationFingerprint(Model));
 
@@ -91,6 +94,9 @@ namespace SilentNotes.ViewModels
             KdfAlgorithms = new List<DropdownItemViewModel>();
             FillAlgorithmList(EncryptionAlgorithms, KdfAlgorithms);
 
+            FloatingGestureOptions = new List<DropdownItemViewModel>();
+            FillFloatingGestureOptions(FloatingGestureOptions);
+
             // Initialize commands
             ChangeCloudSettingsCommand = new RelayCommand(ChangeCloudSettings);
             ClearCloudSettingsCommand = new RelayCommand(ClearCloudSettings);
@@ -98,10 +104,41 @@ namespace SilentNotes.ViewModels
             OpenAccessibilitySettingsCommand = new RelayCommand(OpenAccessibilitySettings);
             GrantAccessibilityPermissionCommand = new RelayCommand(GrantAccessibilityPermission);
             OpenOverlayPermissionSettingsCommand = new RelayCommand(OpenOverlayPermissionSettings);
+            ShowKeyboardSwitcherCommand = new RelayCommand(() => _environmentService.FloatingButton?.ShowKeyboardSwitcher());
             SyncBookyCommand = new AsyncRelayCommand(SyncBooky);
             SetDefaultSmsAppCommand = new AsyncRelayCommand(SetDefaultSmsApp);
             SetDefaultPhoneAppCommand = new AsyncRelayCommand(SetDefaultPhoneApp);
+            SetDefaultBrowserAppCommand = new AsyncRelayCommand(SetDefaultBrowserApp);
         }
+
+        /// <summary>
+        /// Gets a value indicating whether the operating system supports setting aNote as the
+        /// default web browser (URLCheck mode).
+        /// </summary>
+        public bool CanSetDefaultBrowser
+        {
+            get { return _nativeBrowserService != null && _nativeBrowserService.CanSetDefaultBrowser; }
+        }
+
+        /// <summary>Gets a value indicating whether aNote is currently the default web browser.</summary>
+        public bool IsDefaultBrowserApp
+        {
+            get { return _nativeBrowserService?.IsDefaultBrowserApp ?? false; }
+        }
+
+        /// <summary>Gets the command which asks the system to make aNote the default web browser.</summary>
+        public ICommand SetDefaultBrowserAppCommand { get; }
+
+        private async Task SetDefaultBrowserApp()
+        {
+            if (_nativeBrowserService == null)
+                return;
+            await _nativeBrowserService.RequestDefaultBrowserAppAsync();
+            OnPropertyChanged(nameof(IsDefaultBrowserApp), nameof(CanSetDefaultBrowser));
+        }
+
+        /// <summary>Gets the command to display the system keyboard switcher dialog.</summary>
+        public ICommand ShowKeyboardSwitcherCommand { get; }
 
         /// <summary>
         /// Gets a value indicating whether the operating system supports choosing a default Phone app.
@@ -205,6 +242,12 @@ namespace SilentNotes.ViewModels
                 string.GetHashCode(settings.BookySyncRemotePath),
                 string.GetHashCode(settings.BookySyncUsername),
                 string.GetHashCode(settings.BookySyncPassword),
+                string.GetHashCode(settings.FloatingGestureSwipeUp),
+                string.GetHashCode(settings.FloatingGestureSwipeDown),
+                string.GetHashCode(settings.FloatingGestureSwipeLeft),
+                string.GetHashCode(settings.FloatingGestureSwipeRight),
+                string.GetHashCode(settings.FloatingGestureLongPress),
+                string.GetHashCode(settings.FloatingGestureDoubleClick),
                 (settings.Credentials == null).GetHashCode(),
             });
         }
@@ -588,6 +631,109 @@ namespace SilentNotes.ViewModels
         public bool CanShowFloatingButton
         {
             get { return _environmentService.FloatingButton != null; }
+        }
+
+        /// <summary>
+        /// Gets the list of available actions and installed apps for floating button gestures.
+        /// </summary>
+        public List<DropdownItemViewModel> FloatingGestureOptions { get; }
+
+        private void FillFloatingGestureOptions(List<DropdownItemViewModel> options)
+        {
+            options.Add(new DropdownItemViewModel { Value = string.Empty, Description = Language["gui_floating_gesture_none"] });
+            options.Add(new DropdownItemViewModel { Value = ":keyboard_switcher", Description = "⌨️ " + Language["floating_menu_keyboard"] });
+            options.Add(new DropdownItemViewModel { Value = ":capture_text", Description = "📋 " + Language["gui_floating_gesture_capture_text"] });
+            options.Add(new DropdownItemViewModel { Value = ":open_anote", Description = "📝 " + Language["gui_floating_gesture_open_anote"] });
+            options.Add(new DropdownItemViewModel { Value = ":show_menu", Description = "🎛️ " + Language["gui_floating_gesture_show_menu"] });
+
+            (int Index, string Key)[] tabs = new[]
+            {
+                (0, "tab_notes"), (1, "tab_clipboard"), (2, "tab_booky"), (3, "tab_phone"),
+                (4, "tab_calc"), (5, "tab_cald"), (6, "tab_clock"), (7, "tab_sms"),
+                (8, "tab_qr"), (9, "tab_rec"), (10, "tab_file"), (11, "tab_dialer"),
+                (12, "tab_camera"),
+            };
+            foreach (var tab in tabs)
+            {
+                options.Add(new DropdownItemViewModel
+                {
+                    Value = ":tab:" + tab.Index,
+                    Description = "aNote → " + Language[tab.Key],
+                });
+            }
+
+            IReadOnlyList<InstalledAppInfoModel> apps = _environmentService?.FloatingButton?.GetInstalledApps();
+            if (apps != null)
+            {
+                foreach (InstalledAppInfoModel app in apps)
+                {
+                    options.Add(new DropdownItemViewModel
+                    {
+                        Value = app.PackageName,
+                        Description = string.Format("{0} ({1})", app.Label, app.PackageName),
+                    });
+                }
+            }
+        }
+
+        public string FloatingGestureSwipeUp
+        {
+            get { return Model.FloatingGestureSwipeUp ?? string.Empty; }
+            set
+            {
+                if (SetProperty(Model.FloatingGestureSwipeUp ?? string.Empty, value ?? string.Empty, (string v) => Model.FloatingGestureSwipeUp = v))
+                    _settingsService.TrySaveSettingsToLocalDevice(Model);
+            }
+        }
+
+        public string FloatingGestureSwipeDown
+        {
+            get { return Model.FloatingGestureSwipeDown ?? string.Empty; }
+            set
+            {
+                if (SetProperty(Model.FloatingGestureSwipeDown ?? string.Empty, value ?? string.Empty, (string v) => Model.FloatingGestureSwipeDown = v))
+                    _settingsService.TrySaveSettingsToLocalDevice(Model);
+            }
+        }
+
+        public string FloatingGestureSwipeLeft
+        {
+            get { return Model.FloatingGestureSwipeLeft ?? string.Empty; }
+            set
+            {
+                if (SetProperty(Model.FloatingGestureSwipeLeft ?? string.Empty, value ?? string.Empty, (string v) => Model.FloatingGestureSwipeLeft = v))
+                    _settingsService.TrySaveSettingsToLocalDevice(Model);
+            }
+        }
+
+        public string FloatingGestureSwipeRight
+        {
+            get { return Model.FloatingGestureSwipeRight ?? string.Empty; }
+            set
+            {
+                if (SetProperty(Model.FloatingGestureSwipeRight ?? string.Empty, value ?? string.Empty, (string v) => Model.FloatingGestureSwipeRight = v))
+                    _settingsService.TrySaveSettingsToLocalDevice(Model);
+            }
+        }
+
+        public string FloatingGestureLongPress
+        {
+            get { return Model.FloatingGestureLongPress ?? string.Empty; }
+            set
+            {
+                if (SetProperty(Model.FloatingGestureLongPress ?? string.Empty, value ?? string.Empty, (string v) => Model.FloatingGestureLongPress = v))
+                    _settingsService.TrySaveSettingsToLocalDevice(Model);
+            }
+        }
+
+        public string FloatingGestureDoubleClick
+        {
+            get { return Model.FloatingGestureDoubleClick ?? string.Empty; }
+            set
+            {
+                if (SetProperty(Model.FloatingGestureDoubleClick ?? string.Empty, value ?? string.Empty, (string v) => Model.FloatingGestureDoubleClick = v))
+                    _settingsService.TrySaveSettingsToLocalDevice(Model);
+            }
         }
 
         /// <summary>

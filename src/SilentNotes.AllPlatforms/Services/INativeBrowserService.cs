@@ -4,11 +4,13 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using System;
+using System.Threading.Tasks;
 
 namespace SilentNotes.Services
 {
     /// <summary>
-    /// Allows the app to work with an external browser (standard browser of the platform).
+    /// Allows the app to work with an external browser (standard browser of the platform) and
+    /// optionally register aNote as the system's default URLCheck browser on Android.
     /// </summary>
     public interface INativeBrowserService
     {
@@ -36,5 +38,22 @@ namespace SilentNotes.Services
         /// </remarks>
         /// <param name="url">Url to the website.</param>
         void OpenWebsiteInApp(string url);
+
+        /// <summary>
+        /// Gets a value indicating whether the operating system supports setting aNote as the
+        /// default system web browser (URLCheck mode).
+        /// </summary>
+        bool CanSetDefaultBrowser => false;
+
+        /// <summary>
+        /// Gets a value indicating whether aNote is currently set as the default system web browser.
+        /// </summary>
+        bool IsDefaultBrowserApp => false;
+
+        /// <summary>
+        /// Prompts the user to set aNote as the default system web browser (or opens the system
+        /// default browser settings).
+        /// </summary>
+        Task<bool> RequestDefaultBrowserAppAsync() => Task.FromResult(false);
     }
 }

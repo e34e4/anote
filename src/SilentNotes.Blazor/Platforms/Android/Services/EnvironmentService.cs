@@ -3,10 +3,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Android.Content;
+using Android.Content.PM;
 using Android.Content.Res;
 using Android.OS;
 using Android.Views;
@@ -151,6 +154,86 @@ namespace SilentNotes.Platforms.Services
             var intent = new Intent(global::Android.Provider.Settings.ActionAccessibilitySettings);
             intent.AddFlags(ActivityFlags.NewTask);
             _appContext.Context.StartActivity(intent);
+        }
+
+        /// <inheritdoc/>
+        IReadOnlyList<InstalledAppInfoModel> IFloatingButtonService.GetInstalledApps()
+        {
+            var result = new List<InstalledAppInfoModel>();
+            var seen = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+
+            try
+            {
+                Context context = _appContext.Context;
+                PackageManager pm = context?.PackageManager;
+                if (pm == null)
+                    return result;
+
+                var mainIntent = new Intent(Intent.ActionMain, null);
+                mainIntent.AddCategory(Intent.CategoryLauncher);
+
+                IList<ResolveInfo> apps;
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
+                {
+                    apps = pm.QueryIntentActivities(
+                        mainIntent,
+                        PackageManager.ResolveInfoFlags.Of((long)PackageInfoFlags.MatchAll));
+                }
+                else
+                {
+                    #pragma warning disable CS0618
+                    apps = pm.QueryIntentActivities(mainIntent, PackageInfoFlags.MatchAll);
+                    #pragma warning restore CS0618
+                }
+
+                if (apps != null)
+                {
+                    foreach (ResolveInfo info in apps)
+                    {
+                        string pkg = info?.ActivityInfo?.PackageName;
+                        if (string.IsNullOrEmpty(pkg) || !seen.Add(pkg))
+                            continue;
+
+                        string label = info.LoadLabel(pm)?.ToString();
+                        if (string.IsNullOrWhiteSpace(label))
+                            label = pkg;
+
+                        result.Add(new InstalledAppInfoModel
+                        {
+                            PackageName = pkg,
+                            Label = label,
+                        });
+                    }
+                }
+            }
+            catch (System.Exception)
+            {
+            }
+
+            return result
+                .OrderBy(a => a.Label, System.StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+
+        /// <inheritdoc/>
+        void IFloatingButtonService.ShowKeyboardSwitcher()
+        {
+            try
+            {
+                if (FloatingButtonAccessibilityService.Instance != null)
+                {
+                    FloatingButtonAccessibilityService.Instance.ShowKeyboardSwitcher();
+                    return;
+                }
+
+                Context context = _appContext.Context;
+                var intent = new Intent(context, typeof(KeyboardSwitcherActivity));
+                intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.ClearTop | ActivityFlags.NoAnimation);
+                context.StartActivity(intent);
+            }
+            catch (System.Exception)
+            {
+            }
         }
 
         /// <inheritdoc/>

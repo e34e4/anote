@@ -78,6 +78,17 @@ namespace SilentNotes.Models
             PhoneAutoBlockSpam = false;
             PhoneSkipContactsWhenBlocking = true;
             PhoneCustomSpamUrl = string.Empty;
+            CameraPhotoFormat = "jpg";
+            CameraPhotoQuality = 90;
+            CameraUseFrontLens = false;
+            CameraFlashMode = "auto";
+            CameraAutoSaveToGallery = true;
+            FloatingGestureSwipeUp = string.Empty;
+            FloatingGestureSwipeDown = string.Empty;
+            FloatingGestureSwipeLeft = string.Empty;
+            FloatingGestureSwipeRight = string.Empty;
+            FloatingGestureLongPress = ":capture_text";
+            FloatingGestureDoubleClick = string.Empty;
         }
 
         /// <summary>
@@ -503,6 +514,73 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("phone_custom_spam_url")]
         public string PhoneCustomSpamUrl { get; set; }
+
+        /// <summary>
+        /// Gets or sets the photo file format for the Camera tab ("jpg", "png", or "webp").
+        /// </summary>
+        [XmlElement("camera_photo_format")]
+        public string CameraPhotoFormat { get; set; }
+
+        /// <summary>
+        /// Gets or sets the photo compression quality percentage (1..100) for the Camera tab.
+        /// </summary>
+        [XmlElement("camera_photo_quality")]
+        public int CameraPhotoQuality { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the front camera lens is selected by default.
+        /// </summary>
+        [XmlElement("camera_use_front_lens")]
+        public bool CameraUseFrontLens { get; set; }
+
+        /// <summary>
+        /// Gets or sets the camera flash mode ("auto", "on", "off", "torch").
+        /// </summary>
+        [XmlElement("camera_flash_mode")]
+        public string CameraFlashMode { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether captured photos are automatically saved to the
+        /// public device gallery (Pictures/aNote).
+        /// </summary>
+        [XmlElement("camera_auto_save_gallery")]
+        public bool CameraAutoSaveToGallery { get; set; }
+
+        /// <summary>
+        /// Gets or sets the package name or action to execute when swiping the floating button up.
+        /// </summary>
+        [XmlElement("floating_gesture_swipe_up")]
+        public string FloatingGestureSwipeUp { get; set; }
+
+        /// <summary>
+        /// Gets or sets the package name or action to execute when swiping the floating button down.
+        /// </summary>
+        [XmlElement("floating_gesture_swipe_down")]
+        public string FloatingGestureSwipeDown { get; set; }
+
+        /// <summary>
+        /// Gets or sets the package name or action to execute when swiping the floating button left.
+        /// </summary>
+        [XmlElement("floating_gesture_swipe_left")]
+        public string FloatingGestureSwipeLeft { get; set; }
+
+        /// <summary>
+        /// Gets or sets the package name or action to execute when swiping the floating button right.
+        /// </summary>
+        [XmlElement("floating_gesture_swipe_right")]
+        public string FloatingGestureSwipeRight { get; set; }
+
+        /// <summary>
+        /// Gets or sets the package name or action to execute when long-pressing the floating button.
+        /// </summary>
+        [XmlElement("floating_gesture_long_press")]
+        public string FloatingGestureLongPress { get; set; }
+
+        /// <summary>
+        /// Gets or sets the package name or action to execute when double-clicking the floating button.
+        /// </summary>
+        [XmlElement("floating_gesture_double_click")]
+        public string FloatingGestureDoubleClick { get; set; }
 
         /// <summary>
         /// Gets a value indicating whether a cloud storage is set.
