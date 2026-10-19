@@ -48,6 +48,10 @@ namespace SilentNotes.Platforms
         private const string PreferencesName = "anote_floating_button";
         private const string PreferenceKeyX = "x";
         private const string PreferenceKeyY = "y";
+        private const string PreferenceKeyMenuX = "menu_x";
+        private const string PreferenceKeyMenuY = "menu_y";
+        private const string PreferenceKeyMenuWidth = "menu_w";
+        private const string PreferenceKeyMenuHeight = "menu_h";
         private const string LogTag = "aNoteFloating";
         private const int LongPressDelayMs = 600;
         private const int DoubleTapTimeoutMs = 260;
@@ -69,6 +73,7 @@ namespace SilentNotes.Platforms
             (10, "📁", "tab_file", "File"),
             (11, "📞", "tab_dialer", "Dialer"),
             (12, "📷", "tab_camera", "Camera"),
+            (13, "✉️", "tab_mail", "Mail"),
         };
 
         private static readonly string[] BrowserPackages = new[]
@@ -100,6 +105,7 @@ namespace SilentNotes.Platforms
         private ImageView _overlayView;
         private WindowManagerLayoutParams _overlayParams;
         private global::Android.Views.View _menuOverlayView;
+        private WindowManagerLayoutParams _menuLayoutParams;
         private bool _captureEnabled;
 
         private IServiceProvider _serviceProvider;
@@ -615,42 +621,65 @@ namespace SilentNotes.Platforms
             try
             {
                 float density = Resources.DisplayMetrics.Density;
+                int screenW = Resources.DisplayMetrics.WidthPixels;
+                int screenH = Resources.DisplayMetrics.HeightPixels;
                 ILanguageService language = GetServiceProvider()?.GetService<ILanguageService>();
 
-                var backdrop = new FrameLayout(this);
-                backdrop.SetBackgroundColor(Color.ParseColor("#66000000"));
-                backdrop.Click += (s, e) => HideMenuOverlay();
+                var preferences = GetSharedPreferences(PreferencesName, FileCreationMode.Private);
+                int defaultWidth = (int)Math.Min(screenW * 0.90f, 340 * density);
+                int defaultHeight = Math.Max((int)(240 * density), screenH / 2);
+                int minWidth = (int)(200 * density);
+                int minHeight = (int)(160 * density);
+
+                int winWidth = Math.Clamp(preferences.GetInt(PreferenceKeyMenuWidth, defaultWidth), minWidth, screenW);
+                int winHeight = Math.Clamp(preferences.GetInt(PreferenceKeyMenuHeight, defaultHeight), minHeight, screenH);
+                int defaultX = Math.Max(0, (screenW - winWidth) / 2);
+                int defaultY = Math.Max(0, (screenH - winHeight) / 2);
+                int winX = Math.Clamp(preferences.GetInt(PreferenceKeyMenuX, defaultX), 0, Math.Max(0, screenW - minWidth / 2));
+                int winY = Math.Clamp(preferences.GetInt(PreferenceKeyMenuY, defaultY), 0, Math.Max(0, screenH - minHeight / 2));
 
                 var card = new LinearLayout(this)
                 {
                     Orientation = Orientation.Vertical,
                     Clickable = true,
                 };
-                int cardPad = (int)(12 * density);
-                card.SetPadding(cardPad, cardPad, cardPad, cardPad);
+                int cardPad = (int)(10 * density);
+                card.SetPadding(cardPad, cardPad, cardPad, (int)(6 * density));
 
                 var cardBg = new GradientDrawable();
-                cardBg.SetColor(Color.ParseColor("#EE101010"));
+                cardBg.SetColor(Color.ParseColor("#F2101010"));
                 cardBg.SetCornerRadius(16 * density);
-                cardBg.SetStroke((int)(1.5f * density), Color.ParseColor("#3A3A3A"));
+                cardBg.SetStroke((int)(1.5f * density), Color.ParseColor("#38BDF8"));
                 card.Background = cardBg;
 
-                // Header row: Title + Close button
+                // Header row (draggable): Title + Reset Size (½H) + Close button
                 var headerRow = new LinearLayout(this)
                 {
                     Orientation = Orientation.Horizontal,
                 };
                 headerRow.SetGravity(GravityFlags.CenterVertical);
-                headerRow.SetPadding((int)(4 * density), 0, (int)(4 * density), (int)(8 * density));
+                headerRow.SetPadding((int)(4 * density), (int)(2 * density), (int)(4 * density), (int)(6 * density));
 
                 var titleView = new TextView(this)
                 {
-                    Text = "aNote Quick Menu",
-                    TextSize = 14f,
+                    Text = "⠿ aNote Quick Menu",
+                    TextSize = 13.5f,
                 };
                 titleView.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
                 titleView.SetTextColor(Color.White);
                 headerRow.AddView(titleView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+                var halfBtn = new TextView(this)
+                {
+                    Text = "½",
+                    TextSize = 12f,
+                    Gravity = GravityFlags.Center,
+                };
+                halfBtn.SetTextColor(Color.ParseColor("#38BDF8"));
+                int btnPad = (int)(6 * density);
+                halfBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
+                halfBtn.Click += (s, e) => ResetMenuToHalfScreen(defaultWidth, defaultHeight, screenW, screenH);
+                headerRow.AddView(halfBtn);
 
                 var closeBtn = new TextView(this)
                 {
@@ -659,13 +688,23 @@ namespace SilentNotes.Platforms
                     Gravity = GravityFlags.Center,
                 };
                 closeBtn.SetTextColor(Color.ParseColor("#BDBDBD"));
-                int closePad = (int)(6 * density);
-                closeBtn.SetPadding(closePad, (int)(2 * density), closePad, (int)(2 * density));
+                closeBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
                 closeBtn.Click += (s, e) => HideMenuOverlay();
                 headerRow.AddView(closeBtn);
+
+                headerRow.SetOnTouchListener(new MenuDragTouchListener(this));
                 card.AddView(headerRow);
 
-                // Grid of 13 tab buttons + 1 Keyboard Switcher button (4 columns)
+                // Scrollable grid of 14 tab buttons + 1 Keyboard Switcher button (4 columns)
+                var scrollView = new ScrollView(this)
+                {
+                    FillViewport = true,
+                };
+                var gridContainer = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Vertical,
+                };
+
                 const int columns = 4;
                 var allButtons = new List<(string Icon, string Label, System.Action OnClick, bool IsAccent)>();
 
@@ -718,34 +757,106 @@ namespace SilentNotes.Platforms
                         }
                     }
 
-                    card.AddView(row, new LinearLayout.LayoutParams(
+                    gridContainer.AddView(row, new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
                 }
 
-                int cardWidth = (int)(Math.Min(Resources.DisplayMetrics.WidthPixels * 0.90f, 340 * density));
-                var cardParams = new FrameLayout.LayoutParams(
-                    cardWidth,
-                    ViewGroup.LayoutParams.WrapContent,
-                    GravityFlags.Center);
-                backdrop.AddView(card, cardParams);
+                scrollView.AddView(gridContainer, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+                card.AddView(scrollView, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, 0, 1f));
 
-                var menuLayoutParams = new WindowManagerLayoutParams(
-                    ViewGroup.LayoutParams.MatchParent,
-                    ViewGroup.LayoutParams.MatchParent,
-                    WindowManagerTypes.AccessibilityOverlay,
-                    WindowManagerFlags.NotFocusable | WindowManagerFlags.LayoutInScreen,
-                    Format.Translucent)
+                // Bottom resize bar: vertical drag bar + bottom-right 2D corner grip
+                var footerRow = new LinearLayout(this)
                 {
+                    Orientation = Orientation.Horizontal,
+                };
+                footerRow.SetGravity(GravityFlags.CenterVertical);
+                footerRow.SetPadding(0, (int)(4 * density), 0, 0);
+
+                var bottomResizePill = new TextView(this)
+                {
+                    Text = "═══",
+                    TextSize = 11f,
                     Gravity = GravityFlags.Center,
                 };
+                bottomResizePill.SetTextColor(Color.ParseColor("#757575"));
+                bottomResizePill.SetOnTouchListener(new MenuResizeTouchListener(this, resizeWidth: false, resizeHeight: true, minWidth, minHeight, screenW, screenH));
+                footerRow.AddView(bottomResizePill, new LinearLayout.LayoutParams(0, (int)(22 * density), 1f));
 
-                _menuOverlayView = backdrop;
-                _windowManager.AddView(_menuOverlayView, menuLayoutParams);
+                var cornerGrip = new TextView(this)
+                {
+                    Text = "◢",
+                    TextSize = 14f,
+                    Gravity = GravityFlags.Center,
+                };
+                cornerGrip.SetTextColor(Color.ParseColor("#38BDF8"));
+                cornerGrip.SetPadding((int)(8 * density), 0, (int)(4 * density), 0);
+                cornerGrip.SetOnTouchListener(new MenuResizeTouchListener(this, resizeWidth: true, resizeHeight: true, minWidth, minHeight, screenW, screenH));
+                footerRow.AddView(cornerGrip, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WrapContent, (int)(22 * density)));
+
+                card.AddView(footerRow, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+
+                _menuLayoutParams = new WindowManagerLayoutParams(
+                    winWidth,
+                    winHeight,
+                    WindowManagerTypes.AccessibilityOverlay,
+                    WindowManagerFlags.NotFocusable | WindowManagerFlags.NotTouchModal,
+                    Format.Translucent)
+                {
+                    Gravity = GravityFlags.Top | GravityFlags.Start,
+                    X = winX,
+                    Y = winY,
+                };
+
+                _menuOverlayView = card;
+                _windowManager.AddView(_menuOverlayView, _menuLayoutParams);
             }
             catch (Exception ex)
             {
                 global::Android.Util.Log.Error(LogTag, "Could not show floating menu overlay: " + ex);
                 _menuOverlayView = null;
+                _menuLayoutParams = null;
+            }
+        }
+
+        private void ResetMenuToHalfScreen(int defaultWidth, int defaultHeight, int screenW, int screenH)
+        {
+            if (_menuOverlayView == null || _menuLayoutParams == null || _windowManager == null)
+                return;
+
+            _menuLayoutParams.Width = defaultWidth;
+            _menuLayoutParams.Height = defaultHeight;
+            _menuLayoutParams.X = Math.Max(0, (screenW - defaultWidth) / 2);
+            _menuLayoutParams.Y = Math.Max(0, (screenH - defaultHeight) / 2);
+            try
+            {
+                _windowManager.UpdateViewLayout(_menuOverlayView, _menuLayoutParams);
+                SaveMenuBounds();
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private void SaveMenuBounds()
+        {
+            if (_menuLayoutParams == null)
+                return;
+            try
+            {
+                var preferences = GetSharedPreferences(PreferencesName, FileCreationMode.Private);
+                preferences.Edit()
+                    .PutInt(PreferenceKeyMenuX, _menuLayoutParams.X)
+                    .PutInt(PreferenceKeyMenuY, _menuLayoutParams.Y)
+                    .PutInt(PreferenceKeyMenuWidth, _menuLayoutParams.Width)
+                    .PutInt(PreferenceKeyMenuHeight, _menuLayoutParams.Height)
+                    .Apply();
+            }
+            catch (Exception)
+            {
             }
         }
 
@@ -763,6 +874,132 @@ namespace SilentNotes.Platforms
                 global::Android.Util.Log.Error(LogTag, "Could not hide floating menu overlay: " + ex);
             }
             _menuOverlayView = null;
+            _menuLayoutParams = null;
+        }
+
+        private class MenuDragTouchListener : Java.Lang.Object, global::Android.Views.View.IOnTouchListener
+        {
+            private readonly FloatingButtonAccessibilityService _service;
+            private float _startRawX;
+            private float _startRawY;
+            private int _startX;
+            private int _startY;
+
+            public MenuDragTouchListener(FloatingButtonAccessibilityService service)
+            {
+                _service = service;
+            }
+
+            public bool OnTouch(global::Android.Views.View view, MotionEvent e)
+            {
+                if (_service._menuOverlayView == null || _service._menuLayoutParams == null || _service._windowManager == null)
+                    return false;
+
+                switch (e.ActionMasked)
+                {
+                    case MotionEventActions.Down:
+                        _startRawX = e.RawX;
+                        _startRawY = e.RawY;
+                        _startX = _service._menuLayoutParams.X;
+                        _startY = _service._menuLayoutParams.Y;
+                        return true;
+
+                    case MotionEventActions.Move:
+                        int dx = (int)(e.RawX - _startRawX);
+                        int dy = (int)(e.RawY - _startRawY);
+                        _service._menuLayoutParams.X = Math.Max(0, _startX + dx);
+                        _service._menuLayoutParams.Y = Math.Max(0, _startY + dy);
+                        try
+                        {
+                            _service._windowManager.UpdateViewLayout(_service._menuOverlayView, _service._menuLayoutParams);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        return true;
+
+                    case MotionEventActions.Up:
+                    case MotionEventActions.Cancel:
+                        _service.SaveMenuBounds();
+                        return true;
+                }
+                return false;
+            }
+        }
+
+        private class MenuResizeTouchListener : Java.Lang.Object, global::Android.Views.View.IOnTouchListener
+        {
+            private readonly FloatingButtonAccessibilityService _service;
+            private readonly bool _resizeWidth;
+            private readonly bool _resizeHeight;
+            private readonly int _minWidth;
+            private readonly int _minHeight;
+            private readonly int _maxWidth;
+            private readonly int _maxHeight;
+            private float _startRawX;
+            private float _startRawY;
+            private int _startWidth;
+            private int _startHeight;
+
+            public MenuResizeTouchListener(
+                FloatingButtonAccessibilityService service,
+                bool resizeWidth,
+                bool resizeHeight,
+                int minWidth,
+                int minHeight,
+                int maxWidth,
+                int maxHeight)
+            {
+                _service = service;
+                _resizeWidth = resizeWidth;
+                _resizeHeight = resizeHeight;
+                _minWidth = minWidth;
+                _minHeight = minHeight;
+                _maxWidth = maxWidth;
+                _maxHeight = maxHeight;
+            }
+
+            public bool OnTouch(global::Android.Views.View view, MotionEvent e)
+            {
+                if (_service._menuOverlayView == null || _service._menuLayoutParams == null || _service._windowManager == null)
+                    return false;
+
+                switch (e.ActionMasked)
+                {
+                    case MotionEventActions.Down:
+                        _startRawX = e.RawX;
+                        _startRawY = e.RawY;
+                        _startWidth = _service._menuLayoutParams.Width;
+                        _startHeight = _service._menuLayoutParams.Height;
+                        return true;
+
+                    case MotionEventActions.Move:
+                        if (_resizeWidth)
+                        {
+                            int dw = (int)(e.RawX - _startRawX);
+                            _service._menuLayoutParams.Width = Math.Clamp(_startWidth + dw, _minWidth, _maxWidth);
+                        }
+                        if (_resizeHeight)
+                        {
+                            int dh = (int)(e.RawY - _startRawY);
+                            _service._menuLayoutParams.Height = Math.Clamp(_startHeight + dh, _minHeight, _maxHeight);
+                        }
+                        try
+                        {
+                            _service._windowManager.UpdateViewLayout(_service._menuOverlayView, _service._menuLayoutParams);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        return true;
+
+                    case MotionEventActions.Up:
+                    case MotionEventActions.Cancel:
+                        _service.SaveMenuBounds();
+                        return true;
+                }
+                return false;
+            }
         }
 
         private global::Android.Views.View CreateMenuGridButton(

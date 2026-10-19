@@ -37,8 +37,9 @@ If you want to help, please read the [contribution guidelines](CONTRIBUTING.md).
 * ✔ Exchange files with a WebDAV server.
 * ✔ Place calls and optionally act as the default Phone app.
 * ✔ Take photos in JPG, PNG or WEBP format with a configurable quality percentage (1–100%).
+* ✔ Read, search and send emails across multiple IMAP/SMTP accounts in the Mail tab.
 * ✔ Act as the default system browser (URLCheck mode) to inspect, clean and route links to any installed browser.
-* ✔ Floating button quick menu for all tabs, system keyboard switching, and customizable directional swipe / long-press / double-click app launcher gestures.
+* ✔ Floating button quick menu (draggable & resizable floating window) for all tabs, system keyboard switching, and customizable directional swipe / long-press / double-click app launcher gestures.
 * ✔ A plain black theme, which is friendly to AMOLED displays.
 * ✔ aNote does not collect user information and requires no unnecessary privileges.
 
@@ -55,8 +56,8 @@ If you want to help, please read the [contribution guidelines](CONTRIBUTING.md).
 
 ## The tabs
 
-The app is organized in thirteen tabs across three rows:
-**Notes · Clip · Booky · Phone**, **Calc · Cald · Clock · Sms · QR**, and **Rec · File · Dialer · Camera**.
+The app is organized in fourteen tabs across three rows:
+**Notes · Clip · Booky · Phone**, **Calc · Cald · Clock · Sms · QR**, and **Rec · File · Dialer · Camera · Mail**.
 
 ### Notes
 

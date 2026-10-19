@@ -169,6 +169,9 @@ public static class MauiProgram
         services.AddSingleton<IWebdavFileService>((serviceProvider) => new WebdavFileService());
         services.AddSingleton<IDevicePhoneService>((serviceProvider) => new DevicePhoneService());
         services.AddSingleton<ICameraService>((serviceProvider) => new CameraService());
+        services.AddSingleton<IMailService>((serviceProvider) => new MailService(
+            serviceProvider.GetService<IXmlFileService>(),
+            serviceProvider.GetService<IDataProtectionService>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<ISnackbar>(),
@@ -238,6 +241,10 @@ public static class MauiProgram
         services.AddSingleton<ICameraService>((serviceProvider) => new CameraService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IActivityResultAwaiter>()));
+        services.AddSingleton<IMailService>((serviceProvider) => new MailService(
+            serviceProvider.GetService<IAppContextService>(),
+            serviceProvider.GetService<IXmlFileService>(),
+            serviceProvider.GetService<IDataProtectionService>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<IAppContextService>(),

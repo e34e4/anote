@@ -246,5 +246,9 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\ICameraService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\CameraViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\UrlCheckUtils.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\MailModels.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IMailService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\MailServiceBase.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\MailViewModel.cs" />
   </ItemGroup>
 </Project>

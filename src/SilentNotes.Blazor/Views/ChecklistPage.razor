@@ -80,6 +80,10 @@ div.note-dark .detail-view.checklist .ProseMirror p::after { content: @(IconServ
 		Icon="@IconService.GetSvgLink(IconNames.ArrowCollapseDown)" Color="Color.Inherit"
 		title="@LanguageService["checklist_move_to_bottom"]" Disabled="ViewModel.ShoppingModeActive" Edge="Edge.End" />
 
+	<MudIconButton OnClick="@(() => OpenTextColorDialog())"
+		Icon="@Icons.Material.Filled.FormatColorText" Color="Color.Inherit"
+		title="@LanguageService["note_text_color"]" Disabled="ViewModel.ShoppingModeActive" Edge="Edge.End" />
+
 	<MudIconButton OnClick="@(() => ToggleShoppingMode())"
 		Icon="@IconService.GetSvgLink(IconNames.KeyboardOffOutline)" Color="Color.Inherit"
 		Class="@Css.BuildClass(new CssClassIf(CssClasses.ButtonToggled, ViewModel.ShoppingModeActive))"
@@ -142,6 +146,10 @@ div.note-dark .detail-view.checklist .ProseMirror p::after { content: @(IconServ
 			<MudMenuItem OnClick="@(() => _jsModule.InvokeVoidAsync("redo"))"
 				Icon="@IconService.GetSvgLink(IconNames.Redo)"
 				Disabled="ViewModel.ShoppingModeActive">@LanguageService["redo"]</MudMenuItem>
+
+			<MudMenuItem OnClick="@(() => OpenTextColorDialog())"
+				Icon="@Icons.Material.Filled.FormatColorText"
+				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_text_color"]</MudMenuItem>
 
 			<MudMenuItem OnClick="@(() => _colorPaletteOpen = true)"
 				Icon="@Icons.Material.Filled.ColorLens"
@@ -232,6 +240,35 @@ div.note-dark .detail-view.checklist .ProseMirror p::after { content: @(IconServ
 	</MudCard>
 </MudOverlay>
 
+@* Text / line color palette *@
+<MudOverlay @bind-Visible="_textColorDialogOpen" AutoClose="true">
+	<MudCard Style="width: 310px; max-width: 92vw;">
+		<MudCardContent Class="pa-3">
+			<MudText Typo="Typo.subtitle2" Class="mb-2">@LanguageService["note_text_color"]</MudText>
+			<MudStack Row="true" Spacing="1" Class="mb-3">
+				<MudButton Variant="@(!_isHighlightColorMode ? Variant.Filled : Variant.Outlined)" Color="Color.Primary" Size="Size.Small" FullWidth="true"
+					OnClick="@(() => _isHighlightColorMode = false)">@LanguageService["note_text_color_fg"]</MudButton>
+				<MudButton Variant="@(_isHighlightColorMode ? Variant.Filled : Variant.Outlined)" Color="Color.Primary" Size="Size.Small" FullWidth="true"
+					OnClick="@(() => _isHighlightColorMode = true)">@LanguageService["note_text_color_bg"]</MudButton>
+			</MudStack>
+			<div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;">
+				@foreach (string swatch in (_isHighlightColorMode ? HighlightColorPalette : TextColorPalette))
+				{
+					<button type="button"
+						style="height: 36px; border-radius: 8px; border: 2px solid #555555; background-color: @swatch; cursor: pointer;"
+						title="@swatch"
+						@onclick="@(() => ApplyLineOrSelectionColorAsync(swatch))">
+					</button>
+				}
+			</div>
+		</MudCardContent>
+		<MudCardActions Class="justify-space-between">
+			<MudButton OnClick="@(() => ClearLineOrSelectionColorAsync())" Color="Color.Secondary" Variant="Variant.Text">@LanguageService["note_text_color_reset"]</MudButton>
+			<MudButton OnClick="@(() => _textColorDialogOpen = false)" Color="Color.Primary" Variant="Variant.Text">@LanguageService["close"]</MudButton>
+		</MudCardActions>
+	</MudCard>
+</MudOverlay>
+
 @* Declare icons which can be reused multiple times, to reduce page size *@
 <div hidden>
 	@IconService.EmbedLinkableSvgs( new [] {
@@ -273,7 +310,23 @@ div.note-dark .detail-view.checklist .ProseMirror p::after { content: @(IconServ
 	private bool _pendingFocusToSearchInput;
 	private string _searchPattern;
 	private bool _colorPaletteOpen;
+	private bool _textColorDialogOpen;
+	private bool _isHighlightColorMode;
 	private bool _allowNoteContentChanges;
+
+	private static readonly string[] TextColorPalette = new[]
+	{
+		"#ff5252", "#ff7043", "#ffb300", "#ffd54f", "#66bb6a", "#26a69a",
+		"#29b6f6", "#42a5f5", "#7e57c2", "#ab47bc", "#ec407a", "#f06292",
+		"#ffffff", "#bdbdbd", "#78909c", "#8d6e63", "#212121", "#d32f2f",
+	};
+
+	private static readonly string[] HighlightColorPalette = new[]
+	{
+		"#5c1a1a", "#5c3310", "#5c4b00", "#1b4d20", "#0d4747", "#0d3c61",
+		"#311b61", "#4a154b", "#ffcdd2", "#ffe0b2", "#fff9c4", "#c8e6c9",
+		"#b2ebf2", "#bbdefb", "#e1bee7", "#f8bbd0", "#424242", "#cfd8dc",
+	};
 
 	protected override void OnInitialized()
 	{
@@ -437,6 +490,12 @@ div.note-dark .detail-view.checklist .ProseMirror p::after { content: @(IconServ
 			result = true;
 			refreshNeeded = true;
 		}
+		if (_textColorDialogOpen)
+		{
+			_textColorDialogOpen = false;
+			result = true;
+			refreshNeeded = true;
+		}
 
 		if (refreshNeeded)
 			StateHasChanged();
@@ -531,6 +590,37 @@ div.note-dark .detail-view.checklist .ProseMirror p::after { content: @(IconServ
 	private async Task MoveChecklistItem(bool upwards, bool singleStep)
 	{
 		await _jsModule.InvokeVoidAsync("moveChecklistItem", upwards, singleStep);
+	}
+
+	private async Task OpenTextColorDialog()
+	{
+		if (ViewModel.ShoppingModeActive)
+			return;
+		_isOverflowMenuOpen = false;
+		if (_jsModule != null)
+			await _jsModule.InvokeVoidAsync("rememberSelectionForColor");
+		_textColorDialogOpen = true;
+		StateHasChanged();
+	}
+
+	private async Task ApplyLineOrSelectionColorAsync(string colorHex)
+	{
+		if (_jsModule != null)
+		{
+			await _jsModule.InvokeVoidAsync("applyLineOrSelectionColor", colorHex, _isHighlightColorMode);
+		}
+		_textColorDialogOpen = false;
+		StateHasChanged();
+	}
+
+	private async Task ClearLineOrSelectionColorAsync()
+	{
+		if (_jsModule != null)
+		{
+			await _jsModule.InvokeVoidAsync("clearLineOrSelectionColor", _isHighlightColorMode);
+		}
+		_textColorDialogOpen = false;
+		StateHasChanged();
 	}
 
 	private async Task NewTagChanged(string value)

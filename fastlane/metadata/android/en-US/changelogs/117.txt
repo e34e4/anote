@@ -1,0 +1,11 @@
+aNote version 1.3.11
+
+* Notes & Checklists: added ability to change text color or background highlight
+  color of individual lines or selected text.
+* Mail: added a Mail tab in the third row with multi-account IMAP/SMTP support,
+  provider presets (Gmail, Outlook, Mail.ru, Yandex, Yahoo, iCloud), folders
+  (Inbox, Starred, Sent, Drafts, Trash, All Mail), search, and compose/reply/forward.
+* Floating button quick menu: converted from full-screen overlay to a draggable,
+  resizable floating window (half screen height by default) with a new Mail tile.
+* Camera: fixed horizontal squishing on captured photos by using native Camera2
+  still JPEG capture with EXIF orientation and aspect-ratio-preserving preview.

@@ -1,0 +1,617 @@
+@using MudBlazor
+@using SilentNotes.Models
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+@implements IDisposable
+
+@inject ILanguageService LanguageService
+@inject IMessengerService MessengerService
+
+<style type="text/css">
+	.mail-root {
+		background-color: #000000;
+		min-height: calc(100vh - 168px);
+		padding: 8px;
+		color: #ffffff;
+	}
+	.mail-topbar {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+		margin-bottom: 8px;
+	}
+	.mail-account-select {
+		background-color: #101010;
+		color: #ffffff;
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		height: 36px;
+		padding: 0 10px;
+		font-size: 0.85rem;
+		flex: 1 1 160px;
+	}
+	.mail-btn {
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background-color: #0c0c0c;
+		color: #ffffff;
+		height: 36px;
+		padding: 0 12px;
+		font-size: 0.84rem;
+		font-weight: 600;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		cursor: pointer;
+		touch-action: manipulation;
+	}
+	.mail-btn.primary {
+		border-color: var(--mud-palette-primary);
+		color: var(--mud-palette-primary);
+		background-color: #121212;
+	}
+	.mail-folders-row {
+		display: flex;
+		gap: 6px;
+		overflow-x: auto;
+		padding-bottom: 6px;
+		margin-bottom: 8px;
+		border-bottom: 1px solid #1f1f1f;
+	}
+	.mail-folder-chip {
+		border: 1px solid #262626;
+		border-radius: 16px;
+		background-color: #0b0b0b;
+		color: #bdbdbd;
+		padding: 5px 12px;
+		font-size: 0.8rem;
+		font-weight: 600;
+		white-space: nowrap;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		cursor: pointer;
+	}
+	.mail-folder-chip.active {
+		border-color: var(--mud-palette-primary);
+		color: #ffffff;
+		background-color: #182232;
+	}
+	.mail-unread-badge {
+		background-color: var(--mud-palette-primary);
+		color: #000000;
+		font-size: 0.7rem;
+		font-weight: 700;
+		border-radius: 10px;
+		padding: 0 6px;
+		min-width: 18px;
+		text-align: center;
+	}
+	.mail-row {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		padding: 10px 8px;
+		border-bottom: 1px solid #1c1c1c;
+		cursor: pointer;
+	}
+	.mail-row.unread {
+		background-color: #0c131d;
+	}
+	.mail-avatar {
+		width: 38px;
+		height: 38px;
+		border-radius: 50%;
+		background-color: #1e293b;
+		color: #38bdf8;
+		font-weight: 700;
+		font-size: 0.95rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		margin-top: 2px;
+	}
+	.mail-row-body {
+		flex-grow: 1;
+		min-width: 0;
+	}
+	.mail-row-top {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 6px;
+	}
+	.mail-sender {
+		font-size: 0.92rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		color: #e0e0e0;
+	}
+	.mail-row.unread .mail-sender,
+	.mail-row.unread .mail-subject {
+		font-weight: 700;
+		color: #ffffff;
+	}
+	.mail-date {
+		font-size: 0.75rem;
+		color: #9e9e9e;
+		flex-shrink: 0;
+	}
+	.mail-subject {
+		font-size: 0.88rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		color: #d0d0d0;
+		margin-top: 1px;
+	}
+	.mail-snippet {
+		font-size: 0.8rem;
+		color: #8a8a8a;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		margin-top: 2px;
+	}
+	.mail-star-btn {
+		background: transparent;
+		border: none;
+		color: #757575;
+		font-size: 1.2rem;
+		padding: 4px;
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+	.mail-star-btn.starred {
+		color: #ffb300;
+	}
+	.mail-detail-card {
+		border: 1px solid #262626;
+		border-radius: 12px;
+		background-color: #0a0a0a;
+		padding: 12px;
+	}
+	.mail-detail-subject {
+		font-size: 1.15rem;
+		font-weight: 700;
+		margin-bottom: 8px;
+		word-break: break-word;
+	}
+	.mail-detail-meta {
+		font-size: 0.8rem;
+		color: #b0b0b0;
+		margin-bottom: 10px;
+		line-height: 1.45;
+		border-bottom: 1px solid #1f1f1f;
+		padding-bottom: 8px;
+	}
+	.mail-detail-body {
+		white-space: pre-wrap;
+		word-break: break-word;
+		font-size: 0.92rem;
+		line-height: 1.5;
+		color: #f0f0f0;
+		padding: 6px 0;
+	}
+	.mail-overlay {
+		position: fixed;
+		z-index: 1400;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		overflow-y: auto;
+		background-color: #000000;
+		padding: 14px;
+		color: #ffffff;
+	}
+	.mail-preset-chip {
+		border: 1px solid #2b2b2b;
+		border-radius: 8px;
+		background-color: #101010;
+		color: #38bdf8;
+		font-size: 0.78rem;
+		padding: 4px 10px;
+		cursor: pointer;
+	}
+</style>
+
+<div class="mail-root">
+	@* Top bar: Account selector + Sync + Compose + Accounts *@
+	<div class="mail-topbar">
+		<select class="mail-account-select" @bind="ViewModel.SelectedAccountId">
+			<option value="">@LanguageService["mail_all_accounts"]</option>
+			@foreach (var acc in ViewModel.Accounts)
+			{
+				<option value="@acc.Id">@(string.IsNullOrWhiteSpace(acc.DisplayName) ? acc.EmailAddress : acc.DisplayName + " (" + acc.EmailAddress + ")")</option>
+			}
+		</select>
+
+		<button class="mail-btn primary" disabled="@ViewModel.IsBusy" @onclick="() => ViewModel.StartNewCompose()">
+			<MudIcon Icon="@Icons.Material.Filled.Edit" Size="Size.Small" />
+			<span>@LanguageService["mail_compose"]</span>
+		</button>
+
+		<button class="mail-btn" disabled="@ViewModel.IsBusy" @onclick="SyncAsync" title="@LanguageService["mail_sync"]">
+			<MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" />
+			<span>@LanguageService["mail_sync"]</span>
+		</button>
+
+		<button class="mail-btn" @onclick="() => ViewModel.OpenAccountsOverlay()" title="@LanguageService["mail_accounts"]">
+			<MudIcon Icon="@Icons.Material.Filled.ManageAccounts" Size="Size.Small" />
+		</button>
+	</div>
+
+	@* Folder pills (Inbox, Starred, Sent, Drafts, Trash, All) *@
+	<div class="mail-folders-row">
+		@foreach (var folder in new[]
+		{
+			(MailFolders.Inbox, "📥 " + LanguageService["mail_folder_inbox"]),
+			(MailFolders.Starred, "⭐ " + LanguageService["mail_folder_starred"]),
+			(MailFolders.Sent, "📤 " + LanguageService["mail_folder_sent"]),
+			(MailFolders.Drafts, "📝 " + LanguageService["mail_folder_drafts"]),
+			(MailFolders.Trash, "🗑️ " + LanguageService["mail_folder_trash"]),
+			(MailFolders.All, "📚 " + LanguageService["mail_folder_all"]),
+		})
+		{
+			int unread = ViewModel.GetUnreadCount(folder.Item1);
+			<button class="mail-folder-chip @(ViewModel.SelectedFolder == folder.Item1 ? "active" : null)"
+				@onclick="@(() => ViewModel.SelectedFolder = folder.Item1)">
+				<span>@folder.Item2</span>
+				@if (unread > 0)
+				{
+					<span class="mail-unread-badge">@unread</span>
+				}
+			</button>
+		}
+	</div>
+
+	@if (ViewModel.IsBusy)
+	{
+		<div class="d-flex align-center gap-2 pa-3 mb-2" style="background-color:#111827; border-radius:10px;">
+			<MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Small" />
+			<MudText Typo="Typo.body2">@(ViewModel.StatusMessage ?? LanguageService["mail_working"])</MudText>
+		</div>
+	}
+
+	@if (!ViewModel.HasAccounts)
+	{
+		<div class="pa-6 text-center" style="border:1px solid #222; border-radius:14px; background-color:#0b0b0b;">
+			<MudText Typo="Typo.h6" Class="mb-2">@LanguageService["mail_welcome_title"]</MudText>
+			<MudText Typo="Typo.body2" Class="mb-4 mud-text-secondary">@LanguageService["mail_welcome_desc"]</MudText>
+			<button class="mail-btn primary" @onclick="() => ViewModel.StartAddAccount()">
+				<MudIcon Icon="@Icons.Material.Filled.PersonAdd" Size="Size.Small" />
+				<span>@LanguageService["mail_add_account"]</span>
+			</button>
+		</div>
+	}
+	else if (ViewModel.IsMessageOpen && ViewModel.OpenMessage != null)
+	{
+		var msg = ViewModel.OpenMessage;
+		<div class="mail-detail-card">
+			<div class="d-flex align-center gap-1 mb-2 flex-wrap">
+				<button class="mail-btn" @onclick="() => ViewModel.CloseOverlay()">
+					<MudIcon Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" />
+					<span>@LanguageService["back"]</span>
+				</button>
+				<MudSpacer />
+				<button class="mail-btn" @onclick="() => ViewModel.StartReply(msg, false)" title="@LanguageService["mail_reply"]">
+					<MudIcon Icon="@Icons.Material.Filled.Reply" Size="Size.Small" />
+					<span>@LanguageService["mail_reply"]</span>
+				</button>
+				<button class="mail-btn" @onclick="() => ViewModel.StartReply(msg, true)" title="@LanguageService["mail_reply_all"]">
+					<MudIcon Icon="@Icons.Material.Filled.ReplyAll" Size="Size.Small" />
+				</button>
+				<button class="mail-btn" @onclick="() => ViewModel.StartForward(msg)" title="@LanguageService["mail_forward"]">
+					<MudIcon Icon="@Icons.Material.Filled.Forward" Size="Size.Small" />
+				</button>
+				<button class="mail-btn" @onclick="() => ViewModel.ToggleRead(msg)" title="@LanguageService["mail_toggle_read"]">
+					<MudIcon Icon="@Icons.Material.Filled.MarkEmailUnread" Size="Size.Small" />
+				</button>
+				<button class="mail-btn" @onclick="() => ViewModel.DeleteOrTrashMessage(msg)" title="@LanguageService["delete"]">
+					<MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" />
+				</button>
+			</div>
+
+			<div class="d-flex align-center justify-space-between">
+				<div class="mail-detail-subject">@msg.SubjectDisplay</div>
+				<button class="mail-star-btn @(msg.Model.IsStarred ? "starred" : null)" @onclick="() => ViewModel.ToggleStar(msg)">
+					@(msg.Model.IsStarred ? "★" : "☆")
+				</button>
+			</div>
+
+			<div class="mail-detail-meta">
+				<div><strong>@LanguageService["mail_from"]:</strong> @msg.Model.From</div>
+				@if (!string.IsNullOrWhiteSpace(msg.Model.To))
+				{
+					<div><strong>@LanguageService["mail_to"]:</strong> @msg.Model.To</div>
+				}
+				@if (!string.IsNullOrWhiteSpace(msg.Model.Cc))
+				{
+					<div><strong>Cc:</strong> @msg.Model.Cc</div>
+				}
+				<div><strong>@LanguageService["mail_date"]:</strong> @msg.DateFullText</div>
+			</div>
+
+			@if (msg.HasAttachments)
+			{
+				<div class="d-flex gap-2 flex-wrap mb-3">
+					@foreach (var att in msg.Model.Attachments)
+					{
+						<span class="mail-preset-chip">📎 @att.FileName (@(Math.Max(1, att.SizeBytes / 1024)) KB)</span>
+					}
+				</div>
+			}
+
+			<div class="mail-detail-body">@msg.PlainBodyForDisplay</div>
+		</div>
+	}
+	else
+	{
+		<div class="d-flex align-center justify-space-between px-1 mb-1">
+			<MudText Typo="Typo.caption" Class="mud-text-secondary">@ViewModel.FilteredMessages.Count @LanguageService["mail_messages_count"]</MudText>
+			<div class="d-flex gap-2">
+				@if (ViewModel.SelectedFolder == MailFolders.Trash && ViewModel.FilteredMessages.Count > 0)
+				{
+					<MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="() => ViewModel.EmptyTrash()">@LanguageService["mail_empty_trash"]</MudButton>
+				}
+				else if (ViewModel.FilteredMessages.Count > 0)
+				{
+					<MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => ViewModel.MarkAllReadInCurrentFolder()">@LanguageService["mail_mark_all_read"]</MudButton>
+				}
+			</div>
+		</div>
+
+		@if (ViewModel.IsEmpty)
+		{
+			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["mail_empty"]</MudText>
+		}
+		else if (ViewModel.HasNoMatches)
+		{
+			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["mail_no_matches"]</MudText>
+		}
+		else
+		{
+			@foreach (var item in ViewModel.FilteredMessages)
+			{
+				<div class="mail-row @(!item.Model.IsRead ? "unread" : null)" @key="item.Model.Id">
+					<div class="mail-avatar" @onclick="() => ViewModel.SelectMessage(item)">@item.AvatarInitial</div>
+
+					<div class="mail-row-body" @onclick="() => ViewModel.SelectMessage(item)">
+						<div class="mail-row-top">
+							<span class="mail-sender">@item.SenderDisplay</span>
+							<span class="mail-date">@item.DateShortText</span>
+						</div>
+						<div class="mail-subject">
+							@if (item.HasAttachments)
+							{
+								<span>📎 </span>
+							}
+							@item.SubjectDisplay
+						</div>
+						<div class="mail-snippet">@item.SnippetDisplay</div>
+					</div>
+
+					<button class="mail-star-btn @(item.Model.IsStarred ? "starred" : null)"
+						@onclick="() => ViewModel.ToggleStar(item)" title="Star">
+						@(item.Model.IsStarred ? "★" : "☆")
+					</button>
+					<MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small"
+						OnClick="() => ViewModel.DeleteOrTrashMessage(item)" title="@LanguageService["delete"]" />
+				</div>
+			}
+		}
+	}
+</div>
+
+@* Compose Email Overlay *@
+@if (ViewModel.IsComposeOpen)
+{
+	<div class="mail-overlay">
+		<div class="d-flex align-center justify-space-between mb-3">
+			<div class="d-flex align-center gap-2">
+				<MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Color="Color.Inherit" OnClick="() => ViewModel.IsComposeOpen = false" />
+				<MudText Typo="Typo.h6">@LanguageService["mail_compose"]</MudText>
+			</div>
+			<div class="d-flex gap-2">
+				<button class="mail-btn" @onclick="() => ViewModel.SaveDraft()">
+					<MudIcon Icon="@Icons.Material.Filled.Save" Size="Size.Small" />
+					<span>@LanguageService["mail_save_draft"]</span>
+				</button>
+				<button class="mail-btn" @onclick="AddAttachmentAsync" title="@LanguageService["mail_attach"]">
+					<MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" />
+				</button>
+				<button class="mail-btn primary" disabled="@ViewModel.IsBusy" @onclick="SendComposedAsync">
+					<MudIcon Icon="@Icons.Material.Filled.Send" Size="Size.Small" />
+					<span>@LanguageService["mail_send"]</span>
+				</button>
+			</div>
+		</div>
+
+		<MudStack Spacing="2">
+			<div>
+				<label style="font-size:0.78rem; color:#9e9e9e;">@LanguageService["mail_from"]</label>
+				<select class="mail-account-select" style="width:100%;" @bind="ViewModel.ComposeAccountId">
+					@foreach (var acc in ViewModel.Accounts)
+					{
+						<option value="@acc.Id">@acc.EmailAddress</option>
+					}
+				</select>
+			</div>
+
+			<div class="d-flex align-center gap-2">
+				<MudTextField T="string" @bind-Value="ViewModel.ComposeTo" Label="@LanguageService["mail_to"]"
+					Placeholder="recipient@example.com" Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1" Immediate="true" />
+				<button class="mail-btn" @onclick="() => ViewModel.ShowCcBcc = !ViewModel.ShowCcBcc">Cc/Bcc</button>
+			</div>
+
+			@if (ViewModel.ShowCcBcc)
+			{
+				<MudTextField T="string" @bind-Value="ViewModel.ComposeCc" Label="Cc" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+				<MudTextField T="string" @bind-Value="ViewModel.ComposeBcc" Label="Bcc" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+			}
+
+			<MudTextField T="string" @bind-Value="ViewModel.ComposeSubject" Label="@LanguageService["mail_subject"]"
+				Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+
+			@if (ViewModel.ComposeAttachments.Count > 0)
+			{
+				<div class="d-flex gap-2 flex-wrap">
+					@for (int i = 0; i < ViewModel.ComposeAttachments.Count; i++)
+					{
+						int idx = i;
+						var att = ViewModel.ComposeAttachments[idx];
+						<span class="mail-preset-chip" @onclick="() => ViewModel.RemoveAttachmentAt(idx)">
+							📎 @att.FileName ✕
+						</span>
+					}
+				</div>
+			}
+
+			<MudTextField T="string" @bind-Value="ViewModel.ComposeBody" Label="@LanguageService["mail_body"]"
+				Variant="Variant.Outlined" Lines="12" Immediate="true" />
+		</MudStack>
+	</div>
+}
+
+@* Accounts Management & IMAP/SMTP Editor Overlay *@
+@if (ViewModel.IsAccountsOverlayOpen)
+{
+	<div class="mail-overlay">
+		<div class="d-flex align-center justify-space-between mb-3">
+			<div class="d-flex align-center gap-2">
+				<MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Color="Color.Inherit" OnClick="() => ViewModel.CloseOverlay()" />
+				<MudText Typo="Typo.h6">@(ViewModel.IsEditingAccount ? LanguageService["mail_account_settings"] : LanguageService["mail_accounts"])</MudText>
+			</div>
+			@if (!ViewModel.IsEditingAccount)
+			{
+				<button class="mail-btn primary" @onclick="() => ViewModel.StartAddAccount()">
+					<MudIcon Icon="@Icons.Material.Filled.Add" Size="Size.Small" />
+					<span>@LanguageService["mail_add_account"]</span>
+				</button>
+			}
+		</div>
+
+		@if (ViewModel.IsEditingAccount)
+		{
+			<div class="mb-3">
+				<div style="font-size:0.78rem; color:#9e9e9e; margin-bottom:6px;">@LanguageService["mail_quick_presets"]</div>
+				<div class="d-flex gap-2 flex-wrap">
+					@foreach (var p in new[] { ("Gmail", "gmail.com"), ("Outlook", "outlook.com"), ("Mail.ru", "mail.ru"), ("Yandex", "yandex.ru"), ("Yahoo", "yahoo.com"), ("iCloud", "icloud.com") })
+					{
+						<button class="mail-preset-chip" @onclick="@(() => ViewModel.ApplyQuickProvider(p.Item2))">@p.Item1</button>
+					}
+				</div>
+			</div>
+
+			<MudStack Spacing="2">
+				<MudTextField T="string" @bind-Value="ViewModel.EditDisplayName" Label="@LanguageService["mail_display_name"]"
+					Placeholder="John Doe" Variant="Variant.Outlined" Margin="Margin.Dense" />
+				<MudTextField T="string" @bind-Value="ViewModel.EditEmail" Label="@LanguageService["mail_email_address"]"
+					Placeholder="user@gmail.com" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+				<MudTextField T="string" @bind-Value="ViewModel.EditUsername" Label="@LanguageService["cloud_username"]"
+					Variant="Variant.Outlined" Margin="Margin.Dense" />
+				<MudTextField T="string" @bind-Value="ViewModel.EditPassword" Label="@LanguageService["mail_password_hint"]"
+					InputType="InputType.Password" Variant="Variant.Outlined" Margin="Margin.Dense" />
+
+				<div class=" d-flex gap-2">
+					<MudTextField T="string" @bind-Value="ViewModel.EditImapHost" Label="IMAP Host"
+						Placeholder="imap.gmail.com" Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1" />
+					<MudNumericField T="int" @bind-Value="ViewModel.EditImapPort" Label="Port"
+						Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:100px;" />
+				</div>
+				<MudSwitch T="bool" @bind-Value="ViewModel.EditImapSsl" Color="Color.Primary" Label="IMAP SSL / TLS" />
+
+				<div class="d-flex gap-2">
+					<MudTextField T="string" @bind-Value="ViewModel.EditSmtpHost" Label="SMTP Host"
+						Placeholder="smtp.gmail.com" Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1" />
+					<MudNumericField T="int" @bind-Value="ViewModel.EditSmtpPort" Label="Port"
+						Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:100px;" />
+				</div>
+				<MudSwitch T="bool" @bind-Value="ViewModel.EditSmtpSsl" Color="Color.Primary" Label="SMTP SSL / STARTTLS" />
+
+				<div class="d-flex justify-end gap-2 mt-3">
+					<button class="mail-btn" disabled="@ViewModel.IsBusy" @onclick="TestAccountAsync">@LanguageService["mail_test_connection"]</button>
+					<button class="mail-btn primary" disabled="@ViewModel.IsBusy" @onclick="SaveAccountAsync">@LanguageService["save"]</button>
+				</div>
+			</MudStack>
+		}
+		else
+		{
+			@if (!ViewModel.HasAccounts)
+			{
+				<MudText Align="Align.Center" Class="ma-6 mud-text-secondary">@LanguageService["mail_no_account"]</MudText>
+			}
+			else
+			{
+				@foreach (var acc in ViewModel.Accounts)
+				{
+					<div class="mail-row" style="align-items:center;" @key="acc.Id">
+						<div class="mail-avatar">@(string.IsNullOrEmpty(acc.EmailAddress) ? "@" : char.ToUpperInvariant(acc.EmailAddress[0]).ToString())</div>
+						<div class="mail-row-body" @onclick="() => ViewModel.StartEditAccount(acc)">
+							<div class="mail-sender" style="font-weight:700;">@(string.IsNullOrWhiteSpace(acc.DisplayName) ? acc.EmailAddress : acc.DisplayName)</div>
+							<div class="mail-snippet">@acc.EmailAddress · @acc.ImapHost:@acc.ImapPort</div>
+						</div>
+						<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => ViewModel.StartEditAccount(acc)" />
+						<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => ViewModel.DeleteAccount(acc)" />
+					</div>
+				}
+			}
+		}
+	</div>
+}
+
+@code {
+	[Parameter]
+	public MailViewModel ViewModel { get; set; }
+
+	protected override void OnInitialized()
+	{
+		if (ViewModel != null)
+			ViewModel.StateChanged += OnViewModelStateChanged;
+	}
+
+	private void OnViewModelStateChanged()
+	{
+		InvokeAsync(StateHasChanged);
+	}
+
+	private async Task SyncAsync()
+	{
+		await ViewModel.SyncAllOrSelectedAsync();
+		StateHasChanged();
+	}
+
+	private async Task SendComposedAsync()
+	{
+		await ViewModel.SendComposedMessageAsync();
+		StateHasChanged();
+	}
+
+	private async Task AddAttachmentAsync()
+	{
+		await ViewModel.AddAttachmentAsync();
+		StateHasChanged();
+	}
+
+	private async Task TestAccountAsync()
+	{
+		await ViewModel.TestEditedAccountAsync();
+		StateHasChanged();
+	}
+
+	private async Task SaveAccountAsync()
+	{
+		await ViewModel.SaveEditedAccountAsync();
+		StateHasChanged();
+	}
+
+	public void Dispose()
+	{
+		if (ViewModel != null)
+			ViewModel.StateChanged -= OnViewModelStateChanged;
+	}
+}

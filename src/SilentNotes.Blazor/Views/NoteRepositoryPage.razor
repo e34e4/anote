@@ -41,6 +41,7 @@
 @inject IDevicePhoneService DevicePhoneService
 @inject IPhoneSpamService PhoneSpamService
 @inject ICameraService CameraService
+@inject IMailService MailService
 
 <style type="text/css">
 	.mud-main-content {
@@ -220,6 +221,18 @@
 					Immediate="true" Clearable="true" Placeholder="@LanguageService["camera_search"]" />
 			</MudPaper>
 		}
+		else if (_activeTab == 13)
+		{
+			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Style="background-color: var(--mud-palette-appbar-text)" MaxHeight="36px" Elevation="0">
+				<MudInput @bind-Value="_mailViewModel.Filter"
+					Class="filter-input ml-2 mr-1 my-0"
+					Style="color: #000000"
+					Adornment="Adornment.End" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+					Immediate="true" Clearable="true" Placeholder="@LanguageService["mail_search"]" />
+			</MudPaper>
+			<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Refresh" OnClick="@(() => _mailViewModel.SyncCommand.Execute(null))" title="@LanguageService["mail_sync"]" />
+			<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => _mailViewModel.StartComposeCommand.Execute(null))" title="@LanguageService["mail_compose"]" />
+		}
 
 		<MudSpacer />
 
@@ -298,6 +311,7 @@
 		<MudButton Class="@GetTabButtonClass(10)" OnClick="@(() => SetActiveTab(10))" Variant="Variant.Text">@LanguageService["tab_file"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(11)" OnClick="@(() => SetActiveTab(11))" Variant="Variant.Text">@LanguageService["tab_dialer"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(12)" OnClick="@(() => SetActiveTab(12))" Variant="Variant.Text">@LanguageService["tab_camera"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(13)" OnClick="@(() => SetActiveTab(13))" Variant="Variant.Text">@LanguageService["tab_mail"]</MudButton>
 	</div>
 </div>
 
@@ -459,10 +473,15 @@
 		@* Phone dialer and call history *@
 		<PhoneTab ViewModel="_phoneViewModel" />
 	}
-	else
+	else if (_activeTab == 12)
 	{
 		@* Camera with JPG/PNG/WEBP format and quality percentage selection *@
 		<CameraTab ViewModel="_cameraViewModel" />
+	}
+	else
+	{
+		@* Mail client (IMAP/SMTP) *@
+		<MailTab ViewModel="_mailViewModel" />
 	}
 </MudMainContent>
 
@@ -515,6 +534,7 @@
 	private FileViewModel _fileViewModel;
 	private PhoneViewModel _phoneViewModel;
 	private CameraViewModel _cameraViewModel;
+	private MailViewModel _mailViewModel;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="NoteRepositoryPage"/> class.
@@ -610,6 +630,11 @@
 			FilePickerService,
 			LanguageService,
 			FeedbackService);
+		_mailViewModel = new MailViewModel(
+			MailService,
+			FilePickerService,
+			LanguageService,
+			FeedbackService);
 
 		// When the app was started by a calendar intent, the calendar tab is opened and shows it.
 		CalendarIntentRequest pendingCalendarIntent = CalendarIntentRequest.Pending;
@@ -643,7 +668,7 @@
 		if (pendingTabIntent != null)
 		{
 			TabIntentRequest.Pending = null;
-			_activeTab = Math.Clamp(pendingTabIntent.TabIndex, 0, 12);
+			_activeTab = Math.Clamp(pendingTabIntent.TabIndex, 0, 13);
 		}
 
 		MessengerService.Register<BringNoteIntoViewMessage>(
@@ -804,7 +829,7 @@
 				return;
 
 			TabIntentRequest.Pending = null;
-			_activeTab = Math.Clamp(request.TabIndex, 0, 12);
+			_activeTab = Math.Clamp(request.TabIndex, 0, 13);
 			StateHasChanged();
 		});
 	}
@@ -886,6 +911,13 @@
 		{
 			// When an overlay is open in the file tab, the back key closes it first.
 			_fileViewModel.CloseOverlay();
+			result = true;
+			refreshNeeded = true;
+		}
+		if (!result && (_activeTab == 13) && (_mailViewModel != null) && _mailViewModel.IsAnyOverlayOpen)
+		{
+			// When a message, composer, or account overlay is open in the mail tab, close it first.
+			_mailViewModel.CloseOverlay();
 			result = true;
 			refreshNeeded = true;
 		}

@@ -718,9 +718,18 @@ namespace SilentNotes.Platforms.Services
                 using (var ms = new MemoryStream(bytes))
                 {
                     var exif = new ExifInterface(ms);
-                    int orientation = exif.GetAttributeInt(ExifInterface.TagOrientation, (int)global::Android.Media.Orientation.Normal);
+                    int orientation = exif.GetAttributeInt(ExifInterface.TagOrientation, (int)global::Android.Media.Orientation.Undefined);
                     switch (orientation)
                     {
+                        case (int)global::Android.Media.Orientation.Normal:
+                            // If the camera HAL already rotated the pixel data to upright and wrote
+                            // Orientation=Normal, only apply fallbackRotationDegrees if the pixel
+                            // dimensions are still unrotated (landscape buffer when upright is portrait).
+                            if ((fallbackRotationDegrees == 90 || fallbackRotationDegrees == 270) && decoded.Width > decoded.Height)
+                                rotation = fallbackRotationDegrees;
+                            else
+                                rotation = 0;
+                            break;
                         case (int)global::Android.Media.Orientation.Rotate90:
                             rotation = 90;
                             break;
@@ -731,6 +740,7 @@ namespace SilentNotes.Platforms.Services
                             rotation = 270;
                             break;
                         case (int)global::Android.Media.Orientation.FlipHorizontal:
+                            rotation = 0;
                             flipH = true;
                             break;
                     }
@@ -810,7 +820,10 @@ namespace SilentNotes.Platforms.Services
             private CameraDevice _cameraDevice;
             private CameraCaptureSession _captureSession;
             private CaptureRequest.Builder _previewRequestBuilder;
+            private ImageReader _imageReader;
             private Size _previewSize = new Size(1920, 1080);
+            private Size _captureSize = new Size(1920, 1080);
+            private bool _isCapturingStill;
             private bool _isCompleted;
 
             public LiveCameraDialog(
@@ -1021,11 +1034,13 @@ namespace SilentNotes.Platforms.Services
 
             public void OnSurfaceTextureAvailable(SurfaceTexture surface, int width, int height)
             {
+                ConfigureTransform(width, height);
                 OpenCamera();
             }
 
             public void OnSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height)
             {
+                ConfigureTransform(width, height);
             }
 
             public bool OnSurfaceTextureDestroyed(SurfaceTexture surface)
@@ -1084,12 +1099,76 @@ namespace SilentNotes.Platforms.Services
 
             private void TakeSnapshot()
             {
+                if (_isCapturingStill || _isCompleted)
+                    return;
+
+                try
+                {
+                    if (_cameraDevice != null && _captureSession != null && _imageReader?.Surface != null)
+                    {
+                        _isCapturingStill = true;
+                        CaptureRequest.Builder stillBuilder = _cameraDevice.CreateCaptureRequest(CameraTemplate.StillCapture);
+                        stillBuilder.AddTarget(_imageReader.Surface);
+                        stillBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.ContinuousPicture);
+
+                        if (_flashMode == "torch")
+                        {
+                            stillBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
+                            stillBuilder.Set(CaptureRequest.FlashMode, (int)global::Android.Hardware.Camera2.FlashMode.Torch);
+                        }
+                        else if (_flashMode == "on")
+                        {
+                            stillBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.OnAlwaysFlash);
+                            stillBuilder.Set(CaptureRequest.FlashMode, (int)global::Android.Hardware.Camera2.FlashMode.Single);
+                        }
+                        else if (_flashMode == "auto")
+                        {
+                            stillBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.OnAutoFlash);
+                            stillBuilder.Set(CaptureRequest.FlashMode, (int)global::Android.Hardware.Camera2.FlashMode.Off);
+                        }
+                        else
+                        {
+                            stillBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
+                            stillBuilder.Set(CaptureRequest.FlashMode, (int)global::Android.Hardware.Camera2.FlashMode.Off);
+                        }
+
+                        if (_sensorArraySize != null && _zoomLevel > 1.0f)
+                        {
+                            int cropW = (int)(_sensorArraySize.Width() / _zoomLevel);
+                            int cropH = (int)(_sensorArraySize.Height() / _zoomLevel);
+                            int cropX = (_sensorArraySize.Width() - cropW) / 2;
+                            int cropY = (_sensorArraySize.Height() - cropH) / 2;
+                            stillBuilder.Set(
+                                CaptureRequest.ScalerCropRegion,
+                                new Rect(cropX, cropY, cropX + cropW, cropY + cropH));
+                        }
+
+                        stillBuilder.Set(CaptureRequest.JpegQuality, (sbyte)100);
+                        stillBuilder.Set(CaptureRequest.JpegOrientation, GetJpegOrientation());
+
+                        _captureSession.Capture(stillBuilder.Build(), null, _backgroundHandler);
+                        return;
+                    }
+                }
+                catch (Exception)
+                {
+                    _isCapturingStill = false;
+                }
+
+                TakeTextureFallbackSnapshot();
+            }
+
+            private void TakeTextureFallbackSnapshot()
+            {
                 try
                 {
                     if (!_textureView.IsAvailable)
                         return;
 
-                    Bitmap snapshot = _textureView.Bitmap;
+                    var (effW, effH) = GetEffectivePreviewSize();
+                    Bitmap snapshot = (effW > 0 && effH > 0)
+                        ? _textureView.GetBitmap(effW, effH)
+                        : _textureView.Bitmap;
                     if (snapshot == null)
                         return;
 
@@ -1105,6 +1184,48 @@ namespace SilentNotes.Platforms.Services
                 catch (Exception)
                 {
                     FinishWithResult(null);
+                }
+            }
+
+            private void OnStillJpegAvailable(ImageReader reader)
+            {
+                Image img = null;
+                try
+                {
+                    img = reader.AcquireLatestImage();
+                    if (img == null)
+                        return;
+
+                    Image.Plane[] planes = img.GetPlanes();
+                    if (planes == null || planes.Length == 0 || planes[0].Buffer == null)
+                        return;
+
+                    Java.Nio.ByteBuffer buffer = planes[0].Buffer;
+                    byte[] bytes = new byte[buffer.Remaining()];
+                    buffer.Get(bytes);
+
+                    int fallbackRot = GetJpegOrientation();
+                    bool mirror = _useFrontCamera;
+
+                    _activity.RunOnUiThread(() =>
+                    {
+                        FinishWithResult(new CapturedRawResult
+                        {
+                            JpegBytes = bytes,
+                            Format = _selectedFormat,
+                            Quality = _selectedQuality,
+                            RotationDegrees = fallbackRot,
+                            MirrorHorizontal = mirror,
+                        });
+                    });
+                }
+                catch (Exception)
+                {
+                    _activity.RunOnUiThread(TakeTextureFallbackSnapshot);
+                }
+                finally
+                {
+                    try { img?.Close(); } catch (Exception) { }
                 }
             }
 
@@ -1148,14 +1269,30 @@ namespace SilentNotes.Platforms.Services
                     var map = chars.Get(CameraCharacteristics.ScalerStreamConfigurationMap) as StreamConfigurationMap;
                     if (map != null)
                     {
+                        Size[] jpegSizes = map.GetOutputSizes((int)ImageFormatType.Jpeg);
+                        if (jpegSizes != null && jpegSizes.Length > 0)
+                        {
+                            _captureSize = jpegSizes
+                                .OrderByDescending(s => (long)s.Width * s.Height)
+                                .FirstOrDefault(s => s.Width <= 4096 && s.Height <= 4096) ?? jpegSizes[0];
+                        }
+
                         Size[] sizes = map.GetOutputSizes(Java.Lang.Class.FromType(typeof(SurfaceTexture)));
                         if (sizes != null && sizes.Length > 0)
                         {
+                            double targetRatio = (_captureSize.Height > 0)
+                                ? (double)_captureSize.Width / _captureSize.Height
+                                : (4.0 / 3.0);
+
                             _previewSize = sizes
-                                .OrderByDescending(s => (long)s.Width * s.Height)
-                                .FirstOrDefault(s => s.Width <= 2560 && s.Height <= 2560) ?? sizes[0];
+                                .Where(s => s.Width <= 2560 && s.Height <= 2560)
+                                .OrderBy(s => Math.Abs(((double)s.Width / s.Height) - targetRatio))
+                                .ThenByDescending(s => (long)s.Width * s.Height)
+                                .FirstOrDefault() ?? sizes[0];
                         }
                     }
+
+                    _activity.RunOnUiThread(() => ConfigureTransform(_textureView.Width, _textureView.Height));
 
                     manager.OpenCamera(selectedId, new CameraStateListener(this), _backgroundHandler);
                 }
@@ -1195,12 +1332,20 @@ namespace SilentNotes.Platforms.Services
                     texture.SetDefaultBufferSize(_previewSize.Width, _previewSize.Height);
                     var surface = new Surface(texture);
 
+                    _imageReader?.Close();
+                    _imageReader = ImageReader.NewInstance(_captureSize.Width, _captureSize.Height, ImageFormatType.Jpeg, 2);
+                    _imageReader.SetOnImageAvailableListener(new StillImageAvailableListener(this), _backgroundHandler);
+
                     _previewRequestBuilder = _cameraDevice.CreateCaptureRequest(CameraTemplate.Preview);
                     _previewRequestBuilder.AddTarget(surface);
 
+                    var outputs = new List<Surface> { surface };
+                    if (_imageReader.Surface != null)
+                        outputs.Add(_imageReader.Surface);
+
                     #pragma warning disable CS0618
                     _cameraDevice.CreateCaptureSession(
-                        new List<Surface> { surface },
+                        outputs,
                         new CaptureSessionListener(this),
                         _backgroundHandler);
                     #pragma warning restore CS0618
@@ -1208,6 +1353,121 @@ namespace SilentNotes.Platforms.Services
                 catch (Exception)
                 {
                 }
+            }
+
+            private (int Width, int Height) GetEffectivePreviewSize()
+            {
+                SurfaceOrientation displayRot = GetDisplayRotation();
+                bool swapped = false;
+                switch (displayRot)
+                {
+                    case SurfaceOrientation.Rotation0:
+                    case SurfaceOrientation.Rotation180:
+                        if (_sensorOrientation == 90 || _sensorOrientation == 270)
+                            swapped = true;
+                        break;
+                    case SurfaceOrientation.Rotation90:
+                    case SurfaceOrientation.Rotation270:
+                        if (_sensorOrientation == 0 || _sensorOrientation == 180)
+                            swapped = true;
+                        break;
+                }
+
+                return swapped
+                    ? (_previewSize.Height, _previewSize.Width)
+                    : (_previewSize.Width, _previewSize.Height);
+            }
+
+            private void ConfigureTransform(int viewWidth, int viewHeight)
+            {
+                if (_textureView == null || viewWidth <= 0 || viewHeight <= 0 || _previewSize == null)
+                    return;
+
+                try
+                {
+                    SurfaceOrientation rotation = GetDisplayRotation();
+                    var matrix = new Matrix();
+                    var viewRect = new RectF(0, 0, viewWidth, viewHeight);
+                    float centerX = viewRect.CenterX();
+                    float centerY = viewRect.CenterY();
+
+                    if (rotation == SurfaceOrientation.Rotation90 || rotation == SurfaceOrientation.Rotation270)
+                    {
+                        var bufferRect = new RectF(0, 0, _previewSize.Height, _previewSize.Width);
+                        bufferRect.Offset(centerX - bufferRect.CenterX(), centerY - bufferRect.CenterY());
+                        matrix.SetRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.Fill);
+                        float scale = Math.Max(
+                            (float)viewHeight / _previewSize.Height,
+                            (float)viewWidth / _previewSize.Width);
+                        matrix.PostScale(scale, scale, centerX, centerY);
+                        matrix.PostRotate(90 * ((int)rotation - 2), centerX, centerY);
+                    }
+                    else
+                    {
+                        var (effW, effH) = GetEffectivePreviewSize();
+                        if (effW > 0 && effH > 0)
+                        {
+                            float viewRatio = (float)viewWidth / viewHeight;
+                            float previewRatio = (float)effW / effH;
+                            // Letterbox/fit inside the view so the preview and fallback snapshot are never squished
+                            if (Math.Abs(viewRatio - previewRatio) > 0.01f)
+                            {
+                                float scaleX = 1f;
+                                float scaleY = 1f;
+                                if (viewRatio < previewRatio)
+                                {
+                                    // View is narrower/taller than preview -> scale Y down to preserve aspect ratio
+                                    scaleY = viewRatio / previewRatio;
+                                }
+                                else
+                                {
+                                    scaleX = previewRatio / viewRatio;
+                                }
+                                matrix.PostScale(scaleX, scaleY, centerX, centerY);
+                            }
+                        }
+
+                        if (rotation == SurfaceOrientation.Rotation180)
+                            matrix.PostRotate(180, centerX, centerY);
+                    }
+
+                    _textureView.SetTransform(matrix);
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            private SurfaceOrientation GetDisplayRotation()
+            {
+                try
+                {
+                    if (Build.VERSION.SdkInt >= BuildVersionCodes.R)
+                        return _activity.Display?.Rotation ?? SurfaceOrientation.Rotation0;
+                    #pragma warning disable CS0618
+                    return _activity.WindowManager?.DefaultDisplay?.Rotation ?? SurfaceOrientation.Rotation0;
+                    #pragma warning restore CS0618
+                }
+                catch (Exception)
+                {
+                    return SurfaceOrientation.Rotation0;
+                }
+            }
+
+            private int GetJpegOrientation()
+            {
+                int degrees = GetDisplayRotation() switch
+                {
+                    SurfaceOrientation.Rotation0 => 0,
+                    SurfaceOrientation.Rotation90 => 90,
+                    SurfaceOrientation.Rotation180 => 180,
+                    SurfaceOrientation.Rotation270 => 270,
+                    _ => 0,
+                };
+
+                if (_useFrontCamera)
+                    return (_sensorOrientation + degrees) % 360;
+                return (_sensorOrientation - degrees + 360) % 360;
             }
 
             private void ApplyPreviewParameters()
@@ -1275,6 +1535,15 @@ namespace SilentNotes.Platforms.Services
                 {
                     _cameraDevice?.Close();
                     _cameraDevice = null;
+                }
+                catch (Exception)
+                {
+                }
+
+                try
+                {
+                    _imageReader?.Close();
+                    _imageReader = null;
                 }
                 catch (Exception)
                 {
@@ -1382,6 +1651,21 @@ namespace SilentNotes.Platforms.Services
 
                 public override void OnConfigureFailed(CameraCaptureSession session)
                 {
+                }
+            }
+
+            private class StillImageAvailableListener : Java.Lang.Object, ImageReader.IOnImageAvailableListener
+            {
+                private readonly LiveCameraDialog _dialog;
+
+                public StillImageAvailableListener(LiveCameraDialog dialog)
+                {
+                    _dialog = dialog;
+                }
+
+                public void OnImageAvailable(ImageReader reader)
+                {
+                    _dialog.OnStillJpegAvailable(reader);
                 }
             }
         }

@@ -1,6 +1,7 @@
 ﻿import { initializeChecklist, TiptapHelper, registerIsShoppingModeActive, CheckableParagraphHelper, exportChecklistAsPlainText } from '../prose-mirror-bundle.js';
 
 var _page;
+var _savedColorSelection = null;
 
 // Initializes the prosemirror editor
 export function initialize(dotnetPage, editorContainer, shoppingModeActive) {
@@ -188,4 +189,86 @@ export function setForAllToDisabled() {
     if (!IsInitialized()) return;
 
     bundleNoteContentChanged(function () { CheckableParagraphHelper.setCheckStateForAllToDisabled(_page.editor); });
+}
+
+export function rememberSelectionForColor() {
+    if (!IsInitialized()) return;
+
+    try {
+        var sel = _page.editor.view.state.selection;
+        _savedColorSelection = { from: sel.from, to: sel.to, empty: sel.empty };
+    }
+    catch (ex) {
+        _savedColorSelection = null;
+    }
+}
+
+function getLineOrSelectionRange(editor) {
+    var state = editor.view.state;
+    var sel = state.selection;
+    if (_savedColorSelection &&
+        _savedColorSelection.from >= 0 &&
+        _savedColorSelection.to <= state.doc.content.size) {
+        if (!_savedColorSelection.empty) {
+            return { from: _savedColorSelection.from, to: _savedColorSelection.to, wasEmpty: false };
+        }
+        sel = state.doc.resolve(_savedColorSelection.from);
+        var blockStart = sel.start(sel.depth);
+        var blockEnd = sel.end(sel.depth);
+        if (blockEnd > blockStart) {
+            return { from: blockStart, to: blockEnd, wasEmpty: true, cursorPos: _savedColorSelection.from };
+        }
+        return { from: _savedColorSelection.from, to: _savedColorSelection.to, wasEmpty: true, cursorPos: _savedColorSelection.from };
+    }
+
+    if (!sel.empty) {
+        return { from: sel.from, to: sel.to, wasEmpty: false };
+    }
+    var $from = sel.$from;
+    var start = $from.start($from.depth);
+    var end = $from.end($from.depth);
+    if (end > start) {
+        return { from: start, to: end, wasEmpty: true, cursorPos: sel.from };
+    }
+    return { from: sel.from, to: sel.to, wasEmpty: true, cursorPos: sel.from };
+}
+
+export function applyLineOrSelectionColor(colorHex, isBackground) {
+    if (!IsInitialized() || !colorHex) return;
+
+    var editor = _page.editor;
+    var range = getLineOrSelectionRange(editor);
+    var chain = editor.chain().focus();
+    if (range.to > range.from) {
+        chain = chain.setTextSelection({ from: range.from, to: range.to });
+    }
+    if (isBackground) {
+        chain = chain.setBackgroundColor(colorHex);
+    } else {
+        chain = chain.setColor(colorHex);
+    }
+    if (range.wasEmpty && typeof range.cursorPos === 'number') {
+        chain = chain.setTextSelection(range.cursorPos);
+    }
+    chain.run();
+    _savedColorSelection = null;
+    onNoteContentChanged(editor);
+}
+
+export function clearLineOrSelectionColor(isBackground) {
+    if (!IsInitialized()) return;
+
+    var editor = _page.editor;
+    var range = getLineOrSelectionRange(editor);
+    var chain = editor.chain().focus();
+    if (range.to > range.from) {
+        chain = chain.setTextSelection({ from: range.from, to: range.to });
+    }
+    chain = chain.unsetColor().unsetBackgroundColor();
+    if (range.wasEmpty && typeof range.cursorPos === 'number') {
+        chain = chain.setTextSelection(range.cursorPos);
+    }
+    chain.run();
+    _savedColorSelection = null;
+    onNoteContentChanged(editor);
 }
