@@ -84,7 +84,7 @@
 		Class="@Css.BuildClass(new CssClassIf(CssClasses.ButtonToggled, _formatStates.Bulletlist), "d-none d-sm-flex")"
 		title="@LanguageService["note_list_unordered"]" Disabled="ViewModel.ShoppingModeActive" Edge="Edge.End" />
 
-	<MudIconButton OnClick="@(() => OpenTextColorDialog())"
+	<MudIconButton OnClick="@(async () => await OpenTextColorDialog())"
 		Icon="@Icons.Material.Filled.FormatColorText" Color="Color.Inherit"
 		title="@LanguageService["note_text_color"]" Disabled="ViewModel.ShoppingModeActive" Edge="Edge.End"/>
 
@@ -169,7 +169,7 @@
 				Icon="@IconService.GetSvgLink(IconNames.ImagePlus)"
 				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_image"]</MudMenuItem>
 
-			<MudMenuItem OnClick="@(() => OpenTextColorDialog())"
+			<MudMenuItem OnClick="@(async () => await OpenTextColorDialog())"
 				Icon="@Icons.Material.Filled.FormatColorText"
 				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_text_color"]</MudMenuItem>
 

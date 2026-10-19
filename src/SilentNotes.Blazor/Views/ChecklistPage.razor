@@ -80,7 +80,7 @@ div.note-dark .detail-view.checklist .ProseMirror p::after { content: @(IconServ
 		Icon="@IconService.GetSvgLink(IconNames.ArrowCollapseDown)" Color="Color.Inherit"
 		title="@LanguageService["checklist_move_to_bottom"]" Disabled="ViewModel.ShoppingModeActive" Edge="Edge.End" />
 
-	<MudIconButton OnClick="@(() => OpenTextColorDialog())"
+	<MudIconButton OnClick="@(async () => await OpenTextColorDialog())"
 		Icon="@Icons.Material.Filled.FormatColorText" Color="Color.Inherit"
 		title="@LanguageService["note_text_color"]" Disabled="ViewModel.ShoppingModeActive" Edge="Edge.End" />
 
@@ -147,7 +147,7 @@ div.note-dark .detail-view.checklist .ProseMirror p::after { content: @(IconServ
 				Icon="@IconService.GetSvgLink(IconNames.Redo)"
 				Disabled="ViewModel.ShoppingModeActive">@LanguageService["redo"]</MudMenuItem>
 
-			<MudMenuItem OnClick="@(() => OpenTextColorDialog())"
+			<MudMenuItem OnClick="@(async () => await OpenTextColorDialog())"
 				Icon="@Icons.Material.Filled.FormatColorText"
 				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_text_color"]</MudMenuItem>
 

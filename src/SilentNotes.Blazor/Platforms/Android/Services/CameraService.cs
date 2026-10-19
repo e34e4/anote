@@ -27,9 +27,11 @@ using Microsoft.Maui.ApplicationModel;
 using SilentNotes.Models;
 using SilentNotes.Services;
 using Color = Android.Graphics.Color;
+using Image = Android.Media.Image;
 using Orientation = Android.Widget.Orientation;
 using Path = System.IO.Path;
 using Rect = Android.Graphics.Rect;
+using RectF = Android.Graphics.RectF;
 using Size = Android.Util.Size;
 using Stream = System.IO.Stream;
 

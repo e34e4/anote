@@ -696,7 +696,7 @@ namespace SilentNotes.Platforms
                 card.AddView(headerRow);
 
                 // Scrollable grid of 14 tab buttons + 1 Keyboard Switcher button (4 columns)
-                var scrollView = new ScrollView(this)
+                var scrollView = new global::Android.Widget.ScrollView(this)
                 {
                     FillViewport = true,
                 };
