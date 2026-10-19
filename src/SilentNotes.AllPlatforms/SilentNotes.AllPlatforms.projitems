@@ -250,5 +250,14 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\IMailService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\MailServiceBase.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\MailViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\MediaItemModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\MediaIntentRequest.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IMediaPlayerService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\PlayerViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\DocumentItemModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\DocumentIntentRequest.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IDocumentReaderService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\DocumentTextExtractor.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\ReaderViewModel.cs" />
   </ItemGroup>
 </Project>

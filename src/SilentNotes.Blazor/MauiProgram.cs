@@ -173,6 +173,8 @@ public static class MauiProgram
             serviceProvider.GetService<IXmlFileService>(),
             serviceProvider.GetService<IDataProtectionService>(),
             serviceProvider.GetService<ICloudStorageClientFactory>()));
+        services.AddSingleton<IMediaPlayerService>((serviceProvider) => new MediaPlayerService());
+        services.AddSingleton<IDocumentReaderService>((serviceProvider) => new DocumentReaderService());
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<ISnackbar>(),
@@ -223,7 +225,8 @@ public static class MauiProgram
             serviceProvider.GetService<IXmlFileService>()));
         services.AddSingleton<IDeviceSmsService>((serviceProvider) => new DeviceSmsService(
             serviceProvider.GetService<IAppContextService>(),
-            serviceProvider.GetService<IRepositoryStorageService>()));
+            serviceProvider.GetService<IRepositoryStorageService>(),
+            serviceProvider.GetService<IActivityResultAwaiter>()));
         services.AddSingleton<IImageFileService>((serviceProvider) => new ImageFileService(
             serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<IQrService>((serviceProvider) => new QrService(
@@ -247,6 +250,12 @@ public static class MauiProgram
             serviceProvider.GetService<IXmlFileService>(),
             serviceProvider.GetService<IDataProtectionService>(),
             serviceProvider.GetService<ICloudStorageClientFactory>()));
+        services.AddSingleton<IMediaPlayerService>((serviceProvider) => new MediaPlayerService(
+            serviceProvider.GetService<IAppContextService>(),
+            serviceProvider.GetService<IActivityResultAwaiter>()));
+        services.AddSingleton<IDocumentReaderService>((serviceProvider) => new DocumentReaderService(
+            serviceProvider.GetService<IAppContextService>(),
+            serviceProvider.GetService<IActivityResultAwaiter>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<IAppContextService>(),

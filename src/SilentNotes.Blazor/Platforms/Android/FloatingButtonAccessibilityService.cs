@@ -74,6 +74,8 @@ namespace SilentNotes.Platforms
             (11, "📞", "tab_dialer", "Dialer"),
             (12, "📷", "tab_camera", "Camera"),
             (13, "✉️", "tab_mail", "Mail"),
+            (14, "▶️", "tab_player", "Player"),
+            (15, "📖", "tab_reader", "Reader"),
         };
 
         private static readonly string[] BrowserPackages = new[]

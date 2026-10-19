@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.Database;
@@ -45,14 +46,19 @@ namespace SilentNotes.Platforms.Services
 
         private readonly IAppContextService _appContext;
         private readonly IRepositoryStorageService _repositoryService;
+        private readonly IActivityResultAwaiter _activityResultAwaiter;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DeviceSmsService"/> class.
         /// </summary>
-        public DeviceSmsService(IAppContextService appContextService, IRepositoryStorageService repositoryService)
+        public DeviceSmsService(
+            IAppContextService appContextService,
+            IRepositoryStorageService repositoryService,
+            IActivityResultAwaiter activityResultAwaiter)
         {
             _appContext = appContextService;
             _repositoryService = repositoryService;
+            _activityResultAwaiter = activityResultAwaiter;
         }
 
         /// <inheritdoc/>
@@ -116,15 +122,26 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
-        public Task<bool> RequestDefaultSmsAppAsync()
+        public async Task<bool> RequestDefaultSmsAppAsync()
         {
             try
             {
                 Context context = _appContext.Context;
+                Activity activity = _appContext.RootActivity;
                 Intent intent = null;
 
+                // RoleManager.createRequestRoleIntent must be started with startActivityForResult;
+                // Context.StartActivity (+ NEW_TASK) silently fails to show the role dialog.
                 if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
-                    intent = GetRoleManager()?.CreateRequestRoleIntent(global::Android.App.Roles.RoleManager.RoleSms);
+                {
+                    global::Android.App.Roles.RoleManager roleManager = GetRoleManager();
+                    if (roleManager != null
+                        && roleManager.IsRoleAvailable(global::Android.App.Roles.RoleManager.RoleSms))
+                    {
+                        intent = roleManager.CreateRequestRoleIntent(
+                            global::Android.App.Roles.RoleManager.RoleSms);
+                    }
+                }
 
                 if (intent == null)
                 {
@@ -132,13 +149,20 @@ namespace SilentNotes.Platforms.Services
                     intent.PutExtra(ExtraDefaultPackage, context.PackageName);
                 }
 
-                intent.AddFlags(ActivityFlags.NewTask);
-                context.StartActivity(intent);
+                if (activity != null && _activityResultAwaiter != null)
+                {
+                    await _activityResultAwaiter.StartActivityAndWaitForResult(activity, intent);
+                }
+                else
+                {
+                    intent.AddFlags(ActivityFlags.NewTask);
+                    context.StartActivity(intent);
+                }
             }
             catch (Exception)
             {
             }
-            return Task.FromResult(IsDefaultSmsApp);
+            return IsDefaultSmsApp;
         }
 
         private global::Android.App.Roles.RoleManager GetRoleManager()

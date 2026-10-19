@@ -42,12 +42,14 @@
 @inject IPhoneSpamService PhoneSpamService
 @inject ICameraService CameraService
 @inject IMailService MailService
+@inject IMediaPlayerService MediaPlayerService
+@inject IDocumentReaderService DocumentReaderService
 
 <style type="text/css">
 	.mud-main-content {
 		@(ThemeService.CssNoteRepositoryBackground)
 		background-attachment: fixed;
-		padding-top: 168px !important;
+		padding-top: 208px !important;
 	}
 	.app-header {
 		position: fixed;
@@ -233,6 +235,26 @@
 			<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Refresh" OnClick="@(() => _mailViewModel.SyncCommand.Execute(null))" title="@LanguageService["mail_sync"]" />
 			<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => _mailViewModel.StartComposeCommand.Execute(null))" title="@LanguageService["mail_compose"]" />
 		}
+		else if (_activeTab == 14)
+		{
+			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Style="background-color: var(--mud-palette-appbar-text)" MaxHeight="36px" Elevation="0">
+				<MudInput @bind-Value="_playerViewModel.Filter"
+					Class="filter-input ml-2 mr-1 my-0"
+					Style="color: #000000"
+					Adornment="Adornment.End" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+					Immediate="true" Clearable="true" Placeholder="@LanguageService["player_search"]" />
+			</MudPaper>
+		}
+		else if (_activeTab == 15)
+		{
+			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Style="background-color: var(--mud-palette-appbar-text)" MaxHeight="36px" Elevation="0">
+				<MudInput @bind-Value="_readerViewModel.Filter"
+					Class="filter-input ml-2 mr-1 my-0"
+					Style="color: #000000"
+					Adornment="Adornment.End" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+					Immediate="true" Clearable="true" Placeholder="@LanguageService["reader_search"]" />
+			</MudPaper>
+		}
 
 		<MudSpacer />
 
@@ -312,6 +334,10 @@
 		<MudButton Class="@GetTabButtonClass(11)" OnClick="@(() => SetActiveTab(11))" Variant="Variant.Text">@LanguageService["tab_dialer"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(12)" OnClick="@(() => SetActiveTab(12))" Variant="Variant.Text">@LanguageService["tab_camera"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(13)" OnClick="@(() => SetActiveTab(13))" Variant="Variant.Text">@LanguageService["tab_mail"]</MudButton>
+	</div>
+	<div class="app-header-row app-header-tabs">
+		<MudButton Class="@GetTabButtonClass(14)" OnClick="@(() => SetActiveTab(14))" Variant="Variant.Text">@LanguageService["tab_player"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(15)" OnClick="@(() => SetActiveTab(15))" Variant="Variant.Text">@LanguageService["tab_reader"]</MudButton>
 	</div>
 </div>
 
@@ -478,10 +504,20 @@
 		@* Camera with JPG/PNG/WEBP format and quality percentage selection *@
 		<CameraTab ViewModel="_cameraViewModel" />
 	}
-	else
+	else if (_activeTab == 13)
 	{
 		@* Mail client (IMAP/SMTP) *@
 		<MailTab ViewModel="_mailViewModel" />
+	}
+	else if (_activeTab == 14)
+	{
+		@* Audio/video player (images listed for a future gallery in this tab) *@
+		<PlayerTab ViewModel="_playerViewModel" />
+	}
+	else
+	{
+		@* Document reader (text, Office, PDF, EPUB/FB2; DjVu via external viewer) *@
+		<ReaderTab ViewModel="_readerViewModel" />
 	}
 </MudMainContent>
 
@@ -521,7 +557,9 @@
 	private MudBaseButton _syncButton;
 	private BringNoteIntoViewMessage _pendingScrollIntoView;
 	private MudTreeItemWrapper _tagsRootNode;
-	private int _activeTab = 0;
+	/// <summary>Remembers the active tab across page reloads (e.g. after closing the image/video viewer).</summary>
+	private static int _persistedActiveTab = 0;
+	private int _activeTab = _persistedActiveTab;
 	private ClipboardViewModel _clipboardViewModel;
 	private BookyViewModel _bookyViewModel;
 	private ContactsViewModel _contactsViewModel;
@@ -535,6 +573,8 @@
 	private PhoneViewModel _phoneViewModel;
 	private CameraViewModel _cameraViewModel;
 	private MailViewModel _mailViewModel;
+	private PlayerViewModel _playerViewModel;
+	private ReaderViewModel _readerViewModel;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="NoteRepositoryPage"/> class.
@@ -638,6 +678,14 @@
 			NativeBrowserService,
 			MessengerService,
 			CryptoRandomSource);
+		_playerViewModel = new PlayerViewModel(
+			MediaPlayerService,
+			LanguageService,
+			FeedbackService);
+		_readerViewModel = new ReaderViewModel(
+			DocumentReaderService,
+			LanguageService,
+			FeedbackService);
 
 		// When the app was started by a calendar intent, the calendar tab is opened and shows it.
 		CalendarIntentRequest pendingCalendarIntent = CalendarIntentRequest.Pending;
@@ -645,7 +693,7 @@
 		{
 			CalendarIntentRequest.Pending = null;
 			_calendarViewModel.QueueIntent(pendingCalendarIntent);
-			_activeTab = 5;
+			SetActiveTab(5);
 		}
 
 		// When the app was started because an alarm is ringing, the clock tab is opened.
@@ -654,7 +702,7 @@
 		{
 			ClockIntentRequest.Pending = null;
 			_clockViewModel.QueueIntent(pendingClockIntent);
-			_activeTab = 6;
+			SetActiveTab(6);
 		}
 
 		// When the app was started by a dial/tel intent or incoming call, the phone tab is opened.
@@ -663,7 +711,7 @@
 		{
 			PhoneIntentRequest.Pending = null;
 			_phoneViewModel.HandleIntent(pendingPhoneIntent);
-			_activeTab = 11;
+			SetActiveTab(11);
 		}
 
 		// When a tab was selected from the floating button menu, activate it.
@@ -671,7 +719,25 @@
 		if (pendingTabIntent != null)
 		{
 			TabIntentRequest.Pending = null;
-			_activeTab = Math.Clamp(pendingTabIntent.TabIndex, 0, 13);
+			SetActiveTab(Math.Clamp(pendingTabIntent.TabIndex, 0, 15));
+		}
+
+		// When the app was started by a media VIEW/SEND intent, open the Player tab.
+		MediaIntentRequest pendingMediaIntent = MediaIntentRequest.Pending;
+		if (pendingMediaIntent != null)
+		{
+			MediaIntentRequest.Pending = null;
+			_playerViewModel.HandleIntent(pendingMediaIntent);
+			SetActiveTab(14);
+		}
+
+		// When the app was started by a document VIEW/SEND intent, open the Reader tab.
+		DocumentIntentRequest pendingDocumentIntent = DocumentIntentRequest.Pending;
+		if (pendingDocumentIntent != null)
+		{
+			DocumentIntentRequest.Pending = null;
+			_readerViewModel.HandleIntent(pendingDocumentIntent);
+			SetActiveTab(15);
 		}
 
 		MessengerService.Register<BringNoteIntoViewMessage>(
@@ -690,6 +756,10 @@
 			this, (recipient, message) => OnPhoneIntent());
 		MessengerService.Register<TabIntentMessage>(
 			this, (recipient, message) => OnTabIntent());
+		MessengerService.Register<MediaIntentMessage>(
+			this, (recipient, message) => OnMediaIntent());
+		MessengerService.Register<DocumentIntentMessage>(
+			this, (recipient, message) => OnDocumentIntent());
 
 		if (loadResult == RepositoryStorageLoadResult.InvalidRepository)
 			throw new Exception("Invalid repository");
@@ -748,6 +818,8 @@
 		MessengerService.Unregister<SmsChangedMessage>(this);
 		MessengerService.Unregister<PhoneIntentMessage>(this);
 		MessengerService.Unregister<TabIntentMessage>(this);
+		MessengerService.Unregister<MediaIntentMessage>(this);
+		MessengerService.Unregister<DocumentIntentMessage>(this);
 	}
 
 	/// <summary>
@@ -774,7 +846,7 @@
 			return;
 
 		CalendarIntentRequest.Pending = null;
-		_activeTab = 5;
+		SetActiveTab(5);
 		await _calendarViewModel.HandleIntentAsync(request);
 		StateHasChanged();
 	}
@@ -794,7 +866,7 @@
 			return;
 
 		ClockIntentRequest.Pending = null;
-		_activeTab = 6;
+		SetActiveTab(6);
 		await _clockViewModel.HandleIntentAsync(request);
 		StateHasChanged();
 	}
@@ -817,7 +889,7 @@
 				return;
 
 			PhoneIntentRequest.Pending = null;
-			_activeTab = 11;
+			SetActiveTab(11);
 			_phoneViewModel?.HandleIntent(request);
 			StateHasChanged();
 		});
@@ -832,7 +904,37 @@
 				return;
 
 			TabIntentRequest.Pending = null;
-			_activeTab = Math.Clamp(request.TabIndex, 0, 13);
+			SetActiveTab(Math.Clamp(request.TabIndex, 0, 15));
+			StateHasChanged();
+		});
+	}
+
+	private void OnMediaIntent()
+	{
+		InvokeAsync(() =>
+		{
+			MediaIntentRequest request = MediaIntentRequest.Pending;
+			if (request == null)
+				return;
+
+			MediaIntentRequest.Pending = null;
+			SetActiveTab(14);
+			_playerViewModel?.HandleIntent(request);
+			StateHasChanged();
+		});
+	}
+
+	private void OnDocumentIntent()
+	{
+		InvokeAsync(() =>
+		{
+			DocumentIntentRequest request = DocumentIntentRequest.Pending;
+			if (request == null)
+				return;
+
+			DocumentIntentRequest.Pending = null;
+			SetActiveTab(15);
+			_readerViewModel?.HandleIntent(request);
 			StateHasChanged();
 		});
 	}
@@ -924,10 +1026,24 @@
 			result = true;
 			refreshNeeded = true;
 		}
+		if (!result && (_activeTab == 14) && (_playerViewModel != null) && _playerViewModel.HasActiveMedia)
+		{
+			// Close the in-tab audio player first; stay on the Player tab.
+			_playerViewModel.StopCommand.Execute(null);
+			result = true;
+			refreshNeeded = true;
+		}
+		if (!result && (_activeTab == 15) && (_readerViewModel != null) && _readerViewModel.HasOpenDocument)
+		{
+			// Close the open document first; stay on the Reader tab.
+			_readerViewModel.CloseDocument();
+			result = true;
+			refreshNeeded = true;
+		}
 		if (!result && (_activeTab != 0))
 		{
 			// When a non-notes tab is open, the back key returns to the notes tab first.
-			_activeTab = 0;
+			SetActiveTab(0);
 			result = true;
 			refreshNeeded = true;
 		}
@@ -995,6 +1111,7 @@
 	private void SetActiveTab(int index)
 	{
 		_activeTab = index;
+		_persistedActiveTab = index;
 	}
 
 	/// <summary>

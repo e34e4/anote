@@ -1,0 +1,363 @@
+@using CommunityToolkit.Mvvm.Input
+@using MudBlazor
+@using SilentNotes.Models
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+@implements IDisposable
+
+@inject ILanguageService LanguageService
+@inject IMessengerService MessengerService
+
+<style type="text/css">
+	.reader-root {
+		background-color: #000000;
+		min-height: calc(100vh - 208px);
+		padding: 10px;
+		color: #ffffff;
+	}
+	.reader-toolbar {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 2px 4px 10px 4px;
+		border-bottom: 1px solid #202020;
+		flex-wrap: wrap;
+	}
+	.reader-path {
+		font-family: ui-monospace, "Cascadia Code", monospace;
+		font-size: 0.82rem;
+		color: #cccccc;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		flex-grow: 1;
+		min-width: 80px;
+	}
+	.reader-roots {
+		display: flex;
+		gap: 6px;
+		flex-wrap: wrap;
+		padding: 8px 0;
+	}
+	.reader-chip {
+		border: 1px solid #2b2b2b;
+		border-radius: 8px;
+		background-color: #000000;
+		color: #bdbdbd;
+		font-size: 0.78rem;
+		padding: 4px 10px;
+		cursor: pointer;
+		touch-action: manipulation;
+	}
+	.reader-chip.active {
+		border-color: var(--mud-palette-primary);
+		color: var(--mud-palette-primary);
+	}
+	.reader-row {
+		display: flex;
+		align-items: center;
+		padding: 10px 6px;
+		border-bottom: 1px solid #202020;
+		gap: 8px;
+		cursor: pointer;
+	}
+	.reader-row:active {
+		background-color: #151515;
+	}
+	.reader-row-main {
+		flex-grow: 1;
+		overflow: hidden;
+	}
+	.reader-row-name {
+		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.reader-row-meta {
+		font-size: 0.8rem;
+		color: #9e9e9e;
+	}
+	.reader-kind-icon {
+		width: 36px;
+		height: 36px;
+		border-radius: 10px;
+		background-color: #161616;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+	.reader-doc {
+		margin-top: 8px;
+	}
+	.reader-doc-title {
+		font-weight: 600;
+		font-size: 1.05rem;
+		margin-bottom: 8px;
+		word-break: break-word;
+	}
+	.reader-doc-text {
+		white-space: pre-wrap;
+		word-break: break-word;
+		font-family: ui-monospace, "Cascadia Code", "Noto Sans Mono", monospace;
+		font-size: 0.9rem;
+		line-height: 1.45;
+		color: #e8e8e8;
+	}
+	.reader-doc-html {
+		font-size: 0.95rem;
+		line-height: 1.5;
+		color: #e8e8e8;
+		word-break: break-word;
+	}
+	.reader-doc-html img {
+		max-width: 100%;
+		height: auto;
+	}
+	.reader-pdf-page {
+		width: 100%;
+		height: auto;
+		background: #fff;
+		border-radius: 4px;
+	}
+	.reader-pdf-bar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 10px;
+		flex-wrap: wrap;
+	}
+	.reader-pdf-label {
+		font-family: ui-monospace, "Cascadia Code", monospace;
+		font-size: 0.85rem;
+		color: var(--mud-palette-primary);
+		min-width: 72px;
+		text-align: center;
+	}
+</style>
+
+<div class="reader-root">
+	@if (!ViewModel.IsSupported)
+	{
+		<MudAlert Severity="Severity.Info" Dense="true">@LanguageService["reader_not_supported"]</MudAlert>
+	}
+	else if (ViewModel.HasOpenDocument && ViewModel.ActiveDocument != null)
+	{
+		<div class="reader-toolbar">
+			<MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" Color="Color.Inherit"
+				OnClick="() => ViewModel.CloseDocumentCommand.Execute(null)" title="@LanguageService["reader_close"]" />
+			<div class="reader-path" title="@ViewModel.ActiveTitle">@ViewModel.ActiveTitle</div>
+			<MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Color="Color.Inherit"
+				OnClick="OpenExternallyAsync" title="@LanguageService["reader_open_external"]" />
+		</div>
+
+		<div class="reader-doc">
+			@if (!string.IsNullOrEmpty(ViewModel.ActiveDocument.InfoMessage))
+			{
+				<MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">@ViewModel.ActiveDocument.InfoMessage</MudAlert>
+			}
+
+			@if (ViewModel.ActiveDocument.RenderMode == DocumentRenderMode.PdfPages)
+			{
+				<div class="reader-pdf-bar">
+					<MudIconButton Icon="@Icons.Material.Filled.NavigateBefore" Size="Size.Small" Color="Color.Primary"
+						Disabled="@(!ViewModel.CanGoPrevPdfPage)" OnClick="PrevPdfAsync" />
+					<span class="reader-pdf-label">@ViewModel.PdfPageLabel</span>
+					<MudIconButton Icon="@Icons.Material.Filled.NavigateNext" Size="Size.Small" Color="Color.Primary"
+						Disabled="@(!ViewModel.CanGoNextPdfPage)" OnClick="NextPdfAsync" />
+				</div>
+				@foreach (var pageUrl in ViewModel.ActiveDocument.PdfPageDataUrls)
+				{
+					<img class="reader-pdf-page" src="@pageUrl" alt="@ViewModel.PdfPageLabel" />
+				}
+			}
+			else if (ViewModel.ActiveDocument.RenderMode == DocumentRenderMode.Html)
+			{
+				<div class="reader-doc-html">@((MarkupString)(ViewModel.ActiveDocument.Html ?? string.Empty))</div>
+			}
+			else if (ViewModel.ActiveDocument.RenderMode == DocumentRenderMode.External)
+			{
+				<MudText Class="mud-text-secondary">@LanguageService["reader_external_hint"]</MudText>
+				<MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenExternallyAsync">
+					@LanguageService["reader_open_external"]
+				</MudButton>
+			}
+			else
+			{
+				<div class="reader-doc-text">@(ViewModel.ActiveDocument.Text ?? string.Empty)</div>
+			}
+		</div>
+	}
+	else
+	{
+		@if (ViewModel.NeedsPermission)
+		{
+			<MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+				<span>@LanguageService["reader_needs_permission"]</span>
+				<MudButton Size="Size.Small" Color="Color.Primary" Class="ml-2" OnClick="GrantPermissionAsync">@LanguageService["reader_grant"]</MudButton>
+			</MudAlert>
+		}
+
+		<div class="reader-toolbar">
+			@if (ViewModel.CanNavigateUp)
+			{
+				<MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small" Color="Color.Inherit"
+					OnClick="() => ViewModel.NavigateUpCommand.Execute(null)" title="@LanguageService["reader_up"]" />
+			}
+			<div class="reader-path" title="@ViewModel.CurrentPathDisplay">@ViewModel.CurrentPathDisplay</div>
+			<MudIconButton Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" Color="Color.Primary"
+				OnClick="PickFileAsync" title="@LanguageService["reader_pick"]" />
+			<MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Color="Color.Inherit"
+				OnClick="() => ViewModel.RefreshCommand.Execute(null)" title="@LanguageService["reader_refresh"]" />
+		</div>
+
+		<div class="reader-roots">
+			@foreach (var root in ViewModel.StorageRoots)
+			{
+				<button class="reader-chip" @onclick="() => ViewModel.GoToRootCommand.Execute(root.Key)">@root.Label</button>
+			}
+		</div>
+
+		<div class="reader-roots">
+			<button class="reader-chip @(ViewModel.IsKindAll ? "active" : null)" @onclick='() => ViewModel.SetKindFilterCommand.Execute("all")'>@LanguageService["reader_filter_all"]</button>
+			<button class="reader-chip @(ViewModel.IsKindText ? "active" : null)" @onclick='() => ViewModel.SetKindFilterCommand.Execute("text")'>@LanguageService["reader_filter_text"]</button>
+			<button class="reader-chip @(ViewModel.IsKindOffice ? "active" : null)" @onclick='() => ViewModel.SetKindFilterCommand.Execute("office")'>@LanguageService["reader_filter_office"]</button>
+			<button class="reader-chip @(ViewModel.IsKindPdf ? "active" : null)" @onclick='() => ViewModel.SetKindFilterCommand.Execute("pdf")'>@LanguageService["reader_filter_pdf"]</button>
+			<button class="reader-chip @(ViewModel.IsKindEbook ? "active" : null)" @onclick='() => ViewModel.SetKindFilterCommand.Execute("ebook")'>@LanguageService["reader_filter_ebook"]</button>
+		</div>
+
+		<MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">@ViewModel.CountText</MudText>
+
+		@if (ViewModel.IsBusy)
+		{
+			<div class="d-flex justify-center align-center pa-8">
+				<MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Medium" />
+			</div>
+		}
+		else if (ViewModel.NeedsPermission && ViewModel.IsEmpty)
+		{
+			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["reader_needs_permission"]</MudText>
+		}
+		else if (ViewModel.IsEmpty)
+		{
+			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["reader_empty"]</MudText>
+		}
+		else if (ViewModel.HasNoMatches)
+		{
+			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["reader_no_matches"]</MudText>
+		}
+		else
+		{
+			@foreach (var item in ViewModel.FilteredItems)
+			{
+				<div class="reader-row" @key="item.Path" @onclick="() => OpenItemAsync(item)">
+					<div class="reader-kind-icon">
+						<MudIcon Icon="@GetKindIcon(item.Kind)" Size="Size.Small" Color="Color.Inherit" />
+					</div>
+					<div class="reader-row-main">
+						<div class="reader-row-name">@item.Name</div>
+						<div class="reader-row-meta">@item.MetaText</div>
+					</div>
+					@if (item.Kind != DocumentKind.Folder)
+					{
+						<MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" />
+					}
+				</div>
+			}
+		}
+	}
+</div>
+
+@code {
+	[Parameter]
+	public ReaderViewModel ViewModel { get; set; }
+
+	protected override void OnInitialized()
+	{
+		if (ViewModel != null)
+			ViewModel.StateChanged += OnViewModelStateChanged;
+		MessengerService.Register<AfterResumeMessage>(this, (r, m) => InvokeAsync(() =>
+		{
+			ViewModel?.Reload();
+			StateHasChanged();
+		}));
+	}
+
+	private void OnViewModelStateChanged()
+	{
+		InvokeAsync(StateHasChanged);
+	}
+
+	private async Task GrantPermissionAsync()
+	{
+		await ViewModel.GrantPermissionAsync();
+		StateHasChanged();
+	}
+
+	private async Task PickFileAsync()
+	{
+		if (ViewModel.PickFileCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.PickFileCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task OpenItemAsync(DocumentItemViewModel item)
+	{
+		if (ViewModel.EnterItemCommand is IAsyncRelayCommand<DocumentItemViewModel> asyncCmd)
+			await asyncCmd.ExecuteAsync(item);
+		else
+			ViewModel.EnterItemCommand.Execute(item);
+		StateHasChanged();
+	}
+
+	private async Task PrevPdfAsync()
+	{
+		if (ViewModel.PrevPdfPageCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.PrevPdfPageCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task NextPdfAsync()
+	{
+		if (ViewModel.NextPdfPageCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.NextPdfPageCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task OpenExternallyAsync()
+	{
+		if (ViewModel.OpenExternallyCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.OpenExternallyCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private static string GetKindIcon(DocumentKind kind)
+	{
+		return kind switch
+		{
+			DocumentKind.Folder => Icons.Material.Filled.Folder,
+			DocumentKind.Text => Icons.Material.Filled.Description,
+			DocumentKind.Office => Icons.Material.Filled.Article,
+			DocumentKind.Pdf => Icons.Material.Filled.PictureAsPdf,
+			DocumentKind.Ebook => Icons.Material.Filled.MenuBook,
+			DocumentKind.Djvu => Icons.Material.Filled.Image,
+			_ => Icons.Material.Filled.InsertDriveFile,
+		};
+	}
+
+	public void Dispose()
+	{
+		if (ViewModel != null)
+			ViewModel.StateChanged -= OnViewModelStateChanged;
+		MessengerService.Unregister<AfterResumeMessage>(this);
+	}
+}

@@ -643,3 +643,43 @@ delete = Delete
 
 
 
+
+# Player tab
+tab_player = Player
+player_search = Search media…
+player_not_supported = Media player is not available on this platform.
+player_needs_permission = Allow all-files access to browse and play media from any folder.
+player_grant = Allow access
+player_up = Up
+player_pick = Open file
+player_refresh = Refresh
+player_filter_all = All
+player_filter_audio = Audio
+player_filter_video = Video
+player_filter_image = Images
+player_count = {0} items
+player_empty = No media files in this folder.
+player_no_matches = No matching media.
+player_play_failed = Could not play: {0}
+
+# Reader tab
+tab_reader = Reader
+reader_search = Search documents…
+reader_not_supported = Document reader is not available on this platform.
+reader_needs_permission = Allow all-files access to browse and read documents from any folder.
+reader_grant = Allow access
+reader_up = Up
+reader_pick = Open file
+reader_refresh = Refresh
+reader_close = Close document
+reader_open_external = Open externally
+reader_external_hint = This file was opened in an external viewer. You can reopen it below.
+reader_filter_all = All
+reader_filter_text = Text
+reader_filter_office = Office
+reader_filter_pdf = PDF / DjVu
+reader_filter_ebook = Ebooks
+reader_count = {0} items
+reader_empty = No readable documents in this folder.
+reader_no_matches = No matching documents.
+reader_open_failed = Could not open: {0}

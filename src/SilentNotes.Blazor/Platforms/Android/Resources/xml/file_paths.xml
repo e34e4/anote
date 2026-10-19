@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="clipboard" path="clipboard/" />
+    <!-- Allow sharing browsed storage files with external viewers (Reader / Player). -->
+    <external-path name="external" path="." />
+    <cache-path name="reader_share" path="reader_share/" />
 </paths>

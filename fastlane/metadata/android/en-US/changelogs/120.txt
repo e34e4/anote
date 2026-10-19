@@ -1,0 +1,6 @@
+aNote version 1.3.14
+
+* Player: browse device folders and play audio/video; images open in a viewer.
+* Reader: browse and read text, Office (docx/xlsx/pptx/odt/ods), PDF, EPUB and
+  FB2 in-app; DjVu and legacy Office open with an external viewer.
+* Open media and documents from the system "Open with" / share sheet.

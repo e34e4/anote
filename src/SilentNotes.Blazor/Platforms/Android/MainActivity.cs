@@ -69,6 +69,123 @@ namespace SilentNotes
         new[] { "android.intent.action.DIAL", "android.intent.action.VIEW" },
         Categories = new[] { "android.intent.category.DEFAULT", "android.intent.category.BROWSABLE" },
         DataScheme = "tel")]
+    // Register aNote as an audio / video player (system "Open with" chooser).
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "audio/*",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "audio/*",
+        DataScheme = "file")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "video/*",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "video/*",
+        DataScheme = "file")]
+    [IntentFilter(
+        new[] { "android.intent.action.SEND" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "audio/*")]
+    [IntentFilter(
+        new[] { "android.intent.action.SEND" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "video/*")]
+    // Register aNote as a document reader (text / PDF / Office / EPUB / FB2 / DjVu).
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "text/*",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "text/*",
+        DataScheme = "file")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/pdf",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/pdf",
+        DataScheme = "file")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/epub+zip",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/epub+zip",
+        DataScheme = "file")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/msword",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/vnd.ms-excel",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/vnd.oasis.opendocument.text",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/vnd.oasis.opendocument.spreadsheet",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/x-fictionbook+xml",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.VIEW" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "image/vnd.djvu",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { "android.intent.action.SEND" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "text/*")]
+    [IntentFilter(
+        new[] { "android.intent.action.SEND" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/pdf")]
+    [IntentFilter(
+        new[] { "android.intent.action.SEND" },
+        Categories = new[] { "android.intent.category.DEFAULT" },
+        DataMimeType = "application/epub+zip")]
     public class MainActivity : MauiAppCompatActivity, IOnPreDrawListener
     {
         private readonly ApplicationEventHandler _applicationEventHandler = new ApplicationEventHandler();

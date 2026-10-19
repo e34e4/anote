@@ -250,6 +250,22 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Message to inform the main page that a media VIEW/SEND intent was received, so the Player
+    /// tab can open and play the file.
+    /// </summary>
+    public class MediaIntentMessage
+    {
+    }
+
+    /// <summary>
+    /// Message to inform the main page that a document VIEW/SEND intent was received, so the
+    /// Reader tab can open the file.
+    /// </summary>
+    public class DocumentIntentMessage
+    {
+    }
+
+    /// <summary>
     /// Enumeration of possible sources of a sent message.
     /// </summary>
     public enum MessageSender

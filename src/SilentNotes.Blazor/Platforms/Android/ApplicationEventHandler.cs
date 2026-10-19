@@ -61,6 +61,12 @@ namespace SilentNotes.Platforms
             // Check whether the app was started from the floating button menu to open a specific tab.
             ConsumeTabIntent(activity.Intent);
 
+            // Check whether the app was started to open/play an audio or video file.
+            ConsumeMediaIntent(activity.Intent);
+
+            // Check whether the app was started to open a document in the Reader tab.
+            ConsumeDocumentIntent(activity.Intent);
+
             // Prevent notes from being visible in list of recent apps and screenshots
             ISettingsService settingsService = Ioc.Instance.GetService<ISettingsService>();
             SettingsModel settings = settingsService.LoadSettingsOrDefault();
@@ -79,6 +85,207 @@ namespace SilentNotes.Platforms
             ConsumeClockIntent(intent);
             ConsumePhoneIntent(intent);
             ConsumeTabIntent(intent);
+            ConsumeMediaIntent(intent);
+            ConsumeDocumentIntent(intent);
+        }
+
+        /// <summary>
+        /// Checks whether the intent opens an audio/video file (VIEW or SEND), and remembers it in
+        /// <see cref="MediaIntentRequest.Pending"/> so the Player tab can play it.
+        /// </summary>
+        private void ConsumeMediaIntent(Intent intent)
+        {
+            MediaIntentRequest request = ParseMediaIntent(intent);
+            if (request == null)
+                return;
+
+            MediaIntentRequest.Pending = request;
+            Ioc.Instance.GetService<IMessengerService>()?.Send(new MediaIntentMessage());
+        }
+
+        private static MediaIntentRequest ParseMediaIntent(Intent intent)
+        {
+            if (intent == null)
+                return null;
+
+            string action = intent.Action;
+            string type = intent.Type ?? string.Empty;
+            bool isAudioOrVideo =
+                type.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ||
+                type.StartsWith("video/", StringComparison.OrdinalIgnoreCase);
+
+            if (action == Intent.ActionView)
+            {
+                global::Android.Net.Uri data = intent.Data;
+                if (data == null)
+                    return null;
+
+                // Ignore calendar/tel intents which also use VIEW.
+                string scheme = data.Scheme ?? string.Empty;
+                if (string.Equals(scheme, "tel", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(scheme, "sms", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(scheme, "smsto", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(scheme, "mms", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(scheme, "mmsto", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(data.Host, "com.android.calendar", StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+
+                if (!isAudioOrVideo)
+                {
+                    // Fallback: detect by path extension when MIME is missing.
+                    string path = data.Path ?? data.ToString();
+                    var kind = Services.MediaPlayerService.DetectKind(path, type);
+                    if (kind != MediaKind.Audio && kind != MediaKind.Video)
+                        return null;
+                }
+
+                return new MediaIntentRequest
+                {
+                    UriOrPath = data.ToString(),
+                    MimeType = string.IsNullOrEmpty(type) ? null : type,
+                    DisplayName = data.LastPathSegment,
+                };
+            }
+
+            if ((action == Intent.ActionSend) && isAudioOrVideo)
+            {
+                global::Android.Net.Uri stream = null;
+                try
+                {
+                    stream = (global::Android.Net.Uri)intent.GetParcelableExtra(Intent.ExtraStream);
+                }
+                catch (Exception)
+                {
+                }
+                if (stream == null)
+                    return null;
+
+                return new MediaIntentRequest
+                {
+                    UriOrPath = stream.ToString(),
+                    MimeType = type,
+                    DisplayName = stream.LastPathSegment,
+                };
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Checks whether the intent opens a document (VIEW or SEND), and remembers it in
+        /// <see cref="DocumentIntentRequest.Pending"/> so the Reader tab can open it.
+        /// </summary>
+        private void ConsumeDocumentIntent(Intent intent)
+        {
+            // Prefer media intents when both could match.
+            if (MediaIntentRequest.Pending != null)
+                return;
+
+            DocumentIntentRequest request = ParseDocumentIntent(intent);
+            if (request == null)
+                return;
+
+            DocumentIntentRequest.Pending = request;
+            Ioc.Instance.GetService<IMessengerService>()?.Send(new DocumentIntentMessage());
+        }
+
+        private static DocumentIntentRequest ParseDocumentIntent(Intent intent)
+        {
+            if (intent == null)
+                return null;
+
+            string action = intent.Action;
+            string type = intent.Type ?? string.Empty;
+
+            if (action == Intent.ActionView)
+            {
+                global::Android.Net.Uri data = intent.Data;
+                if (data == null)
+                    return null;
+
+                string scheme = data.Scheme ?? string.Empty;
+                if (string.Equals(scheme, "tel", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(scheme, "sms", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(scheme, "smsto", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(scheme, "mms", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(scheme, "mmsto", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(data.Host, "com.android.calendar", StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+
+                string path = data.Path ?? data.ToString();
+                DocumentKind kind = DocumentReaderService.DetectKind(path, type);
+                if (kind == DocumentKind.Other || kind == DocumentKind.Folder)
+                {
+                    // Also accept generic text/* MIME even if extension is unknown.
+                    if (!type.StartsWith("text/", StringComparison.OrdinalIgnoreCase) &&
+                        !type.Equals("application/pdf", StringComparison.OrdinalIgnoreCase) &&
+                        !type.Contains("epub", StringComparison.OrdinalIgnoreCase) &&
+                        !type.Contains("fictionbook", StringComparison.OrdinalIgnoreCase) &&
+                        !type.Contains("officedocument", StringComparison.OrdinalIgnoreCase) &&
+                        !type.Contains("msword", StringComparison.OrdinalIgnoreCase) &&
+                        !type.Contains("ms-excel", StringComparison.OrdinalIgnoreCase) &&
+                        !type.Contains("opendocument", StringComparison.OrdinalIgnoreCase) &&
+                        !type.Contains("djvu", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return null;
+                    }
+                }
+
+                // Skip audio/video — those belong to the Player tab.
+                if (type.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ||
+                    type.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+
+                return new DocumentIntentRequest
+                {
+                    UriOrPath = data.ToString(),
+                    MimeType = string.IsNullOrEmpty(type) ? null : type,
+                    DisplayName = data.LastPathSegment,
+                };
+            }
+
+            if (action == Intent.ActionSend)
+            {
+                bool looksLikeDocument =
+                    type.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ||
+                    type.Equals("application/pdf", StringComparison.OrdinalIgnoreCase) ||
+                    type.Contains("epub", StringComparison.OrdinalIgnoreCase) ||
+                    type.Contains("fictionbook", StringComparison.OrdinalIgnoreCase) ||
+                    type.Contains("officedocument", StringComparison.OrdinalIgnoreCase) ||
+                    type.Contains("msword", StringComparison.OrdinalIgnoreCase) ||
+                    type.Contains("ms-excel", StringComparison.OrdinalIgnoreCase) ||
+                    type.Contains("opendocument", StringComparison.OrdinalIgnoreCase) ||
+                    type.Contains("djvu", StringComparison.OrdinalIgnoreCase);
+
+                if (!looksLikeDocument)
+                    return null;
+
+                global::Android.Net.Uri stream = null;
+                try
+                {
+                    stream = (global::Android.Net.Uri)intent.GetParcelableExtra(Intent.ExtraStream);
+                }
+                catch (Exception)
+                {
+                }
+                if (stream == null)
+                    return null;
+
+                return new DocumentIntentRequest
+                {
+                    UriOrPath = stream.ToString(),
+                    MimeType = type,
+                    DisplayName = stream.LastPathSegment,
+                };
+            }
+
+            return null;
         }
 
         private void ConsumeTabIntent(Intent intent)
