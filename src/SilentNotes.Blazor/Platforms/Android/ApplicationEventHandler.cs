@@ -300,7 +300,12 @@ namespace SilentNotes.Platforms
             var synchronizationService = Ioc.Instance.GetService<ISynchronizationService>();
             synchronizationService.StopAutoSynchronization(Ioc.Instance);
 
-            if (IsStartedByOAuthRedirectIndent(synchronizationService))
+            if (SilentNotes.MailOAuthSession.Peek() != null)
+            {
+                Ioc.Instance.GetService<IMessengerService>()?.Send(
+                    new SilentNotes.MailGoogleOAuthRedirectMessage(SilentNotes.MailOAuthSession.Peek()));
+            }
+            else if (IsStartedByOAuthRedirectIndent(synchronizationService))
             {
                 // Coming back from an OAuth2 redirect.
                 var startStep = new HandleOAuthRedirectStep();

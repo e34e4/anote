@@ -16,8 +16,9 @@ namespace SilentNotes.Platforms.Services
     {
         public MailService(
             IXmlFileService xmlFileService,
-            IDataProtectionService dataProtectionService)
-            : base(xmlFileService, dataProtectionService)
+            IDataProtectionService dataProtectionService,
+            ICloudStorageClientFactory cloudStorageClientFactory)
+            : base(xmlFileService, dataProtectionService, cloudStorageClientFactory)
         {
         }
 

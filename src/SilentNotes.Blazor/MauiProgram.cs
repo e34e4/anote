@@ -171,7 +171,8 @@ public static class MauiProgram
         services.AddSingleton<ICameraService>((serviceProvider) => new CameraService());
         services.AddSingleton<IMailService>((serviceProvider) => new MailService(
             serviceProvider.GetService<IXmlFileService>(),
-            serviceProvider.GetService<IDataProtectionService>()));
+            serviceProvider.GetService<IDataProtectionService>(),
+            serviceProvider.GetService<ICloudStorageClientFactory>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<ISnackbar>(),
@@ -244,7 +245,8 @@ public static class MauiProgram
         services.AddSingleton<IMailService>((serviceProvider) => new MailService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IXmlFileService>(),
-            serviceProvider.GetService<IDataProtectionService>()));
+            serviceProvider.GetService<IDataProtectionService>(),
+            serviceProvider.GetService<ICloudStorageClientFactory>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<IAppContextService>(),

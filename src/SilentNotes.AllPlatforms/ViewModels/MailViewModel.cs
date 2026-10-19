@@ -10,6 +10,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
+using SilentNotes.Crypto;
 using SilentNotes.Models;
 using SilentNotes.Services;
 
@@ -24,6 +25,10 @@ namespace SilentNotes.ViewModels
         private readonly IFilePickerService _filePickerService;
         private readonly ILanguageService _languageService;
         private readonly IFeedbackService _feedbackService;
+        private readonly INativeBrowserService _nativeBrowserService;
+        private readonly IMessengerService _messengerService;
+        private readonly ICryptoRandomService _randomService;
+        private string _handledGoogleRedirect;
 
         private MailStoreModel _store;
         private string _selectedAccountId = string.Empty; // empty = All accounts
@@ -60,17 +65,33 @@ namespace SilentNotes.ViewModels
         private string _editSmtpHost = string.Empty;
         private int _editSmtpPort = 465;
         private bool _editSmtpSsl = true;
+        private string _editAuthMode = MailAuthModes.Password;
+        private string _editRefreshToken = string.Empty;
+        private string _editAccessToken = string.Empty;
+        private DateTime _editAccessExpiry;
 
         public MailViewModel(
             IMailService mailService,
             IFilePickerService filePickerService,
             ILanguageService languageService,
-            IFeedbackService feedbackService)
+            IFeedbackService feedbackService,
+            INativeBrowserService nativeBrowserService = null,
+            IMessengerService messengerService = null,
+            ICryptoRandomService randomService = null)
         {
             _mailService = mailService;
             _filePickerService = filePickerService;
             _languageService = languageService;
             _feedbackService = feedbackService;
+            _nativeBrowserService = nativeBrowserService;
+            _messengerService = messengerService;
+            _randomService = randomService;
+            _messengerService?.Register<SilentNotes.MailGoogleOAuthRedirectMessage>(this, (_, message) =>
+            {
+                _ = FinishGoogleSignInAsync(message.RedirectUrl);
+            });
+            if (SilentNotes.MailOAuthSession.Peek() != null)
+                _ = FinishGoogleSignInAsync(SilentNotes.MailOAuthSession.Peek());
 
             _store = _mailService?.LoadStore() ?? new MailStoreModel();
             if (_store.Accounts.Count == 1)
@@ -743,9 +764,84 @@ namespace SilentNotes.ViewModels
             _editSmtpHost = string.Empty;
             _editSmtpPort = 465;
             _editSmtpSsl = true;
+            _editAuthMode = MailAuthModes.Password;
+            _editRefreshToken = string.Empty;
+            _editAccessToken = string.Empty;
+            _editAccessExpiry = default;
             IsAccountsOverlayOpen = true;
             IsEditingAccount = true;
             NotifyChanged();
+        }
+
+        public bool EditedAccountUsesGoogle => string.Equals(_editAuthMode, MailAuthModes.Google, StringComparison.OrdinalIgnoreCase);
+
+        public async Task StartGoogleSignInAsync()
+        {
+            if (_mailService == null || _nativeBrowserService == null || _randomService == null)
+            {
+                _feedbackService?.ShowToast(_languageService["mail_google_failed"], FeedbackSeverity.Warning);
+                return;
+            }
+
+            string state = SilentNotes.MailOAuthSession.StatePrefix + CryptoUtils.GenerateRandomBase62String(16, _randomService);
+            string verifier = CryptoUtils.GenerateRandomBase62String(64, _randomService);
+            _mailService.SaveGoogleOAuthPending(state, verifier);
+            string url = _mailService.BuildGoogleMailAuthorizationUrl(state, verifier);
+            _nativeBrowserService.OpenWebsiteInApp(url);
+            _feedbackService?.ShowToast(_languageService["mail_google_waiting"]);
+        }
+
+        public async Task FinishGoogleSignInAsync(string redirectUrl)
+        {
+            if (string.IsNullOrEmpty(redirectUrl) || redirectUrl == _handledGoogleRedirect || _mailService == null)
+                return;
+
+            _handledGoogleRedirect = redirectUrl;
+            SilentNotes.MailOAuthSession.Clear(redirectUrl);
+            IsBusy = true;
+            try
+            {
+                MailAccountModel signedIn = await _mailService.FinishGoogleMailAuthorizationAsync(redirectUrl);
+                MailAccountModel existing = _store.Accounts.FirstOrDefault(a =>
+                    string.Equals(a.EmailAddress, signedIn.EmailAddress, StringComparison.OrdinalIgnoreCase));
+                if (existing == null)
+                {
+                    _store.Accounts.Add(signedIn);
+                    existing = signedIn;
+                }
+                else
+                {
+                    existing.AuthMode = MailAuthModes.Google;
+                    existing.Username = signedIn.Username;
+                    existing.AccessToken = signedIn.AccessToken;
+                    existing.RefreshToken = signedIn.RefreshToken;
+                    existing.AccessTokenExpiryUtc = signedIn.AccessTokenExpiryUtc;
+                    existing.Password = string.Empty;
+                    if (string.IsNullOrWhiteSpace(existing.ImapHost))
+                    {
+                        existing.ImapHost = signedIn.ImapHost;
+                        existing.ImapPort = signedIn.ImapPort;
+                        existing.ImapUseSsl = signedIn.ImapUseSsl;
+                        existing.SmtpHost = signedIn.SmtpHost;
+                        existing.SmtpPort = signedIn.SmtpPort;
+                        existing.SmtpUseSsl = signedIn.SmtpUseSsl;
+                    }
+                }
+
+                _selectedAccountId = existing.Id;
+                _mailService.SaveStore(_store);
+                StartEditAccount(existing);
+                _feedbackService?.ShowToast(_languageService.LoadTextFmt("mail_google_ok_fmt", existing.EmailAddress));
+            }
+            catch (Exception ex)
+            {
+                _feedbackService?.ShowToast(_languageService["mail_google_failed"] + ": " + ex.Message, FeedbackSeverity.Warning);
+            }
+            finally
+            {
+                IsBusy = false;
+                NotifyChanged();
+            }
         }
 
         public void StartEditAccount(MailAccountModel account)
@@ -763,6 +859,10 @@ namespace SilentNotes.ViewModels
             _editSmtpHost = account.SmtpHost;
             _editSmtpPort = account.SmtpPort;
             _editSmtpSsl = account.SmtpUseSsl;
+            _editAuthMode = string.IsNullOrEmpty(account.AuthMode) ? MailAuthModes.Password : account.AuthMode;
+            _editRefreshToken = account.RefreshToken ?? string.Empty;
+            _editAccessToken = account.AccessToken ?? string.Empty;
+            _editAccessExpiry = account.AccessTokenExpiryUtc;
             IsAccountsOverlayOpen = true;
             IsEditingAccount = true;
             NotifyChanged();
@@ -851,6 +951,20 @@ namespace SilentNotes.ViewModels
                 : _editSmtpHost.Trim();
             target.SmtpPort = _editSmtpPort > 0 ? _editSmtpPort : 465;
             target.SmtpUseSsl = _editSmtpSsl;
+            if (!string.IsNullOrWhiteSpace(target.Password))
+            {
+                target.AuthMode = MailAuthModes.Password;
+                target.RefreshToken = string.Empty;
+                target.AccessToken = string.Empty;
+            }
+            else
+            {
+                target.AuthMode = _editAuthMode ?? MailAuthModes.Password;
+                target.RefreshToken = _editRefreshToken ?? string.Empty;
+                target.AccessToken = _editAccessToken ?? string.Empty;
+                target.AccessTokenExpiryUtc = _editAccessExpiry;
+            }
+            target.Password = MailServiceBase.NormalizeAppPassword(target);
 
             if (isNew)
                 _store.Accounts.Add(target);
@@ -861,7 +975,7 @@ namespace SilentNotes.ViewModels
             IsAccountsOverlayOpen = false;
             NotifyChanged();
 
-            if (isNew && !string.IsNullOrEmpty(target.Password))
+            if (isNew && (target.UsesGoogleOAuth || !string.IsNullOrEmpty(target.Password)))
                 await SyncAllOrSelectedAsync();
         }
 
@@ -894,6 +1008,10 @@ namespace SilentNotes.ViewModels
                 SmtpHost = (_editSmtpHost ?? string.Empty).Trim(),
                 SmtpPort = _editSmtpPort > 0 ? _editSmtpPort : 465,
                 SmtpUseSsl = _editSmtpSsl,
+                AuthMode = string.IsNullOrWhiteSpace(_editPassword) ? (_editAuthMode ?? MailAuthModes.Password) : MailAuthModes.Password,
+                RefreshToken = string.IsNullOrWhiteSpace(_editPassword) ? _editRefreshToken : string.Empty,
+                AccessToken = string.IsNullOrWhiteSpace(_editPassword) ? _editAccessToken : string.Empty,
+                AccessTokenExpiryUtc = _editAccessExpiry,
             };
         }
 

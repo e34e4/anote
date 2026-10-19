@@ -23,6 +23,12 @@ namespace VanillaCloudStorageClient.CloudStorageProviders
     /// </summary>
     public class GoogleCloudStorageClient : OAuth2CloudStorageClient, ICloudStorageClient, IOAuth2CloudStorageClient
     {
+        /// <summary>Scope used to sync notes into the private Drive app-data folder.</summary>
+        public const string DriveAppDataScope = "https://www.googleapis.com/auth/drive.appdata";
+
+        /// <summary>Scope that allows IMAP and SMTP access with XOAUTH2.</summary>
+        public const string GmailScope = "https://mail.google.com/";
+
         private const string AuthorizeUrl = "https://accounts.google.com/o/oauth2/v2/auth";
         private const string TokenUrl = "https://www.googleapis.com/oauth2/v4/token";
         private const string UploadUrl = "https://www.googleapis.com/upload/drive/v3/files";
@@ -36,7 +42,8 @@ namespace VanillaCloudStorageClient.CloudStorageProviders
         /// </summary>
         /// <param name="oauthClientId">Sets the <see cref="OAuth2Config.ClientId"/> property.</param>
         /// <param name="oauthRedirectUrl">Sets the <see cref="OAuth2Config.RedirectUrl"/> property.</param>
-        public GoogleCloudStorageClient(string oauthClientId, string oauthRedirectUrl)
+        /// <param name="scope">OAuth scope. Notes sync keeps <see cref="DriveAppDataScope"/>.</param>
+        public GoogleCloudStorageClient(string oauthClientId, string oauthRedirectUrl, string scope = null)
             : base(new OAuth2Config
             {
                 AuthorizeServiceEndpoint = AuthorizeUrl,
@@ -44,7 +51,7 @@ namespace VanillaCloudStorageClient.CloudStorageProviders
                 ClientId = oauthClientId,
                 RedirectUrl = oauthRedirectUrl,
                 Flow = AuthorizationFlow.Code,
-                Scope = "https://www.googleapis.com/auth/drive.appdata",
+                Scope = string.IsNullOrWhiteSpace(scope) ? DriveAppDataScope : scope,
                 ClientSecretHandling = ClientSecretHandling.SendEmptyParam,
             })
         {

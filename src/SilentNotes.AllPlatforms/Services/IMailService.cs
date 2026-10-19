@@ -44,6 +44,18 @@ namespace SilentNotes.Services
             int maxMessages = 40,
             CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Builds the Google authorization URL for IMAP/SMTP. The account picker is shown so a
+        /// mailbox other than the note-sync account can be chosen.
+        /// </summary>
+        string BuildGoogleMailAuthorizationUrl(string state, string codeVerifier);
+
+        /// <summary>Persists the PKCE state until the browser redirects back.</summary>
+        void SaveGoogleOAuthPending(string state, string codeVerifier);
+
+        /// <summary>Exchanges the redirect for tokens and returns a Gmail account.</summary>
+        Task<MailAccountModel> FinishGoogleMailAuthorizationAsync(string redirectUrl, CancellationToken cancellationToken = default);
+
         /// <summary>Sends an email message via the account's SMTP server.</summary>
         Task<MailOperationResult> SendMessageAsync(
             MailAccountModel account,

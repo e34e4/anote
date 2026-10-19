@@ -19,8 +19,9 @@ namespace SilentNotes.Platforms.Services
         public MailService(
             IAppContextService appContextService,
             IXmlFileService xmlFileService,
-            IDataProtectionService dataProtectionService)
-            : base(xmlFileService, dataProtectionService)
+            IDataProtectionService dataProtectionService,
+            ICloudStorageClientFactory cloudStorageClientFactory)
+            : base(xmlFileService, dataProtectionService, cloudStorageClientFactory)
         {
             _appContext = appContextService;
         }

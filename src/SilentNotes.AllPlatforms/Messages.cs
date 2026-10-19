@@ -150,6 +150,51 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Google OAuth redirect for a Mail account. The URL stays in <see cref="MailOAuthSession"/>
+    /// until the mail tab consumes it, so a redirect that arrives before the tab is created is kept.
+    /// </summary>
+    public class MailGoogleOAuthRedirectMessage
+    {
+        public MailGoogleOAuthRedirectMessage(string redirectUrl)
+        {
+            RedirectUrl = redirectUrl;
+        }
+
+        public string RedirectUrl { get; }
+    }
+
+    /// <summary>Holds a Gmail OAuth redirect until the mail tab handles it.</summary>
+    public static class MailOAuthSession
+    {
+        public const string StatePrefix = "mail.";
+
+        private static string _redirectUrl;
+
+        public static void Offer(string redirectUrl)
+        {
+            if (!string.IsNullOrEmpty(redirectUrl))
+                _redirectUrl = redirectUrl;
+        }
+
+        public static string Peek()
+        {
+            return _redirectUrl;
+        }
+
+        public static void Clear(string redirectUrl)
+        {
+            if (_redirectUrl == redirectUrl)
+                _redirectUrl = null;
+        }
+
+        public static bool IsMailRedirect(string redirectUrl)
+        {
+            return !string.IsNullOrEmpty(redirectUrl)
+                && redirectUrl.IndexOf("state=" + StatePrefix, StringComparison.Ordinal) >= 0;
+        }
+    }
+
+    /// <summary>
     /// Message to inform the booky tab that the bookmarks have changed and should be reloaded.
     /// It is sent after the bookmarks were merged with the shared Booky bookmarks file.
     /// </summary>

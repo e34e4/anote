@@ -73,6 +73,34 @@ namespace SilentNotes.Models
 
         [XmlElement("encrypted_password")]
         public string EncryptedPassword { get; set; }
+
+        /// <summary>password or google. Google accounts authenticate with XOAUTH2.</summary>
+        [XmlElement("auth_mode")]
+        public string AuthMode { get; set; } = MailAuthModes.Password;
+
+        [XmlIgnore]
+        public string RefreshToken { get; set; } = string.Empty;
+
+        [XmlElement("encrypted_refresh_token")]
+        public string EncryptedRefreshToken { get; set; }
+
+        [XmlIgnore]
+        public string AccessToken { get; set; } = string.Empty;
+
+        [XmlElement("encrypted_access_token")]
+        public string EncryptedAccessToken { get; set; }
+
+        [XmlElement("access_token_expiry_utc")]
+        public DateTime AccessTokenExpiryUtc { get; set; }
+
+        [XmlIgnore]
+        public bool UsesGoogleOAuth => string.Equals(AuthMode, MailAuthModes.Google, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static class MailAuthModes
+    {
+        public const string Password = "password";
+        public const string Google = "google";
     }
 
     /// <summary>

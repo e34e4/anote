@@ -39,6 +39,13 @@ namespace SilentNotes.Services
         /// <param name="cloudStorageId">The id of the cloud storage client.</param>
         /// <returns>Metadata to the cloud storage client.</returns>
         CloudStorageMetadata GetCloudStorageMetadata(string cloudStorageId);
+
+        /// <summary>
+        /// Creates a Google OAuth client that uses the same client id and redirect URL as note
+        /// sync, but with the given scope. Mail uses <c>https://mail.google.com/</c> so a Gmail
+        /// grant does not replace the Drive app-data grant.
+        /// </summary>
+        IOAuth2CloudStorageClient CreateGoogleOAuthClient(string scope);
     }
 
     /// <summary>

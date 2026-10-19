@@ -1,0 +1,6 @@
+aNote version 1.3.12
+
+* Mail: sign in to Gmail with the existing Google account, and add other Google
+  mailboxes separately. Note sync still uses only its Drive folder.
+* Mail: Gmail app passwords have their displayed spaces removed, and login falls
+  back to AUTHENTICATE PLAIN when the server rejects LOGIN.

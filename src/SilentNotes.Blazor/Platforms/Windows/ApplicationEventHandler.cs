@@ -94,6 +94,14 @@ namespace SilentNotes.Platforms
                 (e.Data is ProtocolActivatedEventArgs activatedEventArgs))
             {
                 // Continue manual synchronization, after the user confirmed the OAuth2 login.
+                string redirectUrl = activatedEventArgs.Uri.AbsoluteUri;
+                if (SilentNotes.MailOAuthSession.IsMailRedirect(redirectUrl))
+                {
+                    SilentNotes.MailOAuthSession.Offer(redirectUrl);
+                    Ioc.Instance.GetService<IMessengerService>()?.Send(new SilentNotes.MailGoogleOAuthRedirectMessage(redirectUrl));
+                    return;
+                }
+
                 var synchronizationService = Ioc.Instance.GetService<ISynchronizationService>();
                 if (synchronizationService.ManualSynchronization != null)
                 {

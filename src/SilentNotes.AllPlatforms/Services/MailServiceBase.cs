@@ -14,9 +14,15 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text.Json;
 using System.Xml.Linq;
 using SilentNotes.Models;
 using SilentNotes.Workers;
+using VanillaCloudStorageClient;
+using VanillaCloudStorageClient.CloudStorageProviders;
+using VanillaCloudStorageClient.OAuth2;
 
 namespace SilentNotes.Services
 {
@@ -33,13 +39,20 @@ namespace SilentNotes.Services
         private const string StoreFileName = "anote_mail_store_dev.xml";
 #endif
 
+        private const string GooglePendingFileName = "google_oauth_pending.txt";
+
         private readonly IXmlFileService _xmlFileService;
         private readonly IDataProtectionService _dataProtectionService;
+        private readonly ICloudStorageClientFactory _cloudStorageClientFactory;
 
-        protected MailServiceBase(IXmlFileService xmlFileService, IDataProtectionService dataProtectionService)
+        protected MailServiceBase(
+            IXmlFileService xmlFileService,
+            IDataProtectionService dataProtectionService,
+            ICloudStorageClientFactory cloudStorageClientFactory = null)
         {
             _xmlFileService = xmlFileService;
             _dataProtectionService = dataProtectionService;
+            _cloudStorageClientFactory = cloudStorageClientFactory;
         }
 
         /// <summary>Gets the directory path where the mail store is persisted.</summary>
@@ -59,18 +72,9 @@ namespace SilentNotes.Services
                     {
                         foreach (var acc in store.Accounts)
                         {
-                            if (!string.IsNullOrEmpty(acc.EncryptedPassword) && _dataProtectionService != null)
-                            {
-                                try
-                                {
-                                    byte[] raw = _dataProtectionService.Unprotect(acc.EncryptedPassword);
-                                    if (raw != null)
-                                        acc.Password = Encoding.UTF8.GetString(raw);
-                                }
-                                catch (Exception)
-                                {
-                                }
-                            }
+                            UnprotectSecret(acc.EncryptedPassword, value => acc.Password = value);
+                            UnprotectSecret(acc.EncryptedRefreshToken, value => acc.RefreshToken = value);
+                            UnprotectSecret(acc.EncryptedAccessToken, value => acc.AccessToken = value);
                         }
                         return store;
                     }
@@ -92,11 +96,12 @@ namespace SilentNotes.Services
             {
                 foreach (var acc in store.Accounts)
                 {
+                    acc.Password = NormalizeAppPassword(acc);
                     if (_dataProtectionService != null)
                     {
-                        acc.EncryptedPassword = string.IsNullOrEmpty(acc.Password)
-                            ? null
-                            : _dataProtectionService.Protect(Encoding.UTF8.GetBytes(acc.Password));
+                        acc.EncryptedPassword = ProtectSecret(acc.Password);
+                        acc.EncryptedRefreshToken = ProtectSecret(acc.RefreshToken);
+                        acc.EncryptedAccessToken = ProtectSecret(acc.AccessToken);
                     }
                 }
 
@@ -239,6 +244,177 @@ namespace SilentNotes.Services
             }
         }
 
+        /// <summary>Removes the spaces Google shows inside an app password.</summary>
+        public static string NormalizeAppPassword(MailAccountModel account)
+        {
+            string password = account?.Password ?? string.Empty;
+            if (!IsGoogleHost(account))
+                return password;
+            return password.Replace(" ", string.Empty).Replace("\u00a0", string.Empty).Trim();
+        }
+
+        /// <inheritdoc/>
+        public string BuildGoogleMailAuthorizationUrl(string state, string codeVerifier)
+        {
+            IOAuth2CloudStorageClient client = RequireGoogleClient();
+            string url = client.BuildAuthorizationRequestUrl(state, codeVerifier);
+            return url
+                + "&access_type=offline&prompt="
+                + Uri.EscapeDataString("select_account consent")
+                + "&include_granted_scopes=true";
+        }
+
+        /// <inheritdoc/>
+        public void SaveGoogleOAuthPending(string state, string codeVerifier)
+        {
+            string dir = GetStorageDirectory();
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, GooglePendingFileName), (state ?? string.Empty) + "\n" + (codeVerifier ?? string.Empty));
+        }
+
+        /// <inheritdoc/>
+        public async Task<MailAccountModel> FinishGoogleMailAuthorizationAsync(string redirectUrl, CancellationToken cancellationToken = default)
+        {
+            string path = Path.Combine(GetStorageDirectory(), GooglePendingFileName);
+            if (!File.Exists(path))
+                throw new InvalidOperationException("Google sign-in expired. Start it again from Mail settings.");
+
+            string[] parts = File.ReadAllText(path).Split('\n');
+            if (parts.Length < 2 || string.IsNullOrWhiteSpace(parts[0]))
+                throw new InvalidOperationException("Google sign-in state is missing.");
+
+            IOAuth2CloudStorageClient client = RequireGoogleClient();
+            CloudStorageToken token = await client.FetchTokenAsync(redirectUrl, parts[0].Trim(), parts[1].Trim());
+            if (token == null || string.IsNullOrEmpty(token.AccessToken))
+                throw new InvalidOperationException("Google sign-in was cancelled.");
+
+            string email = await ReadGmailAddressAsync(token.AccessToken, cancellationToken);
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception)
+            {
+            }
+
+            var account = new MailAccountModel
+            {
+                EmailAddress = email,
+                Username = email,
+                DisplayName = email,
+                AuthMode = MailAuthModes.Google,
+                AccessToken = token.AccessToken,
+                RefreshToken = token.RefreshToken ?? string.Empty,
+                AccessTokenExpiryUtc = token.ExpiryDate ?? DateTime.UtcNow.AddHours(1),
+            };
+            ApplyProviderPreset(account);
+            return account;
+        }
+
+        private async Task PrepareCredentialsAsync(MailAccountModel account, MailStoreModel store, CancellationToken ct)
+        {
+            if (account == null)
+                return;
+
+            account.Password = NormalizeAppPassword(account);
+            if (!account.UsesGoogleOAuth)
+            {
+                account.AccessToken = string.Empty;
+                return;
+            }
+
+            bool fresh = !string.IsNullOrEmpty(account.AccessToken)
+                && account.AccessTokenExpiryUtc > DateTime.UtcNow.AddMinutes(2);
+            if (fresh)
+                return;
+
+            if (string.IsNullOrEmpty(account.RefreshToken))
+                throw new InvalidOperationException("Google sign-in expired. Sign in again from Mail settings.");
+
+            IOAuth2CloudStorageClient client = RequireGoogleClient();
+            CloudStorageToken refreshed = await client.RefreshTokenAsync(new CloudStorageToken
+            {
+                AccessToken = account.AccessToken,
+                RefreshToken = account.RefreshToken,
+            });
+            account.AccessToken = refreshed.AccessToken;
+            if (!string.IsNullOrEmpty(refreshed.RefreshToken))
+                account.RefreshToken = refreshed.RefreshToken;
+            account.AccessTokenExpiryUtc = refreshed.ExpiryDate ?? DateTime.UtcNow.AddHours(1);
+            if (store != null)
+                SaveStore(store);
+        }
+
+        private IOAuth2CloudStorageClient RequireGoogleClient()
+        {
+            if (_cloudStorageClientFactory == null)
+                throw new InvalidOperationException("Google sign-in is not available.");
+            return _cloudStorageClientFactory.CreateGoogleOAuthClient(GoogleCloudStorageClient.GmailScope);
+        }
+
+        private static async Task<string> ReadGmailAddressAsync(string accessToken, CancellationToken ct)
+        {
+            using var http = new HttpClient();
+            using var request = new HttpRequestMessage(HttpMethod.Get, "https://gmail.googleapis.com/gmail/v1/users/me/profile");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            using HttpResponseMessage response = await http.SendAsync(request, ct);
+            string body = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException("Could not read the Google account address.");
+
+            using JsonDocument doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("emailAddress", out JsonElement email) && !string.IsNullOrWhiteSpace(email.GetString()))
+                return email.GetString().Trim();
+            throw new InvalidOperationException("Google did not return the mailbox address.");
+        }
+
+        private static bool IsGoogleHost(MailAccountModel account)
+        {
+            string host = (account?.ImapHost ?? string.Empty) + " " + (account?.EmailAddress ?? string.Empty);
+            return host.IndexOf("gmail", StringComparison.OrdinalIgnoreCase) >= 0
+                || host.IndexOf("googlemail", StringComparison.OrdinalIgnoreCase) >= 0
+                || host.IndexOf("google.com", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string BuildXoauth2(string user, string accessToken)
+        {
+            string raw = "user=" + (user ?? string.Empty) + "\u0001auth=Bearer " + accessToken + "\u0001\u0001";
+            return Convert.ToBase64String(Encoding.ASCII.GetBytes(raw));
+        }
+
+        private static bool IsAuthenticationFailure(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+                return false;
+            return message.IndexOf("AUTHENTICATIONFAILED", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("Invalid credentials", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("535", StringComparison.Ordinal) >= 0
+                || message.IndexOf("534", StringComparison.Ordinal) >= 0
+                || message.IndexOf("NO ", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private string ProtectSecret(string value)
+        {
+            if (_dataProtectionService == null || string.IsNullOrEmpty(value))
+                return null;
+            return _dataProtectionService.Protect(Encoding.UTF8.GetBytes(value));
+        }
+
+        private void UnprotectSecret(string encrypted, Action<string> assign)
+        {
+            if (string.IsNullOrEmpty(encrypted) || _dataProtectionService == null)
+                return;
+            try
+            {
+                byte[] raw = _dataProtectionService.Unprotect(encrypted);
+                if (raw != null)
+                    assign(Encoding.UTF8.GetString(raw));
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         /// <inheritdoc/>
         public async Task<MailOperationResult> TestConnectionAsync(
             MailAccountModel account,
@@ -258,8 +434,9 @@ namespace SilentNotes.Services
                     account.ImapUseSsl,
                     cts.Token);
 
+                await PrepareCredentialsAsync(account, null, cts.Token);
                 string user = string.IsNullOrWhiteSpace(account.Username) ? account.EmailAddress : account.Username;
-                await imap.LoginAsync(user?.Trim() ?? string.Empty, account.Password ?? string.Empty, cts.Token);
+                await imap.AuthenticateAsync(user?.Trim() ?? string.Empty, account.Password ?? string.Empty, account.AccessToken, cts.Token);
                 await imap.LogoutAsync(cts.Token);
 
                 return new MailOperationResult { Success = true };
@@ -294,8 +471,9 @@ namespace SilentNotes.Services
                     account.ImapUseSsl,
                     cts.Token);
 
+                await PrepareCredentialsAsync(account, store, cts.Token);
                 string user = string.IsNullOrWhiteSpace(account.Username) ? account.EmailAddress : account.Username;
-                await imap.LoginAsync(user?.Trim() ?? string.Empty, account.Password ?? string.Empty, cts.Token);
+                await imap.AuthenticateAsync(user?.Trim() ?? string.Empty, account.Password ?? string.Empty, account.AccessToken, cts.Token);
 
                 int existsCount = await imap.SelectMailboxAsync("INBOX", cts.Token);
                 int added = 0;
@@ -388,6 +566,7 @@ namespace SilentNotes.Services
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 cts.CancelAfter(TimeSpan.FromSeconds(35));
 
+                await PrepareCredentialsAsync(account, null, cts.Token);
                 string rawMime = BuildMimeMessage(account, message, attachments);
 
                 await SmtpMiniClient.SendAsync(
@@ -396,6 +575,7 @@ namespace SilentNotes.Services
                     account.SmtpUseSsl,
                     string.IsNullOrWhiteSpace(account.Username) ? account.EmailAddress : account.Username,
                     account.Password ?? string.Empty,
+                    account.AccessToken,
                     ExtractAddressOnly(account.EmailAddress),
                     recipients,
                     rawMime,
@@ -596,10 +776,24 @@ namespace SilentNotes.Services
                 return client;
             }
 
-            public async Task LoginAsync(string user, string password, CancellationToken ct)
+            public async Task AuthenticateAsync(string user, string password, string accessToken, CancellationToken ct)
             {
-                string cmd = "LOGIN " + QuoteImapString(user) + " " + QuoteImapString(password);
-                await ExecuteCommandAsync(cmd, ct);
+                if (!string.IsNullOrEmpty(accessToken))
+                {
+                    await ExecuteCommandAsync("AUTHENTICATE XOAUTH2 " + BuildXoauth2(user, accessToken), ct);
+                    return;
+                }
+
+                try
+                {
+                    string cmd = "LOGIN " + QuoteImapString(user) + " " + QuoteImapString(password);
+                    await ExecuteCommandAsync(cmd, ct);
+                }
+                catch (IOException ex) when (IsAuthenticationFailure(ex.Message))
+                {
+                    string plain = Convert.ToBase64String(Encoding.UTF8.GetBytes("\0" + user + "\0" + (password ?? string.Empty)));
+                    await ExecuteCommandAsync("AUTHENTICATE PLAIN " + plain, ct);
+                }
             }
 
             public async Task<int> SelectMailboxAsync(string mailbox, CancellationToken ct)
@@ -763,6 +957,7 @@ namespace SilentNotes.Services
                 bool useSsl,
                 string username,
                 string password,
+                string accessToken,
                 string fromAddress,
                 IReadOnlyList<string> recipients,
                 string rawMimeMessage,
@@ -791,11 +986,23 @@ namespace SilentNotes.Services
                     await SendCommandAsync(stream, "EHLO anote.local", 250, ct);
                 }
 
-                if (!string.IsNullOrWhiteSpace(username))
+                if (!string.IsNullOrEmpty(accessToken))
                 {
-                    await SendCommandAsync(stream, "AUTH LOGIN", 334, ct);
-                    await SendCommandAsync(stream, Convert.ToBase64String(Encoding.UTF8.GetBytes(username.Trim())), 334, ct);
-                    await SendCommandAsync(stream, Convert.ToBase64String(Encoding.UTF8.GetBytes(password ?? string.Empty)), 235, ct);
+                    await SendCommandAsync(stream, "AUTH XOAUTH2 " + BuildXoauth2(username.Trim(), accessToken), 235, ct);
+                }
+                else if (!string.IsNullOrWhiteSpace(username))
+                {
+                    try
+                    {
+                        await SendCommandAsync(stream, "AUTH LOGIN", 334, ct);
+                        await SendCommandAsync(stream, Convert.ToBase64String(Encoding.UTF8.GetBytes(username.Trim())), 334, ct);
+                        await SendCommandAsync(stream, Convert.ToBase64String(Encoding.UTF8.GetBytes(password ?? string.Empty)), 235, ct);
+                    }
+                    catch (IOException ex) when (IsAuthenticationFailure(ex.Message))
+                    {
+                        string plain = Convert.ToBase64String(Encoding.UTF8.GetBytes("\0" + username.Trim() + "\0" + (password ?? string.Empty)));
+                        await SendCommandAsync(stream, "AUTH PLAIN " + plain, 235, ct);
+                    }
                 }
 
                 await SendCommandAsync(stream, "MAIL FROM:<" + fromAddress + ">", 250, ct);

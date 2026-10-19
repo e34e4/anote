@@ -30,6 +30,8 @@ namespace SilentNotes.Services
         public const string CloudStorageIdGmx = "gmx";
 
         private const string _obfuscationKey = "4ed05d88-0193-4b14-9b0b-6977825de265";
+        private const string GoogleClientIdObfuscated = "b2JmdXNjYXRpb24kdHdvZmlzaF9nY20kZlR5K1A4L05ka2pVZ2NkRURiTGZMdz09JHBia2RmMiRUYys0QkNwSzRzTCtLZS85LzNEVnh3PT0kMTAwMCS5o32MdtKqjqthaSYKFg+9Bvv9XRQTpPQhnYnPdk9ZIrwxZbYBARv+vG1oFpSdHzRFS3Hgsc0QorFWVVy2Xt4c6RPSYs2kFLa4h36KduqrLwKP5wD4qQuT";
+        private const string GoogleRedirectUrl = "ch.martinstoeckli.silentnotes:/oauth2redirect/";
         private readonly bool _useSocketsForPropFind;
 
         /// <summary>
@@ -50,8 +52,8 @@ namespace SilentNotes.Services
                 DeobfuscateClientId("b2JmdXNjYXRpb24kdHdvZmlzaF9nY20kaUNDQnhZRDFqTG4veUJQNSRwYmtkZjIkNEVrVTFOVVdZSkJpTWtQR2VNU0lhdz09JDEwMDAkqkhIg8kDs04BHHfD2Dldq7jC8LUT3AqPnyY6THmJJw=="),
                 "ch.martinstoeckli.silentnotes://oauth2redirect/"));
             Add(CloudStorageIdGoogleDrive, () => new GoogleCloudStorageClient(
-                DeobfuscateClientId("b2JmdXNjYXRpb24kdHdvZmlzaF9nY20kZlR5K1A4L05ka2pVZ2NkRURiTGZMdz09JHBia2RmMiRUYys0QkNwSzRzTCtLZS85LzNEVnh3PT0kMTAwMCS5o32MdtKqjqthaSYKFg+9Bvv9XRQTpPQhnYnPdk9ZIrwxZbYBARv+vG1oFpSdHzRFS3Hgsc0QorFWVVy2Xt4c6RPSYs2kFLa4h36KduqrLwKP5wD4qQuT"),
-                "ch.martinstoeckli.silentnotes:/oauth2redirect/"));
+                DeobfuscateClientId(GoogleClientIdObfuscated),
+                GoogleRedirectUrl));
             Add(CloudStorageIdOneDrive, () => new OnedriveCloudStorageClient(
                 DeobfuscateClientId("b2JmdXNjYXRpb24kdHdvZmlzaF9nY20kMm91Sjk4dVloa3FzVTJMbFV3YzlYZz09JHBia2RmMiRIWDNzazgzdExLUExDRldjeis0RUtnPT0kMTAwMCQhu6dFgd6/j2A9388wATVBekdrXdLcCUHg1gMjKNJlrmAeWWKhJ+Wewi4eALJkqHyF1Np3"),
                 "ch.martinstoeckli.silentnotes://oauth2redirect/"));
@@ -111,6 +113,15 @@ namespace SilentNotes.Services
                 default:
                     throw new ArgumentOutOfRangeException(nameof(cloudStorageId), "Unknown cloud storage id.");
             }
+        }
+
+        /// <inheritdoc/>
+        public IOAuth2CloudStorageClient CreateGoogleOAuthClient(string scope)
+        {
+            return new GoogleCloudStorageClient(
+                DeobfuscateClientId(GoogleClientIdObfuscated),
+                GoogleRedirectUrl,
+                scope);
         }
 
         /// <summary>
