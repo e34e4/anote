@@ -6,6 +6,7 @@ namespace SilentNotes;
 public partial class MainPage : ContentPage
 {
     public static string StartRoute = RouteNames.NoteRepository;
+    private bool _autoReloadInProgress;
 
     public MainPage()
     {
@@ -13,7 +14,74 @@ public partial class MainPage : ContentPage
         blazorWebView.StartPath = StartRoute;
         blazorWebView.BlazorWebViewInitializing += WebViewInitializingEventHandler;
         blazorWebView.BlazorWebViewInitialized += WebViewInitializedEventHandler;
+#if ANDROID
+        SilentNotes.Platforms.DiagnosticLogging.ReloadRequested = RequestBlazorAutoReload;
+#endif
     }
+
+#if ANDROID
+    /// <summary>
+    /// Recover from Blazor WebView render-batch desync after sleep/resume by triggering the
+    /// same Reload action as the red error bar (or a hard WebView reload as fallback).
+    /// </summary>
+    private async void RequestBlazorAutoReload()
+    {
+        if (_autoReloadInProgress)
+            return;
+        _autoReloadInProgress = true;
+        try
+        {
+            if (blazorWebView.Handler?.PlatformView is not global::Android.Webkit.WebView native)
+                return;
+
+            // Prefer Blazor's own reload link (restarts the circuit cleanly).
+            const string script =
+                "(function(){try{" +
+                "var a=document.querySelector('#blazor-error-ui a.reload');" +
+                "if(a){a.click();return 'clicked';}" +
+                "location.reload();return 'reloaded';" +
+                "}catch(e){return 'error:'+e;}})()";
+
+            var tcs = new TaskCompletionSource<string>();
+            native.EvaluateJavascript(script, new JavascriptResultCallback(tcs));
+            string result = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            if (string.IsNullOrEmpty(result) || result.StartsWith("\"error:", StringComparison.Ordinal))
+                native.Reload();
+        }
+        catch
+        {
+            try
+            {
+                if (blazorWebView.Handler?.PlatformView is global::Android.Webkit.WebView native)
+                    native.Reload();
+            }
+            catch
+            {
+            }
+        }
+        finally
+        {
+            // Allow another recovery after a short cooldown (JS side also rate-limits).
+            await Task.Delay(2000);
+            _autoReloadInProgress = false;
+        }
+    }
+
+    private sealed class JavascriptResultCallback : Java.Lang.Object, global::Android.Webkit.IValueCallback
+    {
+        private readonly TaskCompletionSource<string> _tcs;
+
+        public JavascriptResultCallback(TaskCompletionSource<string> tcs)
+        {
+            _tcs = tcs;
+        }
+
+        public void OnReceiveValue(Java.Lang.Object value)
+        {
+            _tcs.TrySetResult(value?.ToString());
+        }
+    }
+#endif
 
     /// <summary>
     /// Tweak the WebView environment, before the WebView is initialized.

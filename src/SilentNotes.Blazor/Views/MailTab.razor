@@ -6,6 +6,8 @@
 
 @inject ILanguageService LanguageService
 @inject IMessengerService MessengerService
+@inject IWebdavQuickSaveService WebdavQuickSaveService
+@inject IFeedbackService FeedbackService
 
 <style type="text/css">
 	.mail-root {
@@ -311,6 +313,8 @@
 				<button class="mail-btn" @onclick="() => ViewModel.ToggleRead(msg)" title="@LanguageService["mail_toggle_read"]">
 					<MudIcon Icon="@Icons.Material.Filled.MarkEmailUnread" Size="Size.Small" />
 				</button>
+				<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small"
+					OnClick="() => SaveMessageToWebdavAsync(msg)" title="@LanguageService["webdav_quick_save"]" />
 				<button class="mail-btn" @onclick="() => ViewModel.DeleteOrTrashMessage(msg)" title="@LanguageService["delete"]">
 					<MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" />
 				</button>
@@ -620,6 +624,33 @@
 	{
 		await ViewModel.SaveEditedAccountAsync();
 		StateHasChanged();
+	}
+
+	private async Task SaveMessageToWebdavAsync(MailMessageItemViewModel msg)
+	{
+		if (msg == null)
+			return;
+		if (!WebdavQuickSaveService.IsConfigured)
+		{
+			FeedbackService.ShowToast(LanguageService["webdav_quick_not_configured"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		var sb = new System.Text.StringBuilder();
+		sb.AppendLine("From: " + (msg.Model.From ?? string.Empty));
+		sb.AppendLine("To: " + (msg.Model.To ?? string.Empty));
+		if (!string.IsNullOrWhiteSpace(msg.Model.Cc))
+			sb.AppendLine("Cc: " + msg.Model.Cc);
+		sb.AppendLine("Date: " + msg.DateFullText);
+		sb.AppendLine("Subject: " + msg.SubjectDisplay);
+		sb.AppendLine();
+		sb.Append(msg.PlainBodyForDisplay ?? string.Empty);
+
+		bool ok = await WebdavQuickSaveService.SaveTextAsync("Mail", sb.ToString());
+		if (ok)
+			FeedbackService.ShowToast(LanguageService.LoadTextFmt("webdav_quick_saved", WebdavQuickSaveService.LastFileName));
+		else
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_failed"] + " — " + WebdavQuickSaveService.LastError, FeedbackSeverity.Warning);
 	}
 
 	public void Dispose()

@@ -3,6 +3,8 @@
 @using SilentNotes.ViewModels
 
 @inject ILanguageService LanguageService
+@inject IWebdavQuickSaveService WebdavQuickSaveService
+@inject IFeedbackService FeedbackService
 
 <style type="text/css">
 	.qr-root {
@@ -287,6 +289,7 @@
 			</div>
 			<div class="qr-actions" style="justify-content: center;">
 				<button class="qr-btn" @onclick="SaveQrImage">@LanguageService["qr_save_image"]</button>
+				<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" OnClick="SaveQrToWebdavAsync" title="@LanguageService["webdav_quick_save"]" />
 				<button class="qr-btn" @onclick="() => ViewModel.ShareCreateTextCommand.Execute(null)">@LanguageService["qr_share"]</button>
 				<button class="qr-btn" @onclick="() => ViewModel.CopyCreateTextCommand.Execute(null)">@LanguageService["qr_copy"]</button>
 			</div>
@@ -348,6 +351,27 @@
 	private async Task SaveQrImage()
 	{
 		await ViewModel.SaveQrImageAsync();
+	}
+
+	private async Task SaveQrToWebdavAsync()
+	{
+		if (!WebdavQuickSaveService.IsConfigured)
+		{
+			FeedbackService.ShowToast(LanguageService["webdav_quick_not_configured"], FeedbackSeverity.Warning);
+			return;
+		}
+		byte[] png = ViewModel.CreatedPngBytes;
+		if (png == null || png.Length == 0)
+		{
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_empty"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		bool ok = await WebdavQuickSaveService.SaveBytesAsync("Qr", png, "png");
+		if (ok)
+			FeedbackService.ShowToast(LanguageService.LoadTextFmt("webdav_quick_saved", WebdavQuickSaveService.LastFileName));
+		else
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_failed"] + " — " + WebdavQuickSaveService.LastError, FeedbackSeverity.Warning);
 	}
 
 	private async Task ClearHistory()

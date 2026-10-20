@@ -233,6 +233,8 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAudioRecorderService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IWebdavFileService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\WebdavFileServiceBase.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IWebdavQuickSaveService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\WebdavQuickSaveService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IDevicePhoneService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\LzmaDecoder.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IPhoneSpamService.cs" />

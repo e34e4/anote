@@ -1,0 +1,1 @@
+Save Notes, Clip, Sms, QR, Rec, Camera, and Mail items to the WebDAV anote folder with one tap.

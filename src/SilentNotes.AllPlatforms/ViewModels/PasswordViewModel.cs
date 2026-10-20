@@ -84,6 +84,11 @@ namespace SilentNotes.ViewModels
             ImportCommand = new AsyncRelayCommand(ImportAsync);
             OpenAutofillSettingsCommand = new RelayCommand(OpenAutofillSettings);
             TickTotpCommand = new RelayCommand(TickTotp);
+
+            // Vault service is a singleton; after page reload the vault may already be unlocked
+            // while this view-model's list cache is still empty.
+            if (_vaultService.IsUnlocked)
+                Reload();
         }
 
         public ICommand CreateVaultCommand { get; }
@@ -180,7 +185,11 @@ namespace SilentNotes.ViewModels
             }
         }
 
-        public IReadOnlyList<PasswordEntryItemViewModel> FilteredEntries
+        /// <summary>
+        /// Gets the filtered entry list. Always materializes a <see cref="List{T}"/> so Blazor
+        /// <c>Virtualize</c> (which requires <see cref="ICollection{T}"/>) can bind to it.
+        /// </summary>
+        public List<PasswordEntryItemViewModel> FilteredEntries
         {
             get
             {
@@ -288,6 +297,24 @@ namespace SilentNotes.ViewModels
             }
             NotifyList();
             RefreshState();
+        }
+
+        /// <summary>
+        /// Reloads the list when the singleton vault already has entries that are missing from the
+        /// view-model cache (e.g. after Blazor page recreation during a file-picker resume).
+        /// </summary>
+        public void EnsureLoaded()
+        {
+            if (!_vaultService.IsUnlocked || _vaultService.Vault == null)
+            {
+                if (_entries.Count > 0)
+                    Reload();
+                return;
+            }
+
+            int serviceCount = _vaultService.Vault.Entries.Count;
+            if (_entries.Count != serviceCount)
+                Reload();
         }
 
         private void NotifyList()
@@ -507,11 +534,17 @@ namespace SilentNotes.ViewModels
                 return;
             try
             {
-                bool picked = await _filePickerService.PickFile(new[] { ".json", ".csv", ".txt" }, "*/*");
+                // Prefer JSON so Android's document picker surfaces Bitwarden exports reliably.
+                bool picked = await _filePickerService.PickFile(new[] { ".json", ".csv", ".txt" }, "application/json");
+                if (!picked)
+                    picked = await _filePickerService.PickFile(new[] { ".json", ".csv", ".txt" }, "*/*");
                 if (!picked)
                     return;
                 byte[] content = await _filePickerService.ReadPickedFile();
                 string text = (content == null) ? string.Empty : System.Text.Encoding.UTF8.GetString(content);
+                // Strip UTF-8 BOM if present (common in desktop exports).
+                if (!string.IsNullOrEmpty(text) && text[0] == '\uFEFF')
+                    text = text.Substring(1);
                 List<PasswordEntryModel> imported = BitwardenImporter.Import(text);
                 if (imported == null)
                 {
@@ -522,19 +555,44 @@ namespace SilentNotes.ViewModels
                 int added = 0;
                 foreach (PasswordEntryModel candidate in imported)
                 {
+                    SanitizeImportedEntry(candidate);
                     bool duplicate = _vaultService.Vault.Entries.Any(e => BitwardenImporter.IsDuplicate(e, candidate));
                     if (duplicate)
                         continue;
                     _vaultService.Vault.Entries.Add(candidate);
                     added++;
                 }
-                _vaultService.Save();
+
+                // Refresh the list before the (slow) Argon2 re-encrypt so the UI is not empty
+                // while Save runs — and so a page recreation during Save still sees entries via EnsureLoaded.
                 Reload();
                 _feedbackService.ShowToast(_languageService.LoadTextFmt("password_imported", added));
+
+                bool saved = await Task.Run(() => _vaultService.Save());
+                if (!saved)
+                    _feedbackService.ShowToast(_languageService["password_import_save_failed"]);
+                else
+                    EnsureLoaded();
             }
             catch
             {
                 _feedbackService.ShowToast(_languageService["password_import_failed"]);
+            }
+        }
+
+        private static void SanitizeImportedEntry(PasswordEntryModel entry)
+        {
+            if (entry == null)
+                return;
+            entry.Name = XmlUtils.SanitizeXmlString(entry.Name);
+            entry.Username = XmlUtils.SanitizeXmlString(entry.Username);
+            entry.Password = XmlUtils.SanitizeXmlString(entry.Password);
+            entry.Notes = XmlUtils.SanitizeXmlString(entry.Notes);
+            entry.TotpSecret = XmlUtils.SanitizeXmlString(entry.TotpSecret);
+            if (entry.Uris.Count > 0)
+            {
+                for (int i = 0; i < entry.Uris.Count; i++)
+                    entry.Uris[i] = XmlUtils.SanitizeXmlString(entry.Uris[i]);
             }
         }
 

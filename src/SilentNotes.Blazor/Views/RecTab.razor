@@ -5,6 +5,8 @@
 
 @inject ILanguageService LanguageService
 @inject IMessengerService MessengerService
+@inject IWebdavQuickSaveService WebdavQuickSaveService
+@inject IFeedbackService FeedbackService
 
 <style type="text/css">
 	.rec-root {
@@ -214,6 +216,7 @@
 
 							<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => ViewModel.StartRenameCommand.Execute(item)" title="@LanguageService["rec_rename"]" />
 							<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="() => SaveToDeviceAsync(item)" title="@LanguageService["rec_save_device"]" />
+							<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small" OnClick="() => SaveToWebdavAsync(item)" title="@LanguageService["webdav_quick_save"]" />
 							<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" OnClick="() => ShareAsync(item)" title="@LanguageService["share"]" />
 							<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => DeleteAsync(item)" title="@LanguageService["rec_delete"]" />
 						</div>
@@ -282,6 +285,23 @@
 	{
 		await ViewModel.DeleteAsync(item);
 		StateHasChanged();
+	}
+
+	private async Task SaveToWebdavAsync(AudioRecordingItemViewModel item)
+	{
+		if (item == null)
+			return;
+		if (!WebdavQuickSaveService.IsConfigured)
+		{
+			FeedbackService.ShowToast(LanguageService["webdav_quick_not_configured"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		bool ok = await WebdavQuickSaveService.SaveLocalFileAsync("Rec", item.Model.FilePath);
+		if (ok)
+			FeedbackService.ShowToast(LanguageService.LoadTextFmt("webdav_quick_saved", WebdavQuickSaveService.LastFileName));
+		else
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_failed"] + " — " + WebdavQuickSaveService.LastError, FeedbackSeverity.Warning);
 	}
 
 	public void Dispose()

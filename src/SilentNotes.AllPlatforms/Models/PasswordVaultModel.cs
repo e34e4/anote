@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Xml.Serialization;
 
@@ -14,6 +15,7 @@ namespace SilentNotes.Models
     /// Root model of the encrypted password vault file (plaintext while unlocked).
     /// </summary>
     [XmlRoot("password_vault")]
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public class PasswordVaultModel
     {
         private List<PasswordEntryModel> _entries;

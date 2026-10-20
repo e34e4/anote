@@ -22,7 +22,16 @@ namespace SilentNotes.Platforms
         public const string WebViewTag = "aNoteWebView";
         public const string DotNetTag = "aNote";
 
+        private const string RenderBatchDesyncMarker = "unexpected acknowledgement for render batch";
+        private static readonly object ReloadGate = new object();
         private static bool _installed;
+        private static DateTime _lastReloadRequestUtc = DateTime.MinValue;
+
+        /// <summary>
+        /// Invoked on the UI thread when a known Blazor WebView render-batch desync is detected.
+        /// MainPage wires this to click the Blazor error-UI Reload link / reload the WebView.
+        /// </summary>
+        public static Action ReloadRequested { get; set; }
 
         /// <summary>
         /// Installs process-wide exception hooks and enables WebView remote debugging.
@@ -47,7 +56,7 @@ namespace SilentNotes.Platforms
             TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
             AndroidEnvironment.UnhandledExceptionRaiser += OnAndroidUnhandledException;
 
-            global::Android.Util.Log.Info(Tag, "Diagnostic logging installed (UnhandledException, UnobservedTask, AndroidUnhandled, WebView debug).");
+            global::Android.Util.Log.Info(Tag, "Diagnostic logging installed (UnhandledException, UnobservedTask, AndroidUnhandled, WebView debug, auto-reload).");
         }
 
         /// <summary>
@@ -78,17 +87,52 @@ namespace SilentNotes.Platforms
         private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             global::Android.Util.Log.Error(Tag, "UnhandledException (isTerminating=" + e.IsTerminating + "): " + e.ExceptionObject);
+            RequestReloadIfRenderBatchDesync(e.ExceptionObject);
         }
 
         private static void OnUnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs e)
         {
             global::Android.Util.Log.Error(Tag, "UnobservedTaskException: " + e.Exception);
             e.SetObserved();
+            RequestReloadIfRenderBatchDesync(e.Exception);
         }
 
         private static void OnAndroidUnhandledException(object sender, RaiseThrowableEventArgs e)
         {
             global::Android.Util.Log.Error(Tag, "AndroidUnhandledException: " + e.Exception);
+            RequestReloadIfRenderBatchDesync(e.Exception);
+        }
+
+        private static void RequestReloadIfRenderBatchDesync(object exceptionOrText)
+        {
+            string text = exceptionOrText?.ToString() ?? string.Empty;
+            if (text.IndexOf(RenderBatchDesyncMarker, StringComparison.OrdinalIgnoreCase) < 0)
+                return;
+
+            lock (ReloadGate)
+            {
+                // Debounce the flood of UnobservedTaskException entries for one desync.
+                if ((DateTime.UtcNow - _lastReloadRequestUtc) < TimeSpan.FromSeconds(3))
+                    return;
+                _lastReloadRequestUtc = DateTime.UtcNow;
+            }
+
+            Action handler = ReloadRequested;
+            if (handler == null)
+            {
+                global::Android.Util.Log.Warn(Tag, "Render batch desync detected but no ReloadRequested handler is registered.");
+                return;
+            }
+
+            global::Android.Util.Log.Warn(Tag, "Render batch desync detected — requesting WebView auto-reload.");
+            try
+            {
+                Microsoft.Maui.ApplicationModel.MainThread.BeginInvokeOnMainThread(handler);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(Tag, "Failed to dispatch ReloadRequested: " + ex);
+            }
         }
 
         private sealed class DiagnosticWebChromeClient : WebChromeClient

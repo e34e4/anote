@@ -228,6 +228,14 @@ namespace SilentNotes.ViewModels
             get { return _createdPng != null; }
         }
 
+        /// <summary>
+        /// Gets the generated QR PNG bytes, or null when none is available.
+        /// </summary>
+        public byte[] CreatedPngBytes
+        {
+            get { return _createdPng; }
+        }
+
         /// <summary>Gets or sets a value indicating whether the device should vibrate after a scan.</summary>
         public bool VibrateOnScan
         {

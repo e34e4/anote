@@ -1,0 +1,1 @@
+Fix Password tab staying empty after a successful Bitwarden import (list now resyncs and virtualizes large vaults).

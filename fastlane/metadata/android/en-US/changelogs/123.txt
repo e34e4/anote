@@ -1,0 +1,1 @@
+* Auto-reload the WebView when Blazor hits the sleep/resume render-batch desync error.

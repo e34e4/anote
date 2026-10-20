@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Security;
@@ -104,7 +105,7 @@ namespace SilentNotes.Services
                 ICryptor cryptor = new Cryptor(CryptorPackageName, null);
                 byte[] plain = cryptor.Decrypt(cipher, masterPassword, out _);
                 XDocument document = XmlUtils.LoadFromXmlBytes(plain);
-                _vault = XmlUtils.DeserializeFromXmlDocument<PasswordVaultModel>(document);
+                _vault = DeserializeVault(document);
                 ReplaceMasterPassword(masterPassword);
                 return true;
             }
@@ -113,6 +114,12 @@ namespace SilentNotes.Services
                 Lock();
                 return false;
             }
+        }
+
+        [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Password vault models are annotated for XmlSerializer.")]
+        private static PasswordVaultModel DeserializeVault(XDocument document)
+        {
+            return XmlUtils.DeserializeFromXmlDocument<PasswordVaultModel>(document);
         }
 
         /// <inheritdoc/>
@@ -202,7 +209,7 @@ namespace SilentNotes.Services
             {
                 SettingsModel settings = _settingsService.LoadSettingsOrDefault();
                 _vault.RefreshModifiedAt();
-                byte[] plain = XmlUtils.SerializeToXmlBytes(_vault, Encoding.UTF8);
+                byte[] plain = SerializeVault(_vault);
                 ICryptor cryptor = new Cryptor(CryptorPackageName, _randomService);
                 byte[] cipher = cryptor.Encrypt(
                     plain,
@@ -216,13 +223,20 @@ namespace SilentNotes.Services
                 string directory = Path.GetDirectoryName(path);
                 if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                     Directory.CreateDirectory(directory);
-                File.WriteAllBytes(path, cipher);
+                // Atomic write avoids a truncated vault if the process is killed mid-save (large imports).
+                new AtomicFileWriter { MinValidFileSize = 32 }.Write(path, stream => stream.Write(cipher, 0, cipher.Length));
                 return true;
             }
             catch
             {
                 return false;
             }
+        }
+
+        [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Password vault models are annotated for XmlSerializer.")]
+        private static byte[] SerializeVault(PasswordVaultModel vault)
+        {
+            return XmlUtils.SerializeToXmlBytes(vault, Encoding.UTF8);
         }
 
         /// <inheritdoc/>

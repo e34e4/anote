@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Xml.Serialization;
 
 namespace SilentNotes.Models
@@ -12,6 +13,7 @@ namespace SilentNotes.Models
     /// <summary>
     /// A single login entry in the password vault (Bitwarden-like).
     /// </summary>
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public class PasswordEntryModel
     {
         private Guid _id;

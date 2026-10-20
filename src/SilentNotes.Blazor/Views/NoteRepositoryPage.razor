@@ -3,6 +3,7 @@
 @attribute [Route(RouteNames.NoteRepository + "/bringtoview/{BringToViewNoteId}")]
 @inherits PageBase
 
+@using CommunityToolkit.Mvvm.Input
 @using MudBlazor
 @using SilentNotes.Models
 @using SilentNotes.Services
@@ -267,7 +268,7 @@
 						Adornment="Adornment.End" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
 						Immediate="true" Clearable="true" Placeholder="@LanguageService["password_search"]" />
 				</MudPaper>
-				<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.FileUpload" OnClick="@(() => _passwordViewModel.ImportCommand.Execute(null))" title="@LanguageService["password_import"]" />
+				<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.FileUpload" OnClick="@ImportPasswordsAsync" title="@LanguageService["password_import"]" />
 				@if (_passwordViewModel.HasPin)
 				{
 					<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Dialpad" OnClick="@(() => _passwordViewModel.ClearPinCommand.Execute(null))" title="@LanguageService["password_pin_clear"]" />
@@ -1000,6 +1001,25 @@
 
 		if (reload)
 			Navigation.NavigateReload();
+		else
+		{
+			// File-picker resume can recreate timing gaps; resync password list from the singleton vault.
+			_passwordViewModel?.EnsureLoaded();
+			if (_activeTab == 16)
+				InvokeAsync(StateHasChanged);
+		}
+	}
+
+	private async Task ImportPasswordsAsync()
+	{
+		if (_passwordViewModel == null)
+			return;
+		if (_passwordViewModel.ImportCommand is IAsyncRelayCommand asyncCommand)
+			await asyncCommand.ExecuteAsync(null);
+		else
+			_passwordViewModel.ImportCommand.Execute(null);
+		_passwordViewModel.EnsureLoaded();
+		StateHasChanged();
 	}
 
 	/// <summary>
@@ -1152,6 +1172,8 @@
 	{
 		_activeTab = index;
 		_persistedActiveTab = index;
+		if (index == 16)
+			_passwordViewModel?.EnsureLoaded();
 	}
 
 	/// <summary>

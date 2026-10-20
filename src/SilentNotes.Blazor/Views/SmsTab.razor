@@ -6,6 +6,8 @@
 @inject ILanguageService LanguageService
 @inject IMessengerService MessengerService
 @inject IScrollManager ScrollManager
+@inject IWebdavQuickSaveService WebdavQuickSaveService
+@inject IFeedbackService FeedbackService
 
 <style type="text/css">
 	.sms-root {
@@ -151,6 +153,7 @@
 				<MudSpacer />
 				@if (ViewModel.Messages.Count > 0)
 				{
+					<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" OnClick="SaveConversationToWebdavAsync" title="@LanguageService["webdav_quick_save"]" />
 					<MudIconButton Icon="@Icons.Material.Filled.Checklist" Color="Color.Inherit" OnClick="() => ViewModel.StartSelectionCommand.Execute(null)" title="@LanguageService["sms_select"]" />
 				}
 			}
@@ -342,6 +345,35 @@
 	{
 		await ViewModel.DeleteSelectedAsync();
 		StateHasChanged();
+	}
+
+	private async Task SaveConversationToWebdavAsync()
+	{
+		if (!WebdavQuickSaveService.IsConfigured)
+		{
+			FeedbackService.ShowToast(LanguageService["webdav_quick_not_configured"], FeedbackSeverity.Warning);
+			return;
+		}
+		if (ViewModel.Messages == null || ViewModel.Messages.Count == 0)
+		{
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_empty"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		var sb = new System.Text.StringBuilder();
+		sb.AppendLine(ViewModel.ConversationTitle ?? string.Empty);
+		sb.AppendLine(new string('-', 40));
+		foreach (var message in ViewModel.Messages)
+		{
+			string direction = message.IsIncoming ? "←" : "→";
+			sb.Append(message.TimeText).Append(' ').Append(direction).Append(' ').AppendLine(message.Body ?? string.Empty);
+		}
+
+		bool ok = await WebdavQuickSaveService.SaveTextAsync("Sms", sb.ToString());
+		if (ok)
+			FeedbackService.ShowToast(LanguageService.LoadTextFmt("webdav_quick_saved", WebdavQuickSaveService.LastFileName));
+		else
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_failed"] + " — " + WebdavQuickSaveService.LastError, FeedbackSeverity.Warning);
 	}
 
 	/// <inheritdoc/>

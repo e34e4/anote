@@ -27,6 +27,7 @@
 @inject IMessengerService MessengerService
 @inject ISynchronizationState SynchronizationState
 @inject ISharingService SharingService
+@inject IWebdavQuickSaveService WebdavQuickSaveService
 
 <style type="text/css">
 	.mud-main-content { background-color: @ViewModel.BackgroundColorHex; }
@@ -105,6 +106,10 @@
 		Icon="@IconService.GetSvgLink(IconNames.Magnify)" Color="Color.Inherit"
 		Class="@Css.BuildClass(new CssClassIf(CssClasses.ButtonToggled, _searchToolbarOpen))"
 		title="@LanguageService["search"]" Edge="Edge.End" />
+
+	<MudIconButton OnClick="SaveNoteToWebdavAsync"
+		Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success"
+		title="@LanguageService["webdav_quick_save"]" Edge="Edge.End" />
 
 	@* Overflow menu *@
 	<MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" PopoverClass="overflow-menu" @bind-Open="_isOverflowMenuOpen">
@@ -709,6 +714,37 @@
 	{
 		string plainText = await _jsModule.InvokeAsync<string>("getAsPlainText");
 		ViewModel.ShareNoteCommand.Execute(plainText);
+	}
+
+	private async Task SaveNoteToWebdavAsync()
+	{
+		if (!WebdavQuickSaveService.IsConfigured)
+		{
+			FeedbackService.ShowToast(LanguageService["webdav_quick_not_configured"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		string plainText = null;
+		try
+		{
+			plainText = await _jsModule.InvokeAsync<string>("getAsPlainText");
+		}
+		catch (Exception)
+		{
+			plainText = ViewModel?.SearchableContent;
+		}
+
+		if (string.IsNullOrWhiteSpace(plainText))
+		{
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_empty"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		bool ok = await WebdavQuickSaveService.SaveTextAsync("Notes", plainText);
+		if (ok)
+			FeedbackService.ShowToast(LanguageService.LoadTextFmt("webdav_quick_saved", WebdavQuickSaveService.LastFileName));
+		else
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_failed"] + " — " + WebdavQuickSaveService.LastError, FeedbackSeverity.Warning);
 	}
 
 	[JSInvokable("OpenLinkDialog")]

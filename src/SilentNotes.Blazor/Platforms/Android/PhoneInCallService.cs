@@ -116,7 +116,7 @@ namespace SilentNotes
             }
 
             UpdateCallNotification();
-            OpenAppOnPhoneTab();
+            ShowFloatingCallOverlay();
             NotifyCallChanged();
 
             if (!string.IsNullOrWhiteSpace(number))
@@ -267,9 +267,20 @@ namespace SilentNotes
                 _connectedAtUtc = DateTime.UtcNow;
 
             if (state == CallState.Disconnected)
+            {
                 AppNotifications.GetManager(this)?.Cancel(AppNotifications.CallNotificationId);
+            }
             else
+            {
                 UpdateCallNotification();
+                if (state == CallState.Ringing ||
+                    state == CallState.Dialing ||
+                    state == CallState.Connecting ||
+                    state == CallState.Active)
+                {
+                    ShowFloatingCallOverlay();
+                }
+            }
 
             NotifyCallChanged();
         }
@@ -325,11 +336,8 @@ namespace SilentNotes
 
         private PendingIntent BuildOpenPhonePendingIntent()
         {
-            var intent = new Intent(this, typeof(MainActivity));
-            intent.SetAction(Intent.ActionMain);
-            intent.AddCategory(Intent.CategoryLauncher);
-            intent.PutExtra(ExtraOpenPhone, true);
-            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop);
+            var intent = new Intent(this, typeof(PhoneCallOverlayActivity));
+            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ReorderToFront);
 
             var flags = PendingIntentFlags.UpdateCurrent;
             if (Build.VERSION.SdkInt >= BuildVersionCodes.M)
@@ -347,16 +355,11 @@ namespace SilentNotes
             return PendingIntent.GetService(this, requestCode, intent, flags);
         }
 
-        private void OpenAppOnPhoneTab()
+        private void ShowFloatingCallOverlay()
         {
             try
             {
-                PhoneIntentRequest.Pending = new PhoneIntentRequest();
-                var intent = new Intent(this, typeof(MainActivity));
-                intent.PutExtra(ExtraOpenPhone, true);
-                intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop);
-                StartActivity(intent);
-                Ioc.Instance.GetService<IMessengerService>()?.Send(new PhoneIntentMessage());
+                PhoneCallOverlayActivity.Show(this);
             }
             catch (Exception)
             {

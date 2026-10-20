@@ -123,6 +123,9 @@ public static class MauiProgram
             serviceProvider.GetService<IRepositoryStorageService>(),
             serviceProvider.GetService<ICloudStorageClientFactory>(),
             serviceProvider.GetService<IMessengerService>()));
+        services.AddSingleton<IWebdavQuickSaveService>((serviceProvider) => new WebdavQuickSaveService(
+            serviceProvider.GetService<IWebdavFileService>(),
+            serviceProvider.GetService<ISettingsService>()));
         services.AddSingleton<IInternetStateService>((serviceProvider) => new InternetStateService());
         services.AddSingleton<ISafeKeyService>((serviceProvider) => new SafeKeyService());
         services.AddSingleton<IPasswordVaultService>((serviceProvider) => new PasswordVaultService(
