@@ -1,0 +1,7 @@
+aNote version 1.3.15
+
+* Password: new vault tab (after Reader) with master password and optional PIN unlock.
+* Vault stored in a separate file encrypted with the Security settings algorithm (XChaCha).
+* Add, edit, search, and copy logins; TOTP codes with live countdown.
+* Import logins from unencrypted Bitwarden JSON or CSV exports.
+* Register as Android Autofill provider for system-wide username/password fill.
