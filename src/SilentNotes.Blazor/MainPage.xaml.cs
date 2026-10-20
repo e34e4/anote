@@ -71,6 +71,9 @@ public partial class MainPage : ContentPage
         //webSettings.SetSupportMultipleWindows(false); // same as default
         //webSettings.TextZoom = 100; // Ignores system font size, so the app controls the font size
         //webSettings.SaveFormData = false;
+
+        // Forward WebView console + Blazor errors to logcat (aNoteWebView / aNoteDiag).
+        SilentNotes.Platforms.DiagnosticLogging.AttachWebViewConsoleLogging(e.WebView);
 #endif
     }
 }

@@ -1,0 +1,1 @@
+* Diagnostic logging for Blazor/WebView errors (logcat tags aNoteDiag, aNoteWebView, aNote).

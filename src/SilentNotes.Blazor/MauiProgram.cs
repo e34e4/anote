@@ -88,6 +88,13 @@ public static class MauiProgram
         //builder.Logging.AddDebug().SetMinimumLevel(LogLevel.Information);
 #endif
 
+#if ANDROID
+        // Sleep/resume Blazor crashes were invisible in release logcat — route them there.
+        DiagnosticLogging.Install();
+        builder.Logging.AddProvider(DiagnosticLogging.CreateLoggerProvider());
+        builder.Logging.SetMinimumLevel(LogLevel.Warning);
+#endif
+
         MauiApp mauiApp = builder.Build();
         Ioc.Instance.Initialize(mauiApp.Services);
         return mauiApp;
