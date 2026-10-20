@@ -173,5 +173,32 @@ namespace SilentNotes.Platforms.Services
             CustomTabsIntent customTabsIntent = builder.Build();
             customTabsIntent.LaunchUrl(_appContext.RootActivity, Uri.Parse(url));
         }
+
+        /// <inheritdoc/>
+        public void OpenAutofillServiceSettings()
+        {
+            try
+            {
+                Context context = _appContext.RootActivity ?? _appContext.Context;
+                if (context == null)
+                    return;
+
+                Intent intent;
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+                {
+                    intent = new Intent(Settings.ActionRequestSetAutofillService);
+                    intent.SetData(Uri.Parse("package:" + context.PackageName));
+                }
+                else
+                {
+                    intent = new Intent(Settings.ActionSettings);
+                }
+                intent.AddFlags(ActivityFlags.NewTask);
+                context.StartActivity(intent);
+            }
+            catch (Exception)
+            {
+            }
+        }
     }
 }

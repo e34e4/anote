@@ -259,5 +259,12 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\IDocumentReaderService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\DocumentTextExtractor.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\ReaderViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\PasswordEntryModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\PasswordVaultModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IPasswordVaultService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\PasswordVaultService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\TotpService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\BitwardenImporter.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\PasswordViewModel.cs" />
   </ItemGroup>
 </Project>

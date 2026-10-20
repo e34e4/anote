@@ -489,6 +489,21 @@ namespace SilentNotes.Models
         }
 
         /// <summary>
+        /// Gets or sets the Base64 Cryptor blob that wraps the password-vault master password
+        /// with the user PIN (package AnoteVaultPin). Null when no PIN is configured.
+        /// </summary>
+        [XmlElement("password_vault_pin_wrap")]
+        public string SerializeablePasswordVaultPinWrap { get; set; }
+
+        /// <summary>
+        /// Gets a value indicating whether the PIN wrap should be serialized.
+        /// </summary>
+        public bool SerializeablePasswordVaultPinWrapSpecified
+        {
+            get { return !string.IsNullOrEmpty(SerializeablePasswordVaultPinWrap); }
+        }
+
+        /// <summary>
         /// Gets or sets a value indicating whether incoming calls matching the Phone blocklist
         /// (including wildcard masks like +7903*) are automatically rejected.
         /// </summary>

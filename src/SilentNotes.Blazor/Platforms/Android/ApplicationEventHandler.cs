@@ -537,7 +537,20 @@ namespace SilentNotes.Platforms
                 return false;
 
             ISafeKeyService keyService = Ioc.Instance.GetService<ISafeKeyService>();
-            return keyService.CloseAllSafes();
+            bool closedSafes = keyService.CloseAllSafes();
+            try
+            {
+                IPasswordVaultService vault = Ioc.Instance.GetService<IPasswordVaultService>();
+                if (vault != null && vault.IsUnlocked)
+                {
+                    vault.Lock();
+                    closedSafes = true;
+                }
+            }
+            catch
+            {
+            }
+            return closedSafes;
         }
 
         internal void OnPause(Activity activity)

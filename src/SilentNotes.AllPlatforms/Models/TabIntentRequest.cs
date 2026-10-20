@@ -17,7 +17,7 @@ namespace SilentNotes.Models
         public static TabIntentRequest Pending { get; set; }
 
         /// <summary>
-        /// Gets or sets the zero-based tab index to activate (0..12).
+        /// Gets or sets the zero-based tab index to activate (0..16).
         /// </summary>
         public int TabIndex { get; set; }
     }

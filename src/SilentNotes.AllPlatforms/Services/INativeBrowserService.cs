@@ -55,5 +55,13 @@ namespace SilentNotes.Services
         /// default browser settings).
         /// </summary>
         Task<bool> RequestDefaultBrowserAppAsync() => Task.FromResult(false);
+
+        /// <summary>
+        /// Opens the system Autofill service settings so the user can enable aNote as password
+        /// manager. No-op on platforms without Autofill.
+        /// </summary>
+        void OpenAutofillServiceSettings()
+        {
+        }
     }
 }
