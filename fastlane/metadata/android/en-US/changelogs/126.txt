@@ -1,0 +1,1 @@
+Add floating-button screenshots (full and partial) with JPG/PNG/WEBP quality settings, and fix screenshot capture by declaring the accessibility screenshot capability.

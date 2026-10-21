@@ -1239,19 +1239,46 @@ namespace SilentNotes.Platforms
 
         /// <summary>
         /// Temporarily hides the floating button so it is not included in screenshots.
+        /// When un-hiding, recreates the overlay if it was lost (e.g. service rebound during capture).
         /// </summary>
         internal void SetFloatingButtonTemporarilyHidden(bool hidden)
         {
-            if (_overlayView == null)
-                return;
             try
             {
-                _overlayView.Visibility = hidden
-                    ? ViewStates.Gone
-                    : (ShouldShowFloatingButton() ? ViewStates.Visible : ViewStates.Gone);
+                if (hidden)
+                {
+                    if (_overlayView != null)
+                        _overlayView.Visibility = ViewStates.Gone;
+                    return;
+                }
+
+                if (!ShouldShowFloatingButton())
+                {
+                    if (_overlayView != null)
+                        _overlayView.Visibility = ViewStates.Gone;
+                    return;
+                }
+
+                // Recreate when the overlay was removed while the screenshot ran.
+                if (_overlayView == null)
+                {
+                    ShowOverlay();
+                    return;
+                }
+
+                _overlayView.Visibility = ViewStates.Visible;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                global::Android.Util.Log.Error(LogTag, "Could not restore floating button visibility: " + ex);
+                try
+                {
+                    if (!hidden && ShouldShowFloatingButton())
+                        ShowOverlay();
+                }
+                catch
+                {
+                }
             }
         }
 

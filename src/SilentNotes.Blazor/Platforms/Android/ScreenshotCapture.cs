@@ -67,6 +67,16 @@ namespace SilentNotes.Platforms
             _service.HideMenuOverlay();
             _service.SetFloatingButtonTemporarilyHidden(true);
 
+            // Safety net: always restore the floating button if the screenshot callback never returns.
+            _handler.PostDelayed(() =>
+            {
+                if (_captureInProgress)
+                {
+                    global::Android.Util.Log.Warn(LogTag, "Screenshot timed out; restoring floating button.");
+                    FinishCapture(success: false);
+                }
+            }, 8000);
+
             // Let the menu and button disappear before the capture runs.
             _handler.PostDelayed(() => CaptureNow(partial), 180);
         }
