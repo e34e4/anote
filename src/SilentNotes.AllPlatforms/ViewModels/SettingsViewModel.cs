@@ -41,6 +41,7 @@ namespace SilentNotes.ViewModels
         private readonly IMessengerService _messengerService;
         private readonly ICloudStorageClientFactory _cloudStorageClientFactory;
         private readonly IBookySyncService _bookySyncService;
+        private readonly IPasswordVaultSyncService _passwordVaultSyncService;
         private readonly IDeviceSmsService _deviceSmsService;
         private readonly IDevicePhoneService _devicePhoneService;
         private readonly INativeBrowserService _nativeBrowserService;
@@ -65,7 +66,8 @@ namespace SilentNotes.ViewModels
             IBookySyncService bookySyncService,
             IDeviceSmsService deviceSmsService,
             IDevicePhoneService devicePhoneService = null,
-            INativeBrowserService nativeBrowserService = null)
+            INativeBrowserService nativeBrowserService = null,
+            IPasswordVaultSyncService passwordVaultSyncService = null)
         {
             Language = languageService;
             _settingsService = settingsService;
@@ -77,6 +79,7 @@ namespace SilentNotes.ViewModels
             _cloudStorageClientFactory = cloudStorageClientFactory;
             _filePickerService = filePickerService;
             _bookySyncService = bookySyncService;
+            _passwordVaultSyncService = passwordVaultSyncService;
             _deviceSmsService = deviceSmsService;
             _devicePhoneService = devicePhoneService;
             _nativeBrowserService = nativeBrowserService;
@@ -240,6 +243,7 @@ namespace SilentNotes.ViewModels
                 settings.BookySyncEnabled.GetHashCode(),
                 string.GetHashCode(settings.BookySyncUrl),
                 string.GetHashCode(settings.BookySyncRemotePath),
+                string.GetHashCode(settings.PasswordVaultSyncRemotePath),
                 string.GetHashCode(settings.BookySyncUsername),
                 string.GetHashCode(settings.BookySyncPassword),
                 string.GetHashCode(settings.FloatingGestureSwipeUp),
@@ -248,6 +252,8 @@ namespace SilentNotes.ViewModels
                 string.GetHashCode(settings.FloatingGestureSwipeRight),
                 string.GetHashCode(settings.FloatingGestureLongPress),
                 string.GetHashCode(settings.FloatingGestureDoubleClick),
+                string.GetHashCode(settings.ScreenshotFormat),
+                settings.ScreenshotQuality.GetHashCode(),
                 (settings.Credentials == null).GetHashCode(),
             });
         }
@@ -643,6 +649,8 @@ namespace SilentNotes.ViewModels
             options.Add(new DropdownItemViewModel { Value = string.Empty, Description = Language["gui_floating_gesture_none"] });
             options.Add(new DropdownItemViewModel { Value = ":keyboard_switcher", Description = "⌨️ " + Language["floating_menu_keyboard"] });
             options.Add(new DropdownItemViewModel { Value = ":capture_text", Description = "📋 " + Language["gui_floating_gesture_capture_text"] });
+            options.Add(new DropdownItemViewModel { Value = ":screenshot_full", Description = "📷 " + Language["gui_floating_gesture_screenshot_full"] });
+            options.Add(new DropdownItemViewModel { Value = ":screenshot_partial", Description = "✂️ " + Language["gui_floating_gesture_screenshot_partial"] });
             options.Add(new DropdownItemViewModel { Value = ":open_anote", Description = "📝 " + Language["gui_floating_gesture_open_anote"] });
             options.Add(new DropdownItemViewModel { Value = ":show_menu", Description = "🎛️ " + Language["gui_floating_gesture_show_menu"] });
 
@@ -837,6 +845,65 @@ namespace SilentNotes.ViewModels
         }
 
         /// <summary>
+        /// Gets or sets the WebDAV path of the encrypted password vault, relative to the Booky base url.
+        /// </summary>
+        public string PasswordVaultSyncRemotePath
+        {
+            get
+            {
+                return string.IsNullOrWhiteSpace(Model.PasswordVaultSyncRemotePath)
+                    ? PasswordVaultService.VaultFileName
+                    : Model.PasswordVaultSyncRemotePath;
+            }
+            set
+            {
+                string normalized = string.IsNullOrWhiteSpace(value)
+                    ? PasswordVaultService.VaultFileName
+                    : value.Trim();
+                SetProperty(
+                    string.IsNullOrWhiteSpace(Model.PasswordVaultSyncRemotePath)
+                        ? PasswordVaultService.VaultFileName
+                        : Model.PasswordVaultSyncRemotePath,
+                    normalized,
+                    (string v) => Model.PasswordVaultSyncRemotePath = v);
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the screenshot file format ("jpg", "png", or "webp").
+        /// </summary>
+        public string ScreenshotFormat
+        {
+            get
+            {
+                string fmt = (Model.ScreenshotFormat ?? "jpg").Trim().ToLowerInvariant();
+                return (fmt == "png" || fmt == "webp") ? fmt : "jpg";
+            }
+            set
+            {
+                string normalized = (value ?? "jpg").Trim().ToLowerInvariant();
+                if (normalized != "png" && normalized != "webp")
+                    normalized = "jpg";
+                if (SetProperty(ScreenshotFormat, normalized, (string v) => Model.ScreenshotFormat = v))
+                    _settingsService.TrySaveSettingsToLocalDevice(Model);
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the screenshot compression quality percentage (1..100).
+        /// </summary>
+        public int ScreenshotQuality
+        {
+            get { return Math.Clamp(Model.ScreenshotQuality <= 0 ? 70 : Model.ScreenshotQuality, 1, 100); }
+            set
+            {
+                int clamped = Math.Clamp(value, 1, 100);
+                if (SetProperty(ScreenshotQuality, clamped, (int v) => Model.ScreenshotQuality = v))
+                    _settingsService.TrySaveSettingsToLocalDevice(Model);
+            }
+        }
+
+        /// <summary>
         /// Gets or sets the user name for the Booky sync WebDAV server.
         /// </summary>
         public string BookySyncUsername
@@ -879,7 +946,24 @@ namespace SilentNotes.ViewModels
                     _feedbackService.ShowToast(Language["booky_sync_not_configured"]);
                     break;
                 case BookySyncResult.Failed:
-                    _feedbackService.ShowToast(BuildSyncErrorMessage(Language["booky_sync_failed"]), FeedbackSeverity.Warning);
+                    _feedbackService.ShowToast(BuildSyncErrorMessage(Language["booky_sync_failed"], _bookySyncService?.LastError), FeedbackSeverity.Warning);
+                    break;
+            }
+
+            if (_passwordVaultSyncService == null || !_passwordVaultSyncService.IsConfigured)
+                return;
+
+            PasswordVaultSyncResult vaultResult = await _passwordVaultSyncService.SyncAsync();
+            switch (vaultResult)
+            {
+                case PasswordVaultSyncResult.Success:
+                case PasswordVaultSyncResult.NothingToSync:
+                    _feedbackService.ShowToast(Language["password_sync_success"]);
+                    break;
+                case PasswordVaultSyncResult.Failed:
+                    _feedbackService.ShowToast(
+                        BuildSyncErrorMessage(Language["password_sync_failed"], _passwordVaultSyncService.LastError),
+                        FeedbackSeverity.Warning);
                     break;
             }
         }
@@ -887,9 +971,8 @@ namespace SilentNotes.ViewModels
         /// <summary>
         /// Appends the message of the last synchronization error, to help diagnosing the problem.
         /// </summary>
-        private string BuildSyncErrorMessage(string baseMessage)
+        private static string BuildSyncErrorMessage(string baseMessage, string detail)
         {
-            string detail = _bookySyncService?.LastError;
             return string.IsNullOrWhiteSpace(detail) ? baseMessage : baseMessage + " — " + detail;
         }
 

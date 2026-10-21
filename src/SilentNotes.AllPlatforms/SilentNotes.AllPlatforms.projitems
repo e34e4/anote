@@ -265,6 +265,8 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\PasswordVaultModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IPasswordVaultService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\PasswordVaultService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IPasswordVaultSyncService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\PasswordVaultSyncService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\TotpService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\BitwardenImporter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\PasswordViewModel.cs" />

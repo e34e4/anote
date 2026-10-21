@@ -30,7 +30,8 @@ namespace SilentNotes.Services
         /// <summary>Cryptor package name for the PIN wrap of the master password.</summary>
         public const string PinCryptorPackageName = "AnoteVaultPin";
 
-        private const string VaultFileName = "anote_password_vault.anote";
+        /// <summary>Local (and default remote) filename of the encrypted vault.</summary>
+        public const string VaultFileName = "anote_password_vault.anote";
 
         private readonly IRepositoryStorageService _repositoryStorageService;
         private readonly ISettingsService _settingsService;
@@ -258,6 +259,76 @@ namespace SilentNotes.Services
                          needle.Contains(candidate, StringComparison.OrdinalIgnoreCase));
                 }))
                 .ToList();
+        }
+
+        /// <inheritdoc/>
+        public byte[] TryReadEncryptedBytes()
+        {
+            string path = GetVaultPath();
+            if (!File.Exists(path))
+                return null;
+            try
+            {
+                return File.ReadAllBytes(path);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool WriteEncryptedBytesAndLock(byte[] cipherBytes)
+        {
+            if (cipherBytes == null || cipherBytes.Length < 32)
+                return false;
+
+            try
+            {
+                string path = GetVaultPath();
+                string directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                    Directory.CreateDirectory(directory);
+                new AtomicFileWriter { MinValidFileSize = 32 }.Write(path, stream => stream.Write(cipherBytes, 0, cipherBytes.Length));
+                Lock();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <inheritdoc/>
+        public PasswordVaultMergeResult TryMergeRemoteCipher(byte[] remoteCipher)
+        {
+            if (!IsUnlocked)
+                return PasswordVaultMergeResult.Locked;
+            if (remoteCipher == null || remoteCipher.Length < 32)
+                return PasswordVaultMergeResult.DecryptFailed;
+
+            try
+            {
+                ICryptor cryptor = new Cryptor(CryptorPackageName, null);
+                byte[] plain = cryptor.Decrypt(remoteCipher, _masterPassword, out _);
+                XDocument document = XmlUtils.LoadFromXmlBytes(plain);
+                CryptoUtils.CleanArray(plain);
+                PasswordVaultModel remoteVault = DeserializeVault(document);
+                if (remoteVault == null)
+                    return PasswordVaultMergeResult.DecryptFailed;
+
+                if (remoteVault.ModifiedAt <= _vault.ModifiedAt)
+                    return PasswordVaultMergeResult.LocalKept;
+
+                _vault = remoteVault;
+                if (!Save())
+                    return PasswordVaultMergeResult.DecryptFailed;
+                return PasswordVaultMergeResult.RemoteApplied;
+            }
+            catch
+            {
+                return PasswordVaultMergeResult.DecryptFailed;
+            }
         }
 
         private string GetVaultPath()

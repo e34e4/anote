@@ -17,6 +17,7 @@
 @inject ISynchronizationService SynchronizationService
 @inject ISynchronizationState SynchronizationState
 @inject IBookySyncService BookySyncService
+@inject IPasswordVaultSyncService PasswordVaultSyncService
 @inject ISettingsService SettingsService
 @inject IEnvironmentService EnvironmentService
 @inject ILanguageService LanguageService
@@ -135,6 +136,10 @@
 			// so the bookmark sync and the repository sync do not write the repository concurrently.
 			if (BookySyncService.IsConfigured)
 				await BookySyncService.SyncAsync();
+
+			// Sync the encrypted password vault over the same WebDAV credentials (Password path).
+			if (PasswordVaultSyncService.IsConfigured)
+				await PasswordVaultSyncService.SyncAsync();
 
 			// Pausing the synchronization allows to user to switch to another app, to copy and
 			// paste some content, without an interferring synchronization when switching back.

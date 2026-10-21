@@ -46,6 +46,7 @@
 @inject IMediaPlayerService MediaPlayerService
 @inject IDocumentReaderService DocumentReaderService
 @inject IPasswordVaultService PasswordVaultService
+@inject IPasswordVaultSyncService PasswordVaultSyncService
 
 <style type="text/css">
 	.mud-main-content {
@@ -726,7 +727,8 @@
 			ClipboardService,
 			FilePickerService,
 			FeedbackService,
-			NativeBrowserService);
+			NativeBrowserService,
+			PasswordVaultSyncService);
 
 		// When the app was started by a calendar intent, the calendar tab is opened and shows it.
 		CalendarIntentRequest pendingCalendarIntent = CalendarIntentRequest.Pending;

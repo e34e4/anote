@@ -132,6 +132,10 @@ public static class MauiProgram
             serviceProvider.GetService<IRepositoryStorageService>(),
             serviceProvider.GetService<ISettingsService>(),
             serviceProvider.GetService<ICryptoRandomService>()));
+        services.AddSingleton<IPasswordVaultSyncService>((serviceProvider) => new PasswordVaultSyncService(
+            serviceProvider.GetService<ISettingsService>(),
+            serviceProvider.GetService<IPasswordVaultService>(),
+            serviceProvider.GetService<ICloudStorageClientFactory>()));
         services.AddSingleton<IFontService>((serviceProvider) => new FontService());
         services.AddSingleton<IPhoneSpamService>((serviceProvider) => new PhoneSpamService(
             serviceProvider.GetService<ISettingsService>()));

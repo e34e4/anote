@@ -116,6 +116,7 @@ namespace SilentNotes.Platforms
         private ClipboardManager _clipboardManager;
         private ClipboardChangedListener _clipboardListener;
         private Handler _gestureHandler;
+        private ScreenshotCapture _screenshotCapture;
         private string _lastSelectionText;
         private DateTime _lastSelectionTime;
 
@@ -734,6 +735,24 @@ namespace SilentNotes.Platforms
                     ShowKeyboardSwitcher();
                 }, true));
 
+                string shotFullLabel = language?["floating_menu_screenshot_full"];
+                if (string.IsNullOrWhiteSpace(shotFullLabel) || shotFullLabel == "floating_menu_screenshot_full")
+                    shotFullLabel = "Full screen";
+                allButtons.Add(("📷", shotFullLabel, () =>
+                {
+                    HideMenuOverlay();
+                    StartScreenshot(partial: false);
+                }, true));
+
+                string shotPartialLabel = language?["floating_menu_screenshot_partial"];
+                if (string.IsNullOrWhiteSpace(shotPartialLabel) || shotPartialLabel == "floating_menu_screenshot_partial")
+                    shotPartialLabel = "Partial";
+                allButtons.Add(("✂️", shotPartialLabel, () =>
+                {
+                    HideMenuOverlay();
+                    StartScreenshot(partial: true);
+                }, true));
+
                 for (int i = 0; i < allButtons.Count; i += columns)
                 {
                     var row = new LinearLayout(this)
@@ -1094,6 +1113,16 @@ namespace SilentNotes.Platforms
                     CaptureSelectedText();
                     return true;
                 }
+                if (string.Equals(trimmed, ":screenshot_full", StringComparison.OrdinalIgnoreCase))
+                {
+                    StartScreenshot(partial: false);
+                    return true;
+                }
+                if (string.Equals(trimmed, ":screenshot_partial", StringComparison.OrdinalIgnoreCase))
+                {
+                    StartScreenshot(partial: true);
+                    return true;
+                }
                 if (string.Equals(trimmed, ":open_anote", StringComparison.OrdinalIgnoreCase))
                 {
                     OpenApplication();
@@ -1196,6 +1225,42 @@ namespace SilentNotes.Platforms
                 global::Android.Util.Log.Error(LogTag, "Could not read the settings: " + ex);
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Starts a full-screen or partial screenshot. Closes the floating menu first and hides the
+        /// floating button until the capture finishes.
+        /// </summary>
+        internal void StartScreenshot(bool partial)
+        {
+            _screenshotCapture ??= new ScreenshotCapture(this);
+            _screenshotCapture.Start(partial);
+        }
+
+        /// <summary>
+        /// Temporarily hides the floating button so it is not included in screenshots.
+        /// </summary>
+        internal void SetFloatingButtonTemporarilyHidden(bool hidden)
+        {
+            if (_overlayView == null)
+                return;
+            try
+            {
+                _overlayView.Visibility = hidden
+                    ? ViewStates.Gone
+                    : (ShouldShowFloatingButton() ? ViewStates.Visible : ViewStates.Gone);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        /// <summary>
+        /// Exposes the service provider for screenshot localization without widening other APIs.
+        /// </summary>
+        internal IServiceProvider GetServiceProviderForScreenshot()
+        {
+            return GetServiceProvider();
         }
 
         private IServiceProvider GetServiceProvider()

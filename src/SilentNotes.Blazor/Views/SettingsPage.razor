@@ -18,6 +18,7 @@
 @inject IFontService FontService
 @inject ICloudStorageClientFactory CloudStorageClientFactory
 @inject IBookySyncService BookySyncService
+@inject IPasswordVaultSyncService PasswordVaultSyncService
 @inject IDeviceSmsService DeviceSmsService
 @inject IDevicePhoneService DevicePhoneService
 @inject INativeBrowserService NativeBrowserService
@@ -338,6 +339,20 @@
 								}
 							</MudSelect>
 						</MudStack>
+
+						<MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">@LanguageService["gui_screenshot_settings"]</MudText>
+						<MudStack Spacing="2">
+							<MudSelect T="string" Label="@LanguageService["gui_screenshot_format"]" @bind-Value="ViewModel.ScreenshotFormat" Variant="Variant.Outlined" Margin="Margin.Dense">
+								<MudSelectItem T="string" Value="@("jpg")">JPG</MudSelectItem>
+								<MudSelectItem T="string" Value="@("png")">PNG</MudSelectItem>
+								<MudSelectItem T="string" Value="@("webp")">WEBP</MudSelectItem>
+							</MudSelect>
+							<div>
+								<label for="ScreenshotQuality">@LanguageService["gui_screenshot_quality"] (@(ViewModel.ScreenshotQuality)%)</label>
+								<MudSlider id="ScreenshotQuality" @bind-Value="ViewModel.ScreenshotQuality"
+									Min="1" Max="100" Step="1" Color="Color.Tertiary"></MudSlider>
+							</div>
+						</MudStack>
 					</div>
 				}
 				@* Clipboard monitoring (uses the Android accessibility service) *@
@@ -442,6 +457,13 @@
 				<div>
 					<label for="BookySyncUrl">@LanguageService["gui_booky_sync_url"]</label>
 					<MudTextField id="BookySyncUrl" @bind-Value="@ViewModel.BookySyncUrl" Variant="Variant.Outlined" Placeholder="https://example.com/webdav" />
+				</div>
+
+				@* Password vault path (encrypted file on the same WebDAV) *@
+				<div></div>
+				<div>
+					<label for="PasswordVaultSyncRemotePath">@LanguageService["gui_password_sync_remote_path"]</label>
+					<MudTextField id="PasswordVaultSyncRemotePath" @bind-Value="@ViewModel.PasswordVaultSyncRemotePath" Variant="Variant.Outlined" Placeholder="anote_password_vault.anote" />
 				</div>
 
 				@* Remote file path *@
@@ -582,7 +604,7 @@
 
 	protected override void OnInitialized()
 	{
-		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService, NativeBrowserService);
+		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService, NativeBrowserService, PasswordVaultSyncService);
 	}
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)

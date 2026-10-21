@@ -47,7 +47,38 @@ namespace SilentNotes.Services
         /// <summary>Persists the current vault to the encrypted file (must be unlocked).</summary>
         bool Save();
 
+        /// <summary>Reads the encrypted vault file bytes, or null when the file is missing.</summary>
+        byte[] TryReadEncryptedBytes();
+
+        /// <summary>
+        /// Replaces the encrypted vault file and locks the in-memory vault so the next unlock
+        /// reloads from disk.
+        /// </summary>
+        bool WriteEncryptedBytesAndLock(byte[] cipherBytes);
+
+        /// <summary>
+        /// When unlocked, decrypts a remote vault ciphertext and keeps the newer vault by
+        /// <see cref="PasswordVaultModel.ModifiedAt"/>. Returns whether the remote replaced local.
+        /// </summary>
+        PasswordVaultMergeResult TryMergeRemoteCipher(byte[] remoteCipher);
+
         /// <summary>Finds entries matching a web domain or Android package name.</summary>
         IReadOnlyList<PasswordEntryModel> FindMatches(string uriOrPackage);
+    }
+
+    /// <summary>Result of merging a remote encrypted vault into the unlocked local vault.</summary>
+    public enum PasswordVaultMergeResult
+    {
+        /// <summary>Local vault is newer or equal; keep local.</summary>
+        LocalKept,
+
+        /// <summary>Remote vault was newer and replaced the local unlocked vault (and was saved).</summary>
+        RemoteApplied,
+
+        /// <summary>Vault is locked; caller should decide without decrypting.</summary>
+        Locked,
+
+        /// <summary>Remote ciphertext could not be decrypted with the current master password.</summary>
+        DecryptFailed,
     }
 }

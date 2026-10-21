@@ -65,8 +65,11 @@ namespace SilentNotes.Models
             BookySyncEnabled = false;
             BookySyncUrl = string.Empty;
             BookySyncRemotePath = "booky/bookmarks.json";
+            PasswordVaultSyncRemotePath = "anote_password_vault.anote";
             BookySyncUsername = string.Empty;
             BookySyncPassword = string.Empty;
+            ScreenshotFormat = "jpg";
+            ScreenshotQuality = 70;
             FileWebdavUrl = string.Empty;
             FileWebdavFolder = string.Empty;
             FileWebdavUsername = string.Empty;
@@ -422,6 +425,14 @@ namespace SilentNotes.Models
         public string BookySyncRemotePath { get; set; }
 
         /// <summary>
+        /// Gets or sets the path of the encrypted password vault file on the same WebDAV
+        /// server as the Booky sync, relative to <see cref="BookySyncUrl"/>. Defaults to the
+        /// vault file name in the WebDAV root, e.g. "anote_password_vault.anote".
+        /// </summary>
+        [XmlElement("password_vault_sync_remote_path")]
+        public string PasswordVaultSyncRemotePath { get; set; }
+
+        /// <summary>
         /// Gets or sets the user name for the WebDAV server of the Booky sync.
         /// </summary>
         [XmlElement("booky_sync_username")]
@@ -596,6 +607,18 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("floating_gesture_double_click")]
         public string FloatingGestureDoubleClick { get; set; }
+
+        /// <summary>
+        /// Gets or sets the screenshot file format ("jpg", "png", or "webp").
+        /// </summary>
+        [XmlElement("screenshot_format")]
+        public string ScreenshotFormat { get; set; }
+
+        /// <summary>
+        /// Gets or sets the screenshot compression quality percentage (1..100).
+        /// </summary>
+        [XmlElement("screenshot_quality")]
+        public int ScreenshotQuality { get; set; }
 
         /// <summary>
         /// Gets a value indicating whether a cloud storage is set.

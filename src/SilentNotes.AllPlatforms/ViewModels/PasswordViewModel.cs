@@ -23,6 +23,7 @@ namespace SilentNotes.ViewModels
     public class PasswordViewModel : ViewModelBase
     {
         private readonly IPasswordVaultService _vaultService;
+        private readonly IPasswordVaultSyncService _vaultSyncService;
         private readonly ILanguageService _languageService;
         private readonly IClipboardService _clipboardService;
         private readonly IFilePickerService _filePickerService;
@@ -56,9 +57,11 @@ namespace SilentNotes.ViewModels
             IClipboardService clipboardService,
             IFilePickerService filePickerService,
             IFeedbackService feedbackService,
-            INativeBrowserService browserService)
+            INativeBrowserService browserService,
+            IPasswordVaultSyncService vaultSyncService = null)
         {
             _vaultService = vaultService;
+            _vaultSyncService = vaultSyncService;
             _languageService = languageService;
             _clipboardService = clipboardService;
             _filePickerService = filePickerService;
@@ -340,6 +343,7 @@ namespace SilentNotes.ViewModels
                 ErrorText = _languageService["password_vault_create_failed"];
                 return;
             }
+            QueueVaultSync();
             ClearUnlockFields();
             Reload();
             _feedbackService.ShowToast(_languageService["password_vault_created"]);
@@ -428,7 +432,8 @@ namespace SilentNotes.ViewModels
                 return;
             var entry = new PasswordEntryModel { Name = string.Empty };
             _vaultService.Vault.Entries.Add(entry);
-            _vaultService.Save();
+            if (_vaultService.Save())
+                QueueVaultSync();
             Reload();
             StartEdit(_entries.FirstOrDefault(e => e.Id == entry.Id));
         }
@@ -441,7 +446,8 @@ namespace SilentNotes.ViewModels
             if (model == null)
                 return;
             _vaultService.Vault.Entries.Remove(model);
-            _vaultService.Save();
+            if (_vaultService.Save())
+                QueueVaultSync();
             if (_editingEntryId == item.Id)
                 CancelEdit();
             Reload();
@@ -490,7 +496,8 @@ namespace SilentNotes.ViewModels
                 model.TotpDigits = digits;
             }
             model.RefreshModifiedAt();
-            _vaultService.Save();
+            if (_vaultService.Save())
+                QueueVaultSync();
             CancelEdit();
             Reload();
         }
@@ -572,12 +579,25 @@ namespace SilentNotes.ViewModels
                 if (!saved)
                     _feedbackService.ShowToast(_languageService["password_import_save_failed"]);
                 else
+                {
                     EnsureLoaded();
+                    QueueVaultSync();
+                }
             }
             catch
             {
                 _feedbackService.ShowToast(_languageService["password_import_failed"]);
             }
+        }
+
+        /// <summary>
+        /// Uploads the encrypted vault in the background when WebDAV password sync is configured.
+        /// </summary>
+        private void QueueVaultSync()
+        {
+            if (_vaultSyncService == null || !_vaultSyncService.IsConfigured)
+                return;
+            _ = _vaultSyncService.SyncAsync();
         }
 
         private static void SanitizeImportedEntry(PasswordEntryModel entry)
