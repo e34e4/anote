@@ -1,0 +1,3 @@
+• New RSS tab next to Contacts: subscribe to feeds, read articles, OPML import/export, WebDAV save
+• RSS feeds and read state sync with notes
+• Telegram and floating-button improvements; accessibility watchdog helpers

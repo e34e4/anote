@@ -51,6 +51,8 @@ namespace SilentNotes.Models
         private SafeListModel _safes;
         private BookmarkListModel _bookmarks;
         private ContactListModel _contacts;
+        private RssFeedListModel _rssFeeds;
+        private RssReadItemListModel _rssReadItems;
         private ClipboardTransferListModel _clipboard;
 
         /// <summary>
@@ -151,6 +153,30 @@ namespace SilentNotes.Models
         }
 
         /// <summary>
+        /// Gets or sets a list of RSS/Atom feed subscriptions. Feeds are a regular part of the
+        /// repository and are synchronized like notes.
+        /// </summary>
+        [XmlArray("rss_feeds")]
+        [XmlArrayItem("feed")]
+        public RssFeedListModel RssFeeds
+        {
+            get { return _rssFeeds ?? (_rssFeeds = new RssFeedListModel()); }
+            set { _rssFeeds = value; }
+        }
+
+        /// <summary>
+        /// Gets or sets the list of RSS article keys that have been marked as read. Synced with
+        /// the repository like notes.
+        /// </summary>
+        [XmlArray("rss_read_items")]
+        [XmlArrayItem("item")]
+        public RssReadItemListModel RssReadItems
+        {
+            get { return _rssReadItems ?? (_rssReadItems = new RssReadItemListModel()); }
+            set { _rssReadItems = value; }
+        }
+
+        /// <summary>
         /// Gets or sets a transient transfer copy of the clipboard history, which is only populated
         /// while a repository is encrypted for upload or merged after a download. It is always
         /// cleared before the repository is persisted to the local device, so the local clipboard
@@ -228,6 +254,15 @@ namespace SilentNotes.Models
             foreach (ContactModel contact in Contacts)
             {
                 hashCodes.Add(contact.ModifiedAt.GetHashCode());
+            }
+            foreach (RssFeedModel feed in RssFeeds)
+            {
+                hashCodes.Add(feed.ModifiedAt.GetHashCode());
+            }
+            foreach (RssReadItemModel readItem in RssReadItems)
+            {
+                hashCodes.Add(readItem.Key?.GetHashCode() ?? 0);
+                hashCodes.Add(readItem.ModifiedAt.GetHashCode());
             }
 
             return ModificationDetector.CombineHashCodes(hashCodes);

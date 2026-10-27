@@ -171,16 +171,44 @@ namespace SilentNotes.ViewModels
 
         public bool NeedsApiCredentials => !HasApiCredentials || AuthState == TelegramAuthState.NeedApiCredentials || IsApiSetupOpen;
 
-        public bool IsLoginFlow =>
-            AuthState == TelegramAuthState.NeedPhone
-            || AuthState == TelegramAuthState.NeedCode
-            || AuthState == TelegramAuthState.NeedPassword
-            || AuthState == TelegramAuthState.NeedQr
-            || AuthState == TelegramAuthState.Connecting;
+        /// <summary>
+        /// True only for interactive login steps. Background reconnect (Connecting/Error with an
+        /// existing account) must not replace the chat list with the login card — that felt like a hang.
+        /// </summary>
+        public bool IsLoginFlow
+        {
+            get
+            {
+                if (AuthState == TelegramAuthState.NeedPhone
+                    || AuthState == TelegramAuthState.NeedCode
+                    || AuthState == TelegramAuthState.NeedPassword
+                    || AuthState == TelegramAuthState.NeedQr)
+                {
+                    return true;
+                }
+
+                if (AuthState != TelegramAuthState.Connecting)
+                    return false;
+
+                // Connecting during add-account / QR login keeps the login card; resume does not.
+                return _telegramService?.HasPendingLogin == true || !HasAccounts;
+            }
+        }
 
         public string QrLoginImageDataUrl => _qrLoginImageDataUrl;
 
-        public bool ShowChatList => HasAccounts && AuthState == TelegramAuthState.Ready && !IsChatOpen && !IsLoginFlow && !NeedsApiCredentials;
+        /// <summary>
+        /// Chat list stays visible while reconnecting or offline so Refresh remains usable.
+        /// </summary>
+        public bool ShowChatList =>
+            HasAccounts
+            && !IsChatOpen
+            && !IsLoginFlow
+            && !NeedsApiCredentials
+            && (AuthState == TelegramAuthState.Ready
+                || AuthState == TelegramAuthState.Connecting
+                || AuthState == TelegramAuthState.Error
+                || AuthState == TelegramAuthState.LoggedOut);
 
         public bool IsChatOpen => !string.IsNullOrEmpty(_openChatKey);
 
@@ -985,6 +1013,50 @@ namespace SilentNotes.ViewModels
             NotifyChanged();
         }
 
+        /// <summary>
+        /// After long screen-off the MTProto socket often dies. Reconnect and reload chats/messages.
+        /// Failures stay non-blocking: chat list remains usable and Refresh retries later.
+        /// </summary>
+        public async Task ResumeConnectionAsync()
+        {
+            if (_telegramService == null || IsBusy || IsLoginFlow || NeedsApiCredentials || !HasAccounts)
+            {
+                SyncFromService();
+                return;
+            }
+
+            string accountId = ActiveAccountId;
+            if (string.IsNullOrEmpty(accountId))
+                accountId = _store.Accounts.FirstOrDefault()?.Id;
+            if (string.IsNullOrEmpty(accountId))
+            {
+                SyncFromService();
+                return;
+            }
+
+            await ConnectAndLoadAsync(accountId);
+
+            if (AuthState == TelegramAuthState.Ready
+                && IsChatOpen
+                && !string.IsNullOrEmpty(_openChatKey))
+            {
+                try
+                {
+                    TelegramOperationResult open = await _telegramService.OpenChatAsync(_openChatKey, accountId);
+                    if (open.Success)
+                        ReloadMessages();
+                    else if (!string.IsNullOrEmpty(open.ErrorMessage))
+                        StatusMessage = open.ErrorMessage;
+                    NotifyChanged();
+                }
+                catch (Exception ex)
+                {
+                    StatusMessage = ex.Message;
+                    NotifyChanged();
+                }
+            }
+        }
+
         public void OpenOfficialTelegram()
         {
             if (AuthState == TelegramAuthState.NeedQr)
@@ -1087,19 +1159,31 @@ namespace SilentNotes.ViewModels
             IsBusy = true;
             AuthState = TelegramAuthState.Connecting;
             StatusMessage = string.Empty;
+            NotifyChanged();
             try
             {
                 TelegramOperationResult result = await _telegramService.ConnectAccountAsync(accountId);
-                AuthState = result.AuthState;
+                AuthState = result.Success ? TelegramAuthState.Ready : result.AuthState;
                 if (!result.Success)
                 {
                     StatusMessage = result.ErrorMessage ?? "Connect failed";
+                    // Keep any previously cached chats visible; do not block the tab.
+                    _chats.Clear();
+                    _chats.AddRange(_telegramService.GetChats());
                     return;
                 }
 
                 _store = _telegramService.LoadStore();
-                await RefreshChatsQuietAsync();
+                // ConnectAccountAsync already refreshed dialogs — only sync the VM cache.
+                _chats.Clear();
+                _chats.AddRange(_telegramService.GetChats());
                 AuthState = TelegramAuthState.Ready;
+                StatusMessage = string.Empty;
+            }
+            catch (Exception ex)
+            {
+                AuthState = TelegramAuthState.Error;
+                StatusMessage = ex.Message;
             }
             finally
             {
@@ -1114,15 +1198,32 @@ namespace SilentNotes.ViewModels
                 return;
 
             IsBusy = true;
+            StatusMessage = string.Empty;
+            NotifyChanged();
             try
             {
                 if (IsChatOpen)
                 {
-                    await _telegramService.OpenChatAsync(_openChatKey);
+                    TelegramOperationResult open = await _telegramService.OpenChatAsync(_openChatKey);
+                    if (!open.Success)
+                    {
+                        StatusMessage = open.ErrorMessage ?? "Could not load messages";
+                        AuthState = open.AuthState;
+                        return;
+                    }
                     ReloadMessages();
                 }
 
                 await RefreshChatsQuietAsync();
+                if (AuthState == TelegramAuthState.Error && string.IsNullOrEmpty(StatusMessage))
+                    return;
+                if (string.IsNullOrEmpty(StatusMessage))
+                    AuthState = TelegramAuthState.Ready;
+            }
+            catch (Exception ex)
+            {
+                AuthState = TelegramAuthState.Error;
+                StatusMessage = ex.Message;
             }
             finally
             {
@@ -1137,8 +1238,13 @@ namespace SilentNotes.ViewModels
                 return;
 
             TelegramOperationResult result = await _telegramService.RefreshChatsAsync();
-            if (!result.Success && !string.IsNullOrEmpty(result.ErrorMessage))
-                StatusMessage = result.ErrorMessage;
+            if (!result.Success)
+            {
+                if (!string.IsNullOrEmpty(result.ErrorMessage))
+                    StatusMessage = result.ErrorMessage;
+                if (result.AuthState == TelegramAuthState.Error)
+                    AuthState = TelegramAuthState.Error;
+            }
 
             _chats.Clear();
             _chats.AddRange(_telegramService.GetChats());

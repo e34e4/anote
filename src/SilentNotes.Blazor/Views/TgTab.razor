@@ -810,7 +810,11 @@
 	protected override async Task OnInitializedAsync()
 	{
 		ViewModel.StateChanged += OnStateChanged;
-		MessengerService.Register<AfterResumeMessage>(this, (recipient, message) => InvokeAsync(StateHasChanged));
+		MessengerService.Register<AfterResumeMessage>(this, (recipient, message) => InvokeAsync(async () =>
+		{
+			await ViewModel.ResumeConnectionAsync();
+			StateHasChanged();
+		}));
 		await ViewModel.InitializeAsync();
 	}
 

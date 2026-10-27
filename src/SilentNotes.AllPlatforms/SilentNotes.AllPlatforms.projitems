@@ -197,6 +197,13 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\ContactModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\ContactListModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\ContactsViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\RssFeedModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\RssFeedListModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\RssReadItemModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\RssReadItemListModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\RssViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\RssFeedParser.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\OpmlFormat.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\CalculatorViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\CalendarViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\ContactsImporter.cs" />

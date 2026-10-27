@@ -611,6 +611,14 @@ namespace SilentNotes.Platforms
         internal void OnResume(Activity activity)
         {
             System.Diagnostics.Debug.WriteLine("*** ApplicationEventHandler.OnResume() " + GetId(activity));
+            try
+            {
+                AccessibilityServiceWatchdog.EnsureEnabled(activity);
+            }
+            catch (Exception)
+            {
+            }
+
             var synchronizationService = Ioc.Instance.GetService<ISynchronizationService>();
             synchronizationService.StopAutoSynchronization(Ioc.Instance);
 

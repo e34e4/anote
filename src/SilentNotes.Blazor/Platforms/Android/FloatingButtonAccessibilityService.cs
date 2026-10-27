@@ -64,6 +64,7 @@ namespace SilentNotes.Platforms
             (1, "📋", "tab_clipboard", "Clip"),
             (2, "🔖", "tab_booky", "Booky"),
             (3, "👤", "tab_phone", "Contacts"),
+            (18, "📰", "tab_rss", "RSS"),
             (4, "🧮", "tab_calc", "Calc"),
             (5, "📅", "tab_cald", "Cald"),
             (6, "⏰", "tab_clock", "Clock"),
@@ -188,19 +189,27 @@ namespace SilentNotes.Platforms
         /// <inheritdoc/>
         public override void OnAccessibilityEvent(AccessibilityEvent e)
         {
-            if (e == null)
-                return;
+            // Uncaught exceptions here disable the accessibility service (and often kill the process).
+            try
+            {
+                if (e == null)
+                    return;
 
-            RememberTextSelection(e);
+                RememberTextSelection(e);
 
-            if (!_captureEnabled)
-                return;
+                if (!_captureEnabled)
+                    return;
 
-            string packageName = e.PackageName?.ToString();
-            if (string.IsNullOrEmpty(packageName) || !BrowserPackages.Contains(packageName))
-                return;
+                string packageName = e.PackageName?.ToString();
+                if (string.IsNullOrEmpty(packageName) || !BrowserPackages.Contains(packageName))
+                    return;
 
-            RefreshFromPackage(packageName);
+                RefreshFromPackage(packageName);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "OnAccessibilityEvent failed: " + ex);
+            }
         }
 
         private void RememberTextSelection(AccessibilityEvent e)
@@ -417,41 +426,81 @@ namespace SilentNotes.Platforms
 
         private void RefreshFromPackage(string packageName)
         {
-            var roots = new List<AccessibilityNodeInfo>();
-            AccessibilityNodeInfo activeRoot = RootInActiveWindow;
-            if (activeRoot != null)
-                roots.Add(activeRoot);
+            if (string.IsNullOrEmpty(packageName))
+                return;
 
-            IList<AccessibilityWindowInfo> windows = Windows;
-            if (windows != null)
+            var roots = new List<AccessibilityNodeInfo>();
+            try
             {
-                foreach (AccessibilityWindowInfo window in windows)
+                AccessibilityNodeInfo activeRoot = RootInActiveWindow;
+                if (activeRoot != null)
+                    roots.Add(activeRoot);
+
+                IList<AccessibilityWindowInfo> windows = Windows;
+                if (windows != null)
                 {
-                    if (window?.Root != null)
-                        roots.Add(window.Root);
+                    foreach (AccessibilityWindowInfo window in windows)
+                    {
+                        AccessibilityNodeInfo windowRoot = null;
+                        try
+                        {
+                            windowRoot = window?.Root;
+                        }
+                        catch (Exception)
+                        {
+                            windowRoot = null;
+                        }
+                        if (windowRoot != null)
+                            roots.Add(windowRoot);
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not collect accessibility roots: " + ex);
+                return;
             }
 
             foreach (AccessibilityNodeInfo root in roots)
             {
-                string url = FindUrl(root, packageName);
-                if (!string.IsNullOrEmpty(url))
+                try
                 {
-                    BrowserUrlTracker.Update(url, packageName);
-                    return;
+                    string url = FindUrl(root, packageName);
+                    if (!string.IsNullOrEmpty(url))
+                    {
+                        BrowserUrlTracker.Update(url, packageName);
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    global::Android.Util.Log.Error(LogTag, "FindUrl failed: " + ex);
                 }
             }
         }
 
         private string FindUrl(AccessibilityNodeInfo root, string packageName)
         {
+            if (root == null || string.IsNullOrEmpty(packageName))
+                return null;
+
             foreach (string viewId in UrlViewIds)
             {
-                IList<AccessibilityNodeInfo> nodes = root.FindAccessibilityNodeInfosByViewId(packageName + ":id/" + viewId);
+                IList<AccessibilityNodeInfo> nodes;
+                try
+                {
+                    nodes = root.FindAccessibilityNodeInfosByViewId(packageName + ":id/" + viewId);
+                }
+                catch (Exception)
+                {
+                    continue;
+                }
                 if (nodes == null)
                     continue;
                 foreach (AccessibilityNodeInfo node in nodes)
                 {
+                    if (node == null)
+                        continue;
                     string url = ExtractUrl(node);
                     if (!string.IsNullOrEmpty(url))
                         return url;
@@ -462,16 +511,26 @@ namespace SilentNotes.Platforms
 
         private static string ExtractUrl(AccessibilityNodeInfo node)
         {
+            if (node == null)
+                return null;
+
             var candidates = new List<string>();
-            if (node.Text != null)
-                candidates.Add(node.Text.ToString());
-            if (node.ContentDescription != null)
-                candidates.Add(node.ContentDescription.ToString());
-            if (global::Android.OS.Build.VERSION.SdkInt >= global::Android.OS.BuildVersionCodes.O)
+            try
             {
-                string hint = node.HintText?.ToString();
-                if (!string.IsNullOrEmpty(hint))
-                    candidates.Add(hint);
+                if (node.Text != null)
+                    candidates.Add(node.Text.ToString());
+                if (node.ContentDescription != null)
+                    candidates.Add(node.ContentDescription.ToString());
+                if (global::Android.OS.Build.VERSION.SdkInt >= global::Android.OS.BuildVersionCodes.O)
+                {
+                    string hint = node.HintText?.ToString();
+                    if (!string.IsNullOrEmpty(hint))
+                        candidates.Add(hint);
+                }
+            }
+            catch (Exception)
+            {
+                return null;
             }
 
             foreach (string candidate in candidates)
@@ -496,9 +555,27 @@ namespace SilentNotes.Platforms
             if (!string.IsNullOrEmpty(url))
                 return url;
 
-            for (int index = 0; index < node.ChildCount; index++)
+            int childCount;
+            try
             {
-                AccessibilityNodeInfo child = node.GetChild(index);
+                childCount = node.ChildCount;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+
+            for (int index = 0; index < childCount; index++)
+            {
+                AccessibilityNodeInfo child;
+                try
+                {
+                    child = node.GetChild(index);
+                }
+                catch (Exception)
+                {
+                    continue;
+                }
                 if (child == null)
                     continue;
                 string childUrl = WalkForUrl(child, depth + 1);

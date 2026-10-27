@@ -165,6 +165,19 @@
 			<MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.FileUpload" OnClick="@(() => _contactsViewModel.ImportCommand.Execute(null))" title="@LanguageService["contact_import"]" />
 			<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(() => _contactsViewModel.AddCommand.Execute(null))" title="@LanguageService["contact_add"]" />
 		}
+		else if (_activeTab == RssViewModel.TabIndex)
+		{
+			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Style="background-color: var(--mud-palette-appbar-text)" MaxHeight="36px" Elevation="0">
+				<MudInput @bind-Value="_rssViewModel.Filter"
+					Class="filter-input ml-2 mr-1 my-0"
+					Style="color: #000000"
+					Adornment="Adornment.End" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+					Immediate="true" Clearable="true" Placeholder="@LanguageService["rss_search"]" />
+			</MudPaper>
+			<MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.RssFeed" OnClick="@(() => _rssViewModel.OpenFeedsPageCommand.Execute(null))" title="@LanguageService["rss_feeds"]" />
+			<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Refresh" OnClick="@RefreshRssAsync" title="@LanguageService["rss_refresh"]" />
+			<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(() => _rssViewModel.StartAddFeedCommand.Execute(null))" title="@LanguageService["rss_add"]" />
+		}
 		else if (_activeTab == 4)
 		{
 			<MudIconButton Icon="@Icons.Material.Filled.Functions"
@@ -362,6 +375,7 @@
 		<MudButton Class="@GetTabButtonClass(1)" OnClick="@(() => SetActiveTab(1))" Variant="Variant.Text">@LanguageService["tab_clipboard"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(2)" OnClick="@(() => SetActiveTab(2))" Variant="Variant.Text">@LanguageService["tab_booky"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(3)" OnClick="@(() => SetActiveTab(3))" Variant="Variant.Text">@LanguageService["tab_phone"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(RssViewModel.TabIndex)" OnClick="@(() => SetActiveTab(RssViewModel.TabIndex))" Variant="Variant.Text">@LanguageService["tab_rss"]</MudButton>
 	</div>
 	<div class="app-header-row app-header-tabs">
 		<MudButton Class="@GetTabButtonClass(4)" OnClick="@(() => SetActiveTab(4))" Variant="Variant.Text">@LanguageService["tab_calc"]</MudButton>
@@ -503,6 +517,11 @@
 		@* Phone contacts *@
 		<ContactsTab ViewModel="_contactsViewModel" />
 	}
+	else if (_activeTab == RssViewModel.TabIndex)
+	{
+		@* RSS reader *@
+		<RssTab ViewModel="_rssViewModel" />
+	}
 	else if (_activeTab == 4)
 	{
 		@* Calculator *@
@@ -617,6 +636,7 @@
 	private ClipboardViewModel _clipboardViewModel;
 	private BookyViewModel _bookyViewModel;
 	private ContactsViewModel _contactsViewModel;
+	private RssViewModel _rssViewModel;
 	private CalculatorViewModel _calculatorViewModel;
 	private CalendarViewModel _calendarViewModel;
 	private ClockViewModel _clockViewModel;
@@ -685,6 +705,16 @@
 			FilePickerService,
 			FeedbackService,
 			MessengerService);
+
+		_rssViewModel = new RssViewModel(
+			noteRepositoryModel,
+			LanguageService,
+			RepositoryStorageService,
+			FilePickerService,
+			FeedbackService,
+			WebdavQuickSaveService,
+			WebdavFileService,
+			NativeBrowserService);
 
 		_calculatorViewModel = new CalculatorViewModel(LanguageService, SettingsService);
 		_calendarViewModel = new CalendarViewModel(DeviceCalendarService, LanguageService, FeedbackService);
@@ -803,7 +833,7 @@
 		if (pendingTabIntent != null)
 		{
 			TabIntentRequest.Pending = null;
-			SetActiveTab(Math.Clamp(pendingTabIntent.TabIndex, 0, 17));
+			SetActiveTab(Math.Clamp(pendingTabIntent.TabIndex, 0, RssViewModel.TabIndex));
 		}
 
 		// When the app was started by a media VIEW/SEND intent, open the Player tab.
@@ -1018,7 +1048,7 @@
 				return;
 
 			TabIntentRequest.Pending = null;
-			SetActiveTab(Math.Clamp(request.TabIndex, 0, 17));
+			SetActiveTab(Math.Clamp(request.TabIndex, 0, RssViewModel.TabIndex));
 			StateHasChanged();
 		});
 	}
@@ -1129,6 +1159,14 @@
 		StateHasChanged();
 	}
 
+	private async Task RefreshRssAsync()
+	{
+		if (_rssViewModel == null)
+			return;
+		await _rssViewModel.RefreshAsync();
+		StateHasChanged();
+	}
+
 	/// <summary>
 	/// Gets or sets the datacontext of this view.
 	/// </summary>
@@ -1162,6 +1200,12 @@
 		if (_isFabMenuOpen)
 		{
 			_isFabMenuOpen = false;
+			result = true;
+			refreshNeeded = true;
+		}
+		if (!result && (_activeTab == RssViewModel.TabIndex) && (_rssViewModel != null) && _rssViewModel.IsAnyOverlayOpen)
+		{
+			_rssViewModel.CloseOverlay();
 			result = true;
 			refreshNeeded = true;
 		}
@@ -1294,6 +1338,8 @@
 		_persistedActiveTab = index;
 		if (index == 16)
 			_passwordViewModel?.EnsureLoaded();
+		if (index == RssViewModel.TabIndex && _rssViewModel != null && _rssViewModel.HasFeeds && _rssViewModel.VisibleArticles.Count == 0 && !_rssViewModel.IsBusy)
+			_ = _rssViewModel.RefreshAsync();
 	}
 
 	/// <summary>

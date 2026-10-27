@@ -82,6 +82,11 @@ namespace SilentNotes.Services
         /// <summary>Opens official Telegram’s “Link Desktop Device” / Devices screen when possible.</summary>
         void OpenOfficialTelegramDevices();
 
+        /// <summary>
+        /// True while an add-account / QR / phone login is in progress (not a background reconnect).
+        /// </summary>
+        bool HasPendingLogin { get; }
+
         /// <summary>Connects (or resumes) an existing account session.</summary>
         Task<TelegramOperationResult> ConnectAccountAsync(string accountId, CancellationToken cancellationToken = default);
 

@@ -36,8 +36,9 @@ namespace SilentNotes.Platforms.Services
         public TelegramService(
             IAppContextService appContextService,
             IXmlFileService xmlFileService,
-            IDataProtectionService dataProtectionService)
-            : base(xmlFileService, dataProtectionService)
+            IDataProtectionService dataProtectionService,
+            IInternetStateService internetStateService = null)
+            : base(xmlFileService, dataProtectionService, internetStateService)
         {
             _appContext = appContextService;
         }

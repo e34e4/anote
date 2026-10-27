@@ -34,10 +34,15 @@ namespace SilentNotes.Services
 #endif
 
         private static readonly TimeSpan OfflineRefreshInterval = TimeSpan.FromMinutes(4);
+        /// <summary>Fail fast on flaky networks so the UI never sits on a spinner forever.</summary>
+        private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(12);
+        private static readonly TimeSpan NetworkOperationTimeout = TimeSpan.FromSeconds(15);
 
         private readonly IXmlFileService _xmlFileService;
         private readonly IDataProtectionService _dataProtectionService;
+        private readonly IInternetStateService _internetStateService;
         private readonly object _gate = new object();
+        private readonly SemaphoreSlim _connectGate = new SemaphoreSlim(1, 1);
         private readonly ConcurrentDictionary<string, AccountRuntime> _runtimes = new ConcurrentDictionary<string, AccountRuntime>(StringComparer.Ordinal);
 
         private LoginContext _pendingLogin;
@@ -55,13 +60,20 @@ namespace SilentNotes.Services
         /// <inheritdoc/>
         public string LastQrLoginUrl => _lastQrLoginUrl ?? string.Empty;
 
-        protected TelegramServiceBase(IXmlFileService xmlFileService, IDataProtectionService dataProtectionService)
+        protected TelegramServiceBase(
+            IXmlFileService xmlFileService,
+            IDataProtectionService dataProtectionService,
+            IInternetStateService internetStateService = null)
         {
             _xmlFileService = xmlFileService;
             _dataProtectionService = dataProtectionService;
+            _internetStateService = internetStateService;
             EnsureCompatibleLogging();
             _activeLogSink = OnWTelegramLog;
         }
+
+        /// <inheritdoc/>
+        public bool HasPendingLogin => _pendingLogin != null;
 
         /// <summary>
         /// Android/MAUI does not support Console.ForegroundColor used by WTelegram's default logger
@@ -732,6 +744,22 @@ namespace SilentNotes.Services
             if (string.IsNullOrEmpty(accountId))
                 return TelegramOperationResult.Fail("Account id is required.");
 
+            // Single-flight: overlapping resume/refresh must not stack hung connects.
+            await _connectGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                return await ConnectAccountCoreAsync(accountId, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _connectGate.Release();
+            }
+        }
+
+        private async Task<TelegramOperationResult> ConnectAccountCoreAsync(
+            string accountId,
+            CancellationToken cancellationToken)
+        {
             var store = LoadStore();
             var account = store.Accounts.FirstOrDefault(a => string.Equals(a.Id, accountId, StringComparison.Ordinal));
             if (account == null)
@@ -739,8 +767,17 @@ namespace SilentNotes.Services
             if (store.ApiId <= 0 || string.IsNullOrWhiteSpace(store.ApiHash))
                 return TelegramOperationResult.Fail("API credentials are required.", TelegramAuthState.NeedApiCredentials);
 
-            if (_runtimes.TryGetValue(accountId, out AccountRuntime existing) && existing.Client != null && existing.AuthState == TelegramAuthState.Ready)
+            // After long screen-off / VPN flaps the socket can die while AuthState stays Ready.
+            // Reuse only a live connection; otherwise tear down and resume the session.
+            if (IsLiveConnected(accountId))
                 return TelegramOperationResult.Ok(TelegramAuthState.Ready);
+
+            if (_internetStateService != null && !_internetStateService.IsInternetConnected())
+            {
+                return TelegramOperationResult.Fail(
+                    "No internet connection. Tap Refresh when you are back online.",
+                    TelegramAuthState.Error);
+            }
 
             await DisconnectAccountAsync(accountId).ConfigureAwait(false);
             EnsureDirectories();
@@ -767,26 +804,131 @@ namespace SilentNotes.Services
 
             try
             {
-                User me = await client.LoginUserIfNeeded().ConfigureAwait(false);
+                User me = await WithTimeout(
+                    client.LoginUserIfNeeded(),
+                    ConnectTimeout,
+                    "Telegram connect timed out. Check network/VPN and tap Refresh.",
+                    cancellationToken).ConfigureAwait(false);
                 ApplyUserToAccount(account, me);
                 SaveStore(store);
 
                 AttachUpdateManager(runtime);
+                client.OnOther += (obj) => OnRuntimeOther(runtime, obj);
                 await AssertOfflineAsync(client).ConfigureAwait(false);
                 StartOfflineTimer(runtime);
 
                 runtime.AuthState = TelegramAuthState.Ready;
                 RaiseAuthChanged();
-                await RefreshChatsAsync(accountId, cancellationToken).ConfigureAwait(false);
+                // Use core refresh — public RefreshChatsAsync would call EnsureConnected and recurse.
+                await RefreshChatsCoreAsync(runtime, cancellationToken).ConfigureAwait(false);
                 return TelegramOperationResult.Ok(TelegramAuthState.Ready);
             }
             catch (Exception ex)
             {
-                runtime.AuthState = TelegramAuthState.Error;
-                RaiseAuthChanged();
+                // Dispose the client so abandoned MTProto work cannot keep the process busy.
                 await DisconnectAccountAsync(accountId).ConfigureAwait(false);
-                return TelegramOperationResult.Fail(ex.Message, TelegramAuthState.Error);
+                return TelegramOperationResult.Fail(
+                    DescribeConnectionFailure(ex),
+                    TelegramAuthState.Error);
             }
+        }
+
+        private static string DescribeConnectionFailure(Exception ex)
+        {
+            if (ex is TimeoutException)
+                return ex.Message;
+            if (ex is IOException)
+                return "Network error. Tap Refresh when the connection is stable.";
+            string msg = ex?.Message ?? "Connect failed";
+            if (IsLikelyDeadConnectionMessage(msg))
+                return "Telegram unreachable right now. Tap Refresh to retry.";
+            return msg;
+        }
+
+        private static bool IsLikelyDeadConnectionMessage(string msg)
+        {
+            if (string.IsNullOrEmpty(msg))
+                return false;
+            return msg.IndexOf("connect", StringComparison.OrdinalIgnoreCase) >= 0
+                || msg.IndexOf("socket", StringComparison.OrdinalIgnoreCase) >= 0
+                || msg.IndexOf("transport", StringComparison.OrdinalIgnoreCase) >= 0
+                || msg.IndexOf("reactor", StringComparison.OrdinalIgnoreCase) >= 0
+                || msg.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0
+                || msg.IndexOf("unreachable", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        /// <summary>
+        /// Ensures the account client is connected. Reconnects when the MTProto socket died
+        /// (common after long screen-off or VPN changes) while AuthState still looked Ready.
+        /// </summary>
+        private async Task<TelegramOperationResult> EnsureConnectedAsync(
+            string accountId,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrEmpty(accountId))
+            {
+                accountId = LoadStore().ActiveAccountId;
+                if (string.IsNullOrEmpty(accountId))
+                    return TelegramOperationResult.Fail("No active account.", TelegramAuthState.LoggedOut);
+            }
+
+            if (IsLiveConnected(accountId))
+                return TelegramOperationResult.Ok(TelegramAuthState.Ready);
+
+            return await ConnectAccountAsync(accountId, cancellationToken).ConfigureAwait(false);
+        }
+
+        private Task OnRuntimeOther(AccountRuntime runtime, IObject obj)
+        {
+            try
+            {
+                // WTelegram reports reactor/socket failures here; force a clean reconnect next time.
+                if (obj != null && string.Equals(obj.GetType().Name, "ReactorError", StringComparison.Ordinal))
+                {
+                    runtime.AuthState = TelegramAuthState.Error;
+                    RaiseAuthChanged();
+                }
+            }
+            catch (Exception)
+            {
+            }
+            return Task.CompletedTask;
+        }
+
+        private static async Task<T> WithTimeout<T>(
+            Task<T> task,
+            TimeSpan timeout,
+            string timeoutMessage,
+            CancellationToken cancellationToken)
+        {
+            if (task == null)
+                throw new ArgumentNullException(nameof(task));
+
+            Task completed = await Task.WhenAny(task, Task.Delay(timeout, cancellationToken)).ConfigureAwait(false);
+            if (completed != task)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new TimeoutException(timeoutMessage);
+            }
+            return await task.ConfigureAwait(false);
+        }
+
+        private static async Task WithTimeout(
+            Task task,
+            TimeSpan timeout,
+            string timeoutMessage,
+            CancellationToken cancellationToken)
+        {
+            if (task == null)
+                throw new ArgumentNullException(nameof(task));
+
+            Task completed = await Task.WhenAny(task, Task.Delay(timeout, cancellationToken)).ConfigureAwait(false);
+            if (completed != task)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new TimeoutException(timeoutMessage);
+            }
+            await task.ConfigureAwait(false);
         }
 
         /// <inheritdoc/>
@@ -894,14 +1036,58 @@ namespace SilentNotes.Services
         /// <inheritdoc/>
         public async Task<TelegramOperationResult> RefreshChatsAsync(string accountId = null, CancellationToken cancellationToken = default)
         {
-            if (!TryGetRuntime(accountId, out AccountRuntime runtime) || runtime.Client == null)
+            string resolvedAccountId = accountId;
+            if (string.IsNullOrEmpty(resolvedAccountId))
+                resolvedAccountId = LoadStore().ActiveAccountId;
+
+            if (!IsLiveConnected(resolvedAccountId))
+            {
+                if (_internetStateService != null && !_internetStateService.IsInternetConnected())
+                {
+                    return TelegramOperationResult.Fail(
+                        "No internet connection. Tap Refresh when you are back online.",
+                        TelegramAuthState.Error);
+                }
+
+                // ConnectAccountAsync already loads dialogs after a successful resume.
+                return await ConnectAccountAsync(resolvedAccountId, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (!TryGetRuntime(resolvedAccountId, out AccountRuntime runtime) || runtime.Client == null)
+                return TelegramOperationResult.Fail("Account is not connected.", TelegramAuthState.LoggedOut);
+
+            return await RefreshChatsCoreAsync(runtime, cancellationToken).ConfigureAwait(false);
+        }
+
+        private bool IsLiveConnected(string accountId)
+        {
+            return !string.IsNullOrEmpty(accountId)
+                && _runtimes.TryGetValue(accountId, out AccountRuntime existing)
+                && existing.Client != null
+                && existing.AuthState == TelegramAuthState.Ready
+                && !existing.Client.Disconnected;
+        }
+
+        private async Task<TelegramOperationResult> RefreshChatsCoreAsync(
+            AccountRuntime runtime,
+            CancellationToken cancellationToken = default)
+        {
+            if (runtime?.Client == null)
                 return TelegramOperationResult.Fail("Account is not connected.", TelegramAuthState.LoggedOut);
 
             try
             {
                 // folder 0 = main list, folder 1 = Archived chats
-                Messages_Dialogs mainDialogs = await runtime.Client.Messages_GetAllDialogs(0).ConfigureAwait(false);
-                Messages_Dialogs archivedDialogs = await runtime.Client.Messages_GetAllDialogs(1).ConfigureAwait(false);
+                Messages_Dialogs mainDialogs = await WithTimeout(
+                    runtime.Client.Messages_GetAllDialogs(0),
+                    NetworkOperationTimeout,
+                    "Loading chats timed out. Tap Refresh.",
+                    cancellationToken).ConfigureAwait(false);
+                Messages_Dialogs archivedDialogs = await WithTimeout(
+                    runtime.Client.Messages_GetAllDialogs(1),
+                    NetworkOperationTimeout,
+                    "Loading chats timed out. Tap Refresh.",
+                    cancellationToken).ConfigureAwait(false);
                 CollectPeers(runtime, mainDialogs.users, mainDialogs.chats);
                 CollectPeers(runtime, archivedDialogs.users, archivedDialogs.chats);
 
@@ -926,8 +1112,24 @@ namespace SilentNotes.Services
             }
             catch (Exception ex)
             {
+                if (IsLikelyDeadConnection(ex, runtime))
+                {
+                    await DisconnectAccountAsync(runtime.AccountId).ConfigureAwait(false);
+                    return TelegramOperationResult.Fail(
+                        "Telegram connection dropped. Tap Refresh to reconnect.",
+                        TelegramAuthState.Error);
+                }
                 return TelegramOperationResult.Fail(ex.Message, runtime.AuthState);
             }
+        }
+
+        private static bool IsLikelyDeadConnection(Exception ex, AccountRuntime runtime)
+        {
+            if (runtime?.Client != null && runtime.Client.Disconnected)
+                return true;
+            if (ex is TimeoutException or IOException or ObjectDisposedException)
+                return true;
+            return IsLikelyDeadConnectionMessage(ex?.Message);
         }
 
         private async Task EnrichBotAppsAsync(AccountRuntime runtime)
@@ -1013,15 +1215,29 @@ namespace SilentNotes.Services
         {
             if (string.IsNullOrEmpty(chatKey))
                 return TelegramOperationResult.Fail("Chat key is required.");
-            if (!TryGetRuntime(accountId, out AccountRuntime runtime) || runtime.Client == null)
+
+            string resolvedAccountId = accountId;
+            if (string.IsNullOrEmpty(resolvedAccountId))
+                resolvedAccountId = LoadStore().ActiveAccountId;
+
+            TelegramOperationResult connected = await EnsureConnectedAsync(resolvedAccountId, cancellationToken)
+                .ConfigureAwait(false);
+            if (!connected.Success)
+                return connected;
+
+            if (!TryGetRuntime(resolvedAccountId, out AccountRuntime runtime) || runtime.Client == null)
                 return TelegramOperationResult.Fail("Account is not connected.", TelegramAuthState.LoggedOut);
 
             try
             {
                 InputPeer peer = ResolveInputPeer(runtime, chatKey);
-                Messages_MessagesBase history = await runtime.Client.Messages_GetHistory(
-                    peer,
-                    limit: Math.Clamp(limit, 1, 100)).ConfigureAwait(false);
+                Messages_MessagesBase history = await WithTimeout(
+                    runtime.Client.Messages_GetHistory(
+                        peer,
+                        limit: Math.Clamp(limit, 1, 100)),
+                    NetworkOperationTimeout,
+                    "Loading messages timed out. Tap Refresh.",
+                    cancellationToken).ConfigureAwait(false);
 
                 CollectPeersFromMessages(runtime, history);
 
@@ -1061,6 +1277,13 @@ namespace SilentNotes.Services
             }
             catch (Exception ex)
             {
+                if (IsLikelyDeadConnection(ex, runtime))
+                {
+                    await DisconnectAccountAsync(runtime.AccountId).ConfigureAwait(false);
+                    return TelegramOperationResult.Fail(
+                        "Telegram connection dropped. Tap Refresh to reconnect.",
+                        TelegramAuthState.Error);
+                }
                 return TelegramOperationResult.Fail(ex.Message, runtime.AuthState);
             }
         }
@@ -2186,6 +2409,10 @@ namespace SilentNotes.Services
                 {
                     HandleIncomingMessageUpdate(runtime, msg);
                 }
+                else if (update is UpdateNotifySettings uns)
+                {
+                    ApplyNotifySettingsUpdate(runtime, uns);
+                }
                 else if (update is UpdateEditMessage or UpdateEditChannelMessage
                     or UpdateDeleteMessages or UpdateDeleteChannelMessages
                     or UpdateReadHistoryInbox or UpdateReadHistoryOutbox
@@ -2288,7 +2515,12 @@ namespace SilentNotes.Services
             try
             {
                 // Go offline immediately after connect / login. Never set online.
-                await client.Account_UpdateStatus(offline: true).ConfigureAwait(false);
+                // Short timeout — must never block the UI/timer thread on bad networks.
+                await WithTimeout(
+                    client.Account_UpdateStatus(offline: true),
+                    TimeSpan.FromSeconds(5),
+                    "offline status timeout",
+                    CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception)
             {
@@ -2825,17 +3057,39 @@ namespace SilentNotes.Services
 
             try
             {
+                // TL optional fields are only sent when their has_* flag is set.
                 var settings = new InputPeerNotifySettings
                 {
-                    mute_until = muted ? MuteForeverUntil : DateTime.SpecifyKind(DateTime.UnixEpoch, DateTimeKind.Utc),
+                    flags = InputPeerNotifySettings.Flags.has_mute_until,
+                    mute_until = muted
+                        ? MuteForeverUntil
+                        : DateTime.SpecifyKind(DateTime.UnixEpoch, DateTimeKind.Utc),
                 };
 
+                var appliedKeys = new List<string>();
                 foreach (string key in chatKeys.Where(k => !string.IsNullOrEmpty(k)).Distinct(StringComparer.Ordinal))
                 {
                     InputPeer peer = ResolveInputPeer(runtime, key);
                     await runtime.Client.Account_UpdateNotifySettings(
                         new InputNotifyPeer { peer = peer },
                         settings).ConfigureAwait(false);
+                    appliedKeys.Add(key);
+                }
+
+                // Apply locally immediately so in-app notifications stop before dialogs refresh.
+                if (appliedKeys.Count > 0)
+                {
+                    lock (runtime.Gate)
+                    {
+                        foreach (string key in appliedKeys)
+                        {
+                            TelegramChatModel chat = runtime.Chats.FirstOrDefault(c =>
+                                string.Equals(c.Id, key, StringComparison.Ordinal));
+                            if (chat != null)
+                                chat.IsMuted = muted;
+                        }
+                    }
+                    RaiseChatsChanged();
                 }
 
                 return await RefreshChatsAsync(runtime.AccountId, cancellationToken).ConfigureAwait(false);
@@ -2844,6 +3098,34 @@ namespace SilentNotes.Services
             {
                 return TelegramOperationResult.Fail(ex.Message, runtime.AuthState);
             }
+        }
+
+        private void ApplyNotifySettingsUpdate(AccountRuntime runtime, UpdateNotifySettings update)
+        {
+            if (runtime == null || update?.notify_settings == null)
+                return;
+
+            Peer peer = null;
+            if (update.peer is NotifyPeer notifyPeer)
+                peer = notifyPeer.peer;
+            else if (update.peer is NotifyForumTopic notifyTopic)
+                peer = notifyTopic.peer;
+
+            if (peer == null)
+                return;
+
+            string chatKey = BuildChatKey(peer);
+            bool isMuted = IsDialogMuted(update.notify_settings);
+            lock (runtime.Gate)
+            {
+                TelegramChatModel chat = runtime.Chats.FirstOrDefault(c =>
+                    string.Equals(c.Id, chatKey, StringComparison.Ordinal));
+                if (chat == null || chat.IsMuted == isMuted)
+                    return;
+                chat.IsMuted = isMuted;
+            }
+
+            RaiseChatsChanged();
         }
 
         /// <inheritdoc/>

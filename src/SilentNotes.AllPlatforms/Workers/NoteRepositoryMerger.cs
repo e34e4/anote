@@ -40,6 +40,8 @@ namespace SilentNotes.Workers
             result.Safes = BuildMergedListOfSafes(remoteRepository.Safes, localRepository.Safes);
             result.Bookmarks = BuildMergedListOfBookmarks(remoteRepository.Bookmarks, localRepository.Bookmarks);
             result.Contacts = BuildMergedListOfContacts(remoteRepository.Contacts, localRepository.Contacts);
+            result.RssFeeds = BuildMergedListOfRssFeeds(remoteRepository.RssFeeds, localRepository.RssFeeds);
+            result.RssReadItems = BuildMergedListOfRssReadItems(remoteRepository.RssReadItems, localRepository.RssReadItems);
 
             bool orderInLocalRepo = localRepository.OrderModifiedAt > remoteRepository.OrderModifiedAt;
             if (orderInLocalRepo)
@@ -255,6 +257,59 @@ namespace SilentNotes.Workers
                     result.Add(lastModifiedItem.Clone());
                 }
             }
+            return result;
+        }
+
+        /// <summary>
+        /// Build a merged list of RSS feed subscriptions.
+        /// </summary>
+        private static RssFeedListModel BuildMergedListOfRssFeeds(RssFeedListModel leftItems, RssFeedListModel rightItems)
+        {
+            RssFeedListModel result = new RssFeedListModel();
+
+            var map = OuterJoin(leftItems, rightItems, item => item.Id);
+            foreach (Tuple<RssFeedModel, RssFeedModel> pair in map)
+            {
+                if (pair.Item1 == null)
+                {
+                    result.Add(pair.Item2.Clone());
+                }
+                else if (pair.Item2 == null)
+                {
+                    result.Add(pair.Item1.Clone());
+                }
+                else
+                {
+                    RssFeedModel lastModifiedItem = ChooseLastModified(
+                        pair.Item1, pair.Item2, item => item.ModifiedAt, null);
+                    result.Add(lastModifiedItem.Clone());
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Build a merged list of RSS read markers. Once an article is read on either side it stays read.
+        /// </summary>
+        private static RssReadItemListModel BuildMergedListOfRssReadItems(RssReadItemListModel leftItems, RssReadItemListModel rightItems)
+        {
+            RssReadItemListModel result = new RssReadItemListModel();
+            var seenKeys = new HashSet<string>(StringComparer.Ordinal);
+
+            void AddUnique(IEnumerable<RssReadItemModel> items)
+            {
+                if (items == null)
+                    return;
+                foreach (RssReadItemModel item in items)
+                {
+                    if (item == null || string.IsNullOrEmpty(item.Key) || !seenKeys.Add(item.Key))
+                        continue;
+                    result.Add(item.Clone());
+                }
+            }
+
+            AddUnique(leftItems);
+            AddUnique(rightItems);
             return result;
         }
 

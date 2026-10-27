@@ -195,7 +195,8 @@ public static class MauiProgram
         services.AddSingleton<IDocumentReaderService>((serviceProvider) => new DocumentReaderService());
         services.AddSingleton<ITelegramService>((serviceProvider) => new TelegramService(
             serviceProvider.GetService<IXmlFileService>(),
-            serviceProvider.GetService<IDataProtectionService>()));
+            serviceProvider.GetService<IDataProtectionService>(),
+            serviceProvider.GetService<IInternetStateService>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<ISnackbar>(),
@@ -280,7 +281,8 @@ public static class MauiProgram
         services.AddSingleton<ITelegramService>((serviceProvider) => new TelegramService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IXmlFileService>(),
-            serviceProvider.GetService<IDataProtectionService>()));
+            serviceProvider.GetService<IDataProtectionService>(),
+            serviceProvider.GetService<IInternetStateService>()));
 
         services.AddScoped<IFeedbackService>((serviceProvider) => new FeedbackService(
             serviceProvider.GetService<IAppContextService>(),
