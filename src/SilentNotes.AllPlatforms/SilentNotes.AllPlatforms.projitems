@@ -228,6 +228,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\WebdavFileItemModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\CallLogEntryModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\PhoneIntentRequest.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\SmsIntentRequest.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\TelegramLinkRequest.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\PhoneBlockRuleModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\PhoneSpamEntryModel.cs" />
