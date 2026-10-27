@@ -132,7 +132,7 @@ namespace SilentNotes.ViewModels
         /// <summary>Gets or sets the selected photo quality percentage (1..100).</summary>
         public int PhotoQuality
         {
-            get => Math.Clamp(_settings.CameraPhotoQuality <= 0 ? 90 : _settings.CameraPhotoQuality, 1, 100);
+            get => Math.Clamp(_settings.CameraPhotoQuality <= 0 ? 25 : _settings.CameraPhotoQuality, 1, 100);
             set
             {
                 int clamped = Math.Clamp(value, 1, 100);

@@ -7,6 +7,9 @@
 
 @inject ILanguageService LanguageService
 @inject IMessengerService MessengerService
+@inject IWebdavQuickSaveService WebdavQuickSaveService
+@inject IWebdavFileService WebdavFileService
+@inject IFeedbackService FeedbackService
 
 <style type="text/css">
 	.reader-root {
@@ -251,17 +254,24 @@
 		{
 			@foreach (var item in ViewModel.FilteredItems)
 			{
-				<div class="reader-row" @key="item.Path" @onclick="() => OpenItemAsync(item)">
-					<div class="reader-kind-icon">
+				<div class="reader-row" @key="item.Path">
+					<div class="reader-kind-icon" @onclick="() => OpenItemAsync(item)">
 						<MudIcon Icon="@GetKindIcon(item.Kind)" Size="Size.Small" Color="Color.Inherit" />
 					</div>
-					<div class="reader-row-main">
+					<div class="reader-row-main" @onclick="() => OpenItemAsync(item)">
 						<div class="reader-row-name">@item.Name</div>
 						<div class="reader-row-meta">@item.MetaText</div>
 					</div>
 					@if (item.Kind != DocumentKind.Folder)
 					{
-						<MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" />
+						<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small"
+							OnClick="() => SaveFileToWebdavAsync(item)" title="@LanguageService["webdav_quick_save"]" />
+						<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small"
+							OnClick="() => ShareFileAsync(item)" title="@LanguageService["share"]" />
+					}
+					else
+					{
+						<MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" @onclick="() => OpenItemAsync(item)" />
 					}
 				</div>
 			}
@@ -338,6 +348,44 @@
 		else
 			ViewModel.OpenExternallyCommand.Execute(null);
 		StateHasChanged();
+	}
+
+	private async Task SaveFileToWebdavAsync(DocumentItemViewModel item)
+	{
+		if (item == null || item.Kind == DocumentKind.Folder)
+			return;
+		if (!WebdavQuickSaveService.IsConfigured)
+		{
+			FeedbackService.ShowToast(LanguageService["webdav_quick_not_configured"], FeedbackSeverity.Warning);
+			return;
+		}
+		if (string.IsNullOrWhiteSpace(item.Path) || !System.IO.File.Exists(item.Path))
+		{
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_failed"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		bool ok = await WebdavQuickSaveService.SaveLocalFileAsync("Reader", item.Path);
+		if (ok)
+			FeedbackService.ShowToast(LanguageService.LoadTextFmt("webdav_quick_saved", WebdavQuickSaveService.LastFileName));
+		else
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_failed"] + " — " + WebdavQuickSaveService.LastError, FeedbackSeverity.Warning);
+	}
+
+	private async Task ShareFileAsync(DocumentItemViewModel item)
+	{
+		if (item == null || item.Kind == DocumentKind.Folder)
+			return;
+		if (string.IsNullOrWhiteSpace(item.Path) || !System.IO.File.Exists(item.Path))
+		{
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_failed"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		byte[] content = await System.IO.File.ReadAllBytesAsync(item.Path);
+		bool ok = await WebdavFileService.ShareDownloadedFileAsync(item.Name, content);
+		if (!ok)
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_failed"], FeedbackSeverity.Warning);
 	}
 
 	private static string GetKindIcon(DocumentKind kind)

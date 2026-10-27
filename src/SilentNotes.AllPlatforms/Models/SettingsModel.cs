@@ -82,7 +82,8 @@ namespace SilentNotes.Models
             PhoneSkipContactsWhenBlocking = true;
             PhoneCustomSpamUrl = string.Empty;
             CameraPhotoFormat = "jpg";
-            CameraPhotoQuality = 90;
+            CameraPhotoQuality = 25;
+            CalculatorHistory = new List<CalculatorHistoryEntryModel>();
             CameraUseFrontLens = false;
             CameraFlashMode = "auto";
             CameraAutoSaveToGallery = true;
@@ -542,6 +543,13 @@ namespace SilentNotes.Models
         public string PhoneCustomSpamUrl { get; set; }
 
         /// <summary>
+        /// Gets or sets the calculator history entries (newest first).
+        /// </summary>
+        [XmlArray("calc_history")]
+        [XmlArrayItem("item")]
+        public List<CalculatorHistoryEntryModel> CalculatorHistory { get; set; }
+
+        /// <summary>
         /// Gets or sets the photo file format for the Camera tab ("jpg", "png", or "webp").
         /// </summary>
         [XmlElement("camera_photo_format")]
@@ -662,5 +670,19 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlIgnore]
         public string Filter { get; set; }
+    }
+
+    /// <summary>
+    /// A single persisted calculator history entry.
+    /// </summary>
+    public class CalculatorHistoryEntryModel
+    {
+        /// <summary>Gets or sets the evaluated expression.</summary>
+        [XmlElement("expression")]
+        public string Expression { get; set; }
+
+        /// <summary>Gets or sets the formatted result.</summary>
+        [XmlElement("result")]
+        public string Result { get; set; }
     }
 }

@@ -48,6 +48,11 @@ namespace SilentNotes.Services
         Task<byte[]> GenerateQrPngAsync(string text, int size);
 
         /// <summary>
+        /// Generates a QR code image encoded as JPEG at the given quality (1..100).
+        /// </summary>
+        Task<byte[]> GenerateQrJpegAsync(string text, int size, int quality);
+
+        /// <summary>
         /// Gives a short haptic feedback, e.g. after a code was scanned.
         /// </summary>
         void Vibrate();

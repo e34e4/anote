@@ -230,7 +230,7 @@ namespace SilentNotes.Platforms.Services
 
                 using ICursor cursor = _appContext.Context.ContentResolver.Query(
                     Telephony.Sms.ContentUri, null, ColumnThreadId + "=?",
-                    new[] { threadId.ToString(CultureInfo.InvariantCulture) }, ColumnDate + " ASC");
+                    new[] { threadId.ToString(CultureInfo.InvariantCulture) }, ColumnDate + " DESC");
                 if (cursor == null)
                     return result;
 

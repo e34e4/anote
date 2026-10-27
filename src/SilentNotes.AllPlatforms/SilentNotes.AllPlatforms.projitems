@@ -228,6 +228,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\WebdavFileItemModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\CallLogEntryModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\PhoneIntentRequest.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\TelegramLinkRequest.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\PhoneBlockRuleModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\PhoneSpamEntryModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAudioRecorderService.cs" />
@@ -270,5 +271,12 @@
     <Compile Include="$(MSBuildThisFileDirectory)Workers\TotpService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\BitwardenImporter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\PasswordViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\TelegramModels.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\BotWebAppHostRequest.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\ITelegramService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\TelegramServiceBase.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\TelegramTextUtils.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\TelegramLinkParser.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\TelegramViewModel.cs" />
   </ItemGroup>
 </Project>

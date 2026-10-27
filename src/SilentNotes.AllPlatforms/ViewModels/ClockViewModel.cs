@@ -39,7 +39,7 @@ namespace SilentNotes.ViewModels
         private readonly IFeedbackService _feedbackService;
 
         private ClockDataModel _data;
-        private ClockSection _section = ClockSection.Alarm;
+        private ClockSection _section = ClockSection.Clock;
         private bool _permissionRequested;
         private List<AlarmItemViewModel> _alarms = new List<AlarmItemViewModel>();
         private List<WorldClockCityViewModel> _cities = new List<WorldClockCityViewModel>();

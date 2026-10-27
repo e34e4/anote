@@ -186,6 +186,16 @@ namespace SilentNotes
         new[] { "android.intent.action.SEND" },
         Categories = new[] { "android.intent.category.DEFAULT" },
         DataMimeType = "application/epub+zip")]
+    // Register aNote as a Telegram client for t.me / telegram.me / tg:// deep links.
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataSchemes = new[] { "http", "https" },
+        DataHosts = new[] { "t.me", "www.t.me", "telegram.me", "www.telegram.me", "telegram.dog", "www.telegram.dog" })]
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataScheme = "tg")]
     public class MainActivity : MauiAppCompatActivity, IOnPreDrawListener
     {
         private readonly ApplicationEventHandler _applicationEventHandler = new ApplicationEventHandler();

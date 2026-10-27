@@ -280,49 +280,65 @@ namespace SilentNotes.Platforms.Services
         public IReadOnlyList<CameraPhotoModel> GetPhotos()
         {
             var result = new List<CameraPhotoModel>();
+            var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             try
             {
-                string dir = GetPhotosDirectory();
-                if (!Directory.Exists(dir))
-                    return result;
-
-                var supportedExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ".jpg", ".jpeg", ".png", ".webp",
-                };
-
-                foreach (string filePath in Directory.EnumerateFiles(dir))
-                {
-                    string ext = Path.GetExtension(filePath);
-                    if (!supportedExts.Contains(ext))
-                        continue;
-
-                    var info = new FileInfo(filePath);
-                    var options = new BitmapFactory.Options { InJustDecodeBounds = true };
-                    BitmapFactory.DecodeFile(filePath, options);
-
-                    string fmt = ext.TrimStart('.').ToLowerInvariant();
-                    if (fmt == "jpeg")
-                        fmt = "jpg";
-
-                    result.Add(new CameraPhotoModel
-                    {
-                        FileName = info.Name,
-                        FilePath = filePath,
-                        Format = fmt,
-                        Quality = ParseQualityFromFileName(info.Name),
-                        Width = Math.Max(0, options.OutWidth),
-                        Height = Math.Max(0, options.OutHeight),
-                        SizeBytes = info.Length,
-                        CreatedAtUtc = info.CreationTimeUtc,
-                    });
-                }
+                // Prefer private app photos, then fill in older captures from the public gallery.
+                AddPhotosFromDirectory(GetPhotosDirectory(), result, seenNames);
+                AddPhotosFromDirectory(GetPublicGalleryDirectory(), result, seenNames);
             }
             catch (Exception)
             {
             }
 
             return result.OrderByDescending(p => p.CreatedAtUtc).ToList();
+        }
+
+        private static void AddPhotosFromDirectory(
+            string dir,
+            List<CameraPhotoModel> result,
+            HashSet<string> seenNames)
+        {
+            if (string.IsNullOrWhiteSpace(dir) || !Directory.Exists(dir))
+                return;
+
+            var supportedExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ".jpg", ".jpeg", ".png", ".webp",
+            };
+
+            foreach (string filePath in Directory.EnumerateFiles(dir))
+            {
+                string ext = Path.GetExtension(filePath);
+                if (!supportedExts.Contains(ext))
+                    continue;
+
+                var info = new FileInfo(filePath);
+                if (!seenNames.Add(info.Name))
+                    continue;
+
+                var options = new BitmapFactory.Options { InJustDecodeBounds = true };
+                BitmapFactory.DecodeFile(filePath, options);
+
+                string fmt = ext.TrimStart('.').ToLowerInvariant();
+                if (fmt == "jpeg")
+                    fmt = "jpg";
+
+                result.Add(new CameraPhotoModel
+                {
+                    FileName = info.Name,
+                    FilePath = filePath,
+                    Format = fmt,
+                    Quality = ParseQualityFromFileName(info.Name),
+                    Width = Math.Max(0, options.OutWidth),
+                    Height = Math.Max(0, options.OutHeight),
+                    SizeBytes = info.Length,
+                    CreatedAtUtc = info.CreationTimeUtc,
+                    PublicGalleryPath = dir.IndexOf(PublicGalleryFolder, StringComparison.OrdinalIgnoreCase) >= 0
+                        ? filePath
+                        : null,
+                });
+            }
         }
 
         /// <inheritdoc/>
@@ -334,8 +350,8 @@ namespace SilentNotes.Platforms.Services
                 Bitmap scaled = null;
                 try
                 {
-                    string path = Path.Combine(GetPhotosDirectory(), Path.GetFileName(fileName));
-                    if (!File.Exists(path))
+                    string path = ResolvePhotoPath(fileName);
+                    if (path == null)
                         return null;
 
                     var bounds = new BitmapFactory.Options { InJustDecodeBounds = true };
@@ -386,8 +402,8 @@ namespace SilentNotes.Platforms.Services
             {
                 try
                 {
-                    string sourcePath = Path.Combine(GetPhotosDirectory(), Path.GetFileName(fileName));
-                    if (!File.Exists(sourcePath))
+                    string sourcePath = ResolvePhotoPath(fileName);
+                    if (sourcePath == null)
                         return false;
 
                     Context context = _appContext.Context;
@@ -420,8 +436,8 @@ namespace SilentNotes.Platforms.Services
             {
                 try
                 {
-                    string sourcePath = Path.Combine(GetPhotosDirectory(), Path.GetFileName(fileName));
-                    if (!File.Exists(sourcePath))
+                    string sourcePath = ResolvePhotoPath(fileName);
+                    if (sourcePath == null)
                         return null;
 
                     return WriteFileToPublicGallery(sourcePath, Path.GetFileName(fileName));
@@ -440,8 +456,8 @@ namespace SilentNotes.Platforms.Services
             {
                 try
                 {
-                    string sourcePath = Path.Combine(GetPhotosDirectory(), Path.GetFileName(fileName));
-                    if (!File.Exists(sourcePath))
+                    string sourcePath = ResolvePhotoPath(fileName);
+                    if (sourcePath == null)
                         return false;
 
                     Context context = _appContext.Context;
@@ -479,11 +495,11 @@ namespace SilentNotes.Platforms.Services
                 if (string.IsNullOrWhiteSpace(fileName) || string.IsNullOrWhiteSpace(newNameWithoutExtension))
                     return false;
 
-                string dir = GetPhotosDirectory();
-                string sourcePath = Path.Combine(dir, Path.GetFileName(fileName));
-                if (!File.Exists(sourcePath))
+                string sourcePath = ResolvePhotoPath(fileName);
+                if (sourcePath == null)
                     return false;
 
+                string dir = Path.GetDirectoryName(sourcePath) ?? GetPhotosDirectory();
                 string ext = Path.GetExtension(fileName);
                 string sanitized = SanitizeFileName(newNameWithoutExtension.Trim());
                 if (string.IsNullOrEmpty(sanitized))
@@ -512,8 +528,8 @@ namespace SilentNotes.Platforms.Services
                 if (string.IsNullOrWhiteSpace(fileName))
                     return false;
 
-                string path = Path.Combine(GetPhotosDirectory(), Path.GetFileName(fileName));
-                if (!File.Exists(path))
+                string path = ResolvePhotoPath(fileName);
+                if (path == null)
                     return false;
 
                 File.Delete(path);
@@ -771,6 +787,42 @@ namespace SilentNotes.Platforms.Services
         {
             string baseDir = ContextCompat.GetNoBackupFilesDir(_appContext.Context).AbsolutePath;
             return Path.Combine(baseDir, PhotosFolderName);
+        }
+
+        private static string GetPublicGalleryDirectory()
+        {
+            try
+            {
+                return Path.Combine(
+                    global::Android.OS.Environment.GetExternalStoragePublicDirectory(
+                        global::Android.OS.Environment.DirectoryPictures).AbsolutePath,
+                    PublicGalleryFolder);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private string ResolvePhotoPath(string fileName)
+        {
+            string safeName = Path.GetFileName(fileName);
+            if (string.IsNullOrWhiteSpace(safeName))
+                return null;
+
+            string privatePath = Path.Combine(GetPhotosDirectory(), safeName);
+            if (File.Exists(privatePath))
+                return privatePath;
+
+            string publicDir = GetPublicGalleryDirectory();
+            if (!string.IsNullOrEmpty(publicDir))
+            {
+                string publicPath = Path.Combine(publicDir, safeName);
+                if (File.Exists(publicPath))
+                    return publicPath;
+            }
+
+            return null;
         }
 
         private static string SanitizeFileName(string name)

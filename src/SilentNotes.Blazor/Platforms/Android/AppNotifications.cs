@@ -27,6 +27,19 @@ namespace SilentNotes
         /// <summary>Notification id of an incoming or active phone call.</summary>
         public const int CallNotificationId = 7404;
 
+        /// <summary>Base notification id for Telegram messages (per-chat ids are derived from this).</summary>
+        public const int TelegramNotificationId = 7405;
+
+        /// <summary>Stable per-chat notification id so parallel chats do not overwrite each other.</summary>
+        public static int TelegramNotificationIdForChat(string chatKey)
+        {
+            if (string.IsNullOrEmpty(chatKey))
+                return TelegramNotificationId;
+            // Keep in a reserved band above the fixed app notification ids.
+            int hash = chatKey.GetHashCode();
+            return 7500 + (hash & 0x0FFF);
+        }
+
         /// <summary>Gets the system notification manager.</summary>
         public static NotificationManager GetManager(Context context)
         {
@@ -49,7 +62,11 @@ namespace SilentNotes
             var intent = new Intent(context, typeof(MainActivity));
             intent.SetAction(Intent.ActionMain);
             intent.AddCategory(Intent.CategoryLauncher);
-            intent.PutExtra(AlarmRingingService.ExtraOpenClock, true);
+            // Telegram message notifications (base id or per-chat band 7500–11500) open the TG tab.
+            if (requestCode == TelegramNotificationId || (requestCode >= 7500 && requestCode <= 11500))
+                intent.PutExtra(Platforms.FloatingButtonAccessibilityService.ExtraOpenTab, 17);
+            else
+                intent.PutExtra(AlarmRingingService.ExtraOpenClock, true);
             intent.AddFlags(ActivityFlags.SingleTop);
 
             var flags = PendingIntentFlags.UpdateCurrent;

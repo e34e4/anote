@@ -1,0 +1,1 @@
+Calc history is now saved. Contacts tab rename. Clock opens on Clock. Camera loads Pictures/aNote, default JPG 25%. SMS newest-first with WebDAV/share. QR generate + WebDAV JPG. Mail account export/import. Player/Reader WebDAV/share. Telegram tab.

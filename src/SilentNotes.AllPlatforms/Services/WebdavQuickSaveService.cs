@@ -74,7 +74,21 @@ namespace SilentNotes.Services
         }
 
         /// <inheritdoc/>
-        public async Task<bool> SaveBytesAsync(string tabPrefix, byte[] content, string extension)
+        public Task<bool> SaveBytesAsync(string tabPrefix, byte[] content, string extension)
+        {
+            string safePrefix = SanitizePrefix(tabPrefix);
+            string safeExt = string.IsNullOrWhiteSpace(extension) ? "bin" : extension.Trim().TrimStart('.');
+            string fileName = string.Format(
+                CultureInfo.InvariantCulture,
+                "{0}_{1:yyyyMMdd_HHmmss}.{2}",
+                safePrefix,
+                DateTime.Now,
+                safeExt);
+            return SaveBytesAsAsync(fileName, content);
+        }
+
+        /// <inheritdoc/>
+        public async Task<bool> SaveBytesAsAsync(string fileName, byte[] content)
         {
             LastError = null;
             LastFileName = null;
@@ -85,14 +99,12 @@ namespace SilentNotes.Services
                 return false;
             }
 
-            string safePrefix = SanitizePrefix(tabPrefix);
-            string safeExt = string.IsNullOrWhiteSpace(extension) ? "bin" : extension.Trim().TrimStart('.');
-            string fileName = string.Format(
-                CultureInfo.InvariantCulture,
-                "{0}_{1:yyyyMMdd_HHmmss}.{2}",
-                safePrefix,
-                DateTime.Now,
-                safeExt);
+            string safeName = SanitizeFileName(fileName);
+            if (string.IsNullOrEmpty(safeName))
+            {
+                LastError = "Invalid file name.";
+                return false;
+            }
 
             // Always upload into the dedicated "anote" folder at the WebDAV URL root.
             string remoteFolder = RemoteFolderName;
@@ -100,8 +112,8 @@ namespace SilentNotes.Services
             try
             {
                 await EnsureFolderExistsAsync(url, remoteFolder, username, password);
-                await _webdavService.UploadFileAsync(url, remoteFolder, fileName, content ?? Array.Empty<byte>(), username, password);
-                LastFileName = fileName;
+                await _webdavService.UploadFileAsync(url, remoteFolder, safeName, content ?? Array.Empty<byte>(), username, password);
+                LastFileName = safeName;
                 return true;
             }
             catch (Exception ex)
@@ -180,6 +192,25 @@ namespace SilentNotes.Services
 
             string result = builder.ToString();
             return string.IsNullOrEmpty(result) ? "Item" : result;
+        }
+
+        private static string SanitizeFileName(string fileName)
+        {
+            string name = Path.GetFileName(fileName ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(name))
+                return string.Empty;
+
+            var builder = new StringBuilder(name.Length);
+            foreach (char c in name)
+            {
+                if (char.IsLetterOrDigit(c) || c == '-' || c == '_' || c == '.')
+                    builder.Append(c);
+                else if (char.IsWhiteSpace(c))
+                    builder.Append('_');
+            }
+
+            string result = builder.ToString().Trim('.');
+            return string.IsNullOrEmpty(result) ? string.Empty : result;
         }
 
         private static string CombinePaths(string first, string second)

@@ -47,6 +47,8 @@
 @inject IDocumentReaderService DocumentReaderService
 @inject IPasswordVaultService PasswordVaultService
 @inject IPasswordVaultSyncService PasswordVaultSyncService
+@inject ITelegramService TelegramService
+@inject IWebdavQuickSaveService WebdavQuickSaveService
 
 <style type="text/css">
 	.mud-main-content {
@@ -283,6 +285,18 @@
 				<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(() => _passwordViewModel.AddCommand.Execute(null))" title="@LanguageService["password_add"]" />
 			}
 		}
+		else if (_activeTab == 17)
+		{
+			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 flex-grow-1" Style="background-color: var(--mud-palette-appbar-text)" MaxHeight="36px" Elevation="0">
+				<MudInput @bind-Value="_telegramViewModel.Filter"
+					Class="filter-input ml-2 mr-1 my-0"
+					Style="color: #000000"
+					Adornment="Adornment.End" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+					Immediate="true" Clearable="true" Placeholder="@LanguageService["tg_search"]" />
+			</MudPaper>
+			<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Refresh" OnClick="@(() => _telegramViewModel.RefreshCommand.Execute(null))" title="@LanguageService["tg_refresh"]" />
+			<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.MoreVert" OnClick="@(() => _telegramViewModel.OpenAccountsCommand.Execute(null))" title="@LanguageService["tg_accounts"]" />
+		}
 
 		<MudSpacer />
 
@@ -367,6 +381,7 @@
 		<MudButton Class="@GetTabButtonClass(14)" OnClick="@(() => SetActiveTab(14))" Variant="Variant.Text">@LanguageService["tab_player"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(15)" OnClick="@(() => SetActiveTab(15))" Variant="Variant.Text">@LanguageService["tab_reader"]</MudButton>
 		<MudButton Class="@GetTabButtonClass(16)" OnClick="@(() => SetActiveTab(16))" Variant="Variant.Text">@LanguageService["tab_password"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(17)" OnClick="@(() => SetActiveTab(17))" Variant="Variant.Text">@LanguageService["tab_tg"]</MudButton>
 	</div>
 </div>
 
@@ -548,10 +563,15 @@
 		@* Document reader (text, Office, PDF, EPUB/FB2; DjVu via external viewer) *@
 		<ReaderTab ViewModel="_readerViewModel" />
 	}
-	else
+	else if (_activeTab == 16)
 	{
 		@* Password vault (Bitwarden-like, separate encrypted file) *@
 		<PasswordTab ViewModel="_passwordViewModel" />
+	}
+	else
+	{
+		@* Telegram messenger client *@
+		<TgTab ViewModel="_telegramViewModel" />
 	}
 </MudMainContent>
 
@@ -610,6 +630,7 @@
 	private PlayerViewModel _playerViewModel;
 	private ReaderViewModel _readerViewModel;
 	private PasswordViewModel _passwordViewModel;
+	private TelegramViewModel _telegramViewModel;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="NoteRepositoryPage"/> class.
@@ -664,7 +685,7 @@
 			FilePickerService,
 			FeedbackService);
 
-		_calculatorViewModel = new CalculatorViewModel(LanguageService);
+		_calculatorViewModel = new CalculatorViewModel(LanguageService, SettingsService);
 		_calendarViewModel = new CalendarViewModel(DeviceCalendarService, LanguageService, FeedbackService);
 		_clockViewModel = new ClockViewModel(ClockService, LanguageService, FeedbackService);
 		_ = _clockViewModel.RescheduleAsync();
@@ -712,7 +733,8 @@
 			FeedbackService,
 			NativeBrowserService,
 			MessengerService,
-			CryptoRandomSource);
+			CryptoRandomSource,
+			FolderPickerService);
 		_playerViewModel = new PlayerViewModel(
 			MediaPlayerService,
 			LanguageService,
@@ -729,6 +751,15 @@
 			FeedbackService,
 			NativeBrowserService,
 			PasswordVaultSyncService);
+		_telegramViewModel = new TelegramViewModel(
+			TelegramService,
+			FilePickerService,
+			LanguageService,
+			FeedbackService,
+			NativeBrowserService,
+			QrService,
+			ClipboardService,
+			WebdavQuickSaveService);
 
 		// When the app was started by a calendar intent, the calendar tab is opened and shows it.
 		CalendarIntentRequest pendingCalendarIntent = CalendarIntentRequest.Pending;
@@ -762,7 +793,7 @@
 		if (pendingTabIntent != null)
 		{
 			TabIntentRequest.Pending = null;
-			SetActiveTab(Math.Clamp(pendingTabIntent.TabIndex, 0, 16));
+			SetActiveTab(Math.Clamp(pendingTabIntent.TabIndex, 0, 17));
 		}
 
 		// When the app was started by a media VIEW/SEND intent, open the Player tab.
@@ -781,6 +812,15 @@
 			DocumentIntentRequest.Pending = null;
 			_readerViewModel.HandleIntent(pendingDocumentIntent);
 			SetActiveTab(15);
+		}
+
+		// When the app was started by a Telegram deep link (t.me / tg://), open the TG tab.
+		TelegramLinkRequest pendingTelegramLink = TelegramLinkRequest.Pending;
+		if (pendingTelegramLink != null)
+		{
+			TelegramLinkRequest.Pending = null;
+			SetActiveTab(17);
+			_ = HandleTelegramLinkAsync(pendingTelegramLink.Link);
 		}
 
 		MessengerService.Register<BringNoteIntoViewMessage>(
@@ -803,6 +843,8 @@
 			this, (recipient, message) => OnMediaIntent());
 		MessengerService.Register<DocumentIntentMessage>(
 			this, (recipient, message) => OnDocumentIntent());
+		MessengerService.Register<TelegramLinkMessage>(
+			this, (recipient, message) => OnTelegramLinkIntent());
 
 		if (loadResult == RepositoryStorageLoadResult.InvalidRepository)
 			throw new Exception("Invalid repository");
@@ -863,6 +905,7 @@
 		MessengerService.Unregister<TabIntentMessage>(this);
 		MessengerService.Unregister<MediaIntentMessage>(this);
 		MessengerService.Unregister<DocumentIntentMessage>(this);
+		MessengerService.Unregister<TelegramLinkMessage>(this);
 	}
 
 	/// <summary>
@@ -947,7 +990,7 @@
 				return;
 
 			TabIntentRequest.Pending = null;
-			SetActiveTab(Math.Clamp(request.TabIndex, 0, 16));
+			SetActiveTab(Math.Clamp(request.TabIndex, 0, 17));
 			StateHasChanged();
 		});
 	}
@@ -965,6 +1008,28 @@
 			_playerViewModel?.HandleIntent(request);
 			StateHasChanged();
 		});
+	}
+
+	private void OnTelegramLinkIntent()
+	{
+		InvokeAsync(async () =>
+		{
+			TelegramLinkRequest request = TelegramLinkRequest.Pending;
+			if (request == null)
+				return;
+
+			TelegramLinkRequest.Pending = null;
+			SetActiveTab(17);
+			await HandleTelegramLinkAsync(request.Link);
+			StateHasChanged();
+		});
+	}
+
+	private async Task HandleTelegramLinkAsync(string link)
+	{
+		if (_telegramViewModel == null || string.IsNullOrWhiteSpace(link))
+			return;
+		await _telegramViewModel.HandleTelegramLinkAsync(link);
 	}
 
 	private void OnDocumentIntent()
@@ -1002,12 +1067,24 @@
 		}
 
 		if (reload)
-			Navigation.NavigateReload();
+		{
+			// Avoid wiping an in-progress Telegram login when leaving/returning to the app.
+			if (_telegramViewModel != null && _telegramViewModel.IsLoginFlow)
+			{
+				_telegramViewModel.SyncFromService();
+				InvokeAsync(StateHasChanged);
+			}
+			else
+			{
+				Navigation.NavigateReload();
+			}
+		}
 		else
 		{
 			// File-picker resume can recreate timing gaps; resync password list from the singleton vault.
 			_passwordViewModel?.EnsureLoaded();
-			if (_activeTab == 16)
+			_telegramViewModel?.SyncFromService();
+			if (_activeTab == 16 || _activeTab == 17)
 				InvokeAsync(StateHasChanged);
 		}
 	}
@@ -1099,6 +1176,19 @@
 		{
 			// Close the open document first; stay on the Reader tab.
 			_readerViewModel.CloseDocument();
+			result = true;
+			refreshNeeded = true;
+		}
+		if (!result && (_activeTab == 17) && (_telegramViewModel != null) && _telegramViewModel.IsAnyOverlayOpen)
+		{
+			// Close TG overlays / open chat first; stay on the TG tab.
+			_telegramViewModel.CloseOverlay();
+			result = true;
+			refreshNeeded = true;
+		}
+		if (!result && (_activeTab == 17) && (_telegramViewModel != null) && _telegramViewModel.IsChatOpen)
+		{
+			_telegramViewModel.CloseChat();
 			result = true;
 			refreshNeeded = true;
 		}

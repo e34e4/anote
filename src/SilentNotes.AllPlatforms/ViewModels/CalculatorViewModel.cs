@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
+using SilentNotes.Models;
 using SilentNotes.Services;
 using SilentNotes.Workers;
 
@@ -15,14 +16,16 @@ namespace SilentNotes.ViewModels
 {
     /// <summary>
     /// View model of the calculator tab. It handles the entered expression, the live preview, the
-    /// angle mode and a small in-memory history.
+    /// angle mode and a persisted history of calculations.
     /// </summary>
     public class CalculatorViewModel : ViewModelBase
     {
+        private const int MaxHistoryItems = 50;
         private static readonly char[] Operators = { '+', '-', '×', '÷', '^' };
         private static readonly string[] Functions = { "sin", "cos", "tan", "cot", "asin", "acos", "atan", "acot", "ln", "log", "exp", "√" };
 
         private readonly ILanguageService _languageService;
+        private readonly ISettingsService _settingsService;
         private readonly List<CalculatorHistoryItem> _history = new List<CalculatorHistoryItem>();
         private string _expression = string.Empty;
         private string _result = string.Empty;
@@ -34,9 +37,11 @@ namespace SilentNotes.ViewModels
         /// Initializes a new instance of the <see cref="CalculatorViewModel"/> class.
         /// </summary>
         /// <param name="languageService">A language service.</param>
-        public CalculatorViewModel(ILanguageService languageService)
+        /// <param name="settingsService">Settings service used to persist the history.</param>
+        public CalculatorViewModel(ILanguageService languageService, ISettingsService settingsService = null)
         {
             _languageService = languageService;
+            _settingsService = settingsService;
 
             InputCommand = new RelayCommand<string>(Input);
             BracketsCommand = new RelayCommand(Brackets);
@@ -48,6 +53,8 @@ namespace SilentNotes.ViewModels
             ToggleAngleCommand = new RelayCommand(() => UseDegrees = !UseDegrees);
             UseHistoryCommand = new RelayCommand<CalculatorHistoryItem>(UseHistory);
             ClearHistoryCommand = new RelayCommand(ClearHistory);
+
+            LoadHistory();
         }
 
         /// <summary>Gets the command which appends a token to the expression.</summary>
@@ -373,11 +380,61 @@ namespace SilentNotes.ViewModels
             _justEvaluated = true;
         }
 
+        private void LoadHistory()
+        {
+            _history.Clear();
+            if (_settingsService == null)
+                return;
+
+            try
+            {
+                SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+                if (settings.CalculatorHistory == null)
+                    return;
+
+                foreach (CalculatorHistoryEntryModel entry in settings.CalculatorHistory)
+                {
+                    if (entry == null || string.IsNullOrWhiteSpace(entry.Expression))
+                        continue;
+                    _history.Add(new CalculatorHistoryItem(entry.Expression, entry.Result ?? string.Empty));
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            OnPropertyChanged(nameof(History));
+            OnPropertyChanged(nameof(HasHistory));
+        }
+
+        private void PersistHistory()
+        {
+            if (_settingsService == null)
+                return;
+
+            try
+            {
+                SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+                settings.CalculatorHistory = _history
+                    .Select(item => new CalculatorHistoryEntryModel
+                    {
+                        Expression = item.Expression,
+                        Result = item.Result,
+                    })
+                    .ToList();
+                _settingsService.TrySaveSettingsToLocalDevice(settings);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         private void AddHistory(string expression, string result)
         {
             _history.Insert(0, new CalculatorHistoryItem(expression, result));
-            if (_history.Count > 50)
+            if (_history.Count > MaxHistoryItems)
                 _history.RemoveAt(_history.Count - 1);
+            PersistHistory();
             OnPropertyChanged(nameof(History));
             OnPropertyChanged(nameof(HasHistory));
         }
@@ -393,6 +450,7 @@ namespace SilentNotes.ViewModels
         private void ClearHistory()
         {
             _history.Clear();
+            PersistHistory();
             OnPropertyChanged(nameof(History));
             OnPropertyChanged(nameof(HasHistory));
         }

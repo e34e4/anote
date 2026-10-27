@@ -429,7 +429,8 @@ namespace SilentNotes.ViewModels
 
                 // Show the sent message immediately: the provider may not contain it yet, and when
                 // aNote is not the default SMS app it does not record sent messages at all.
-                _messages.Add(new SmsMessageItemViewModel(new SmsMessageModel
+                // Newest messages are shown at the top of the conversation.
+                _messages.Insert(0, new SmsMessageItemViewModel(new SmsMessageModel
                 {
                     Id = -DateTime.UtcNow.Ticks,
                     ThreadId = _openThreadId,

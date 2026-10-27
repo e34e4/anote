@@ -660,6 +660,7 @@ namespace SilentNotes.ViewModels
                 (4, "tab_calc"), (5, "tab_cald"), (6, "tab_clock"), (7, "tab_sms"),
                 (8, "tab_qr"), (9, "tab_rec"), (10, "tab_file"), (11, "tab_dialer"),
                 (12, "tab_camera"), (13, "tab_mail"), (14, "tab_player"), (15, "tab_reader"),
+                (16, "tab_password"), (17, "tab_tg"),
             };
             foreach (var tab in tabs)
             {

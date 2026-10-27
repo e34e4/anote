@@ -7,6 +7,7 @@
 @inject IMessengerService MessengerService
 @inject IScrollManager ScrollManager
 @inject IWebdavQuickSaveService WebdavQuickSaveService
+@inject ISharingService SharingService
 @inject IFeedbackService FeedbackService
 
 <style type="text/css">
@@ -110,6 +111,27 @@
 		align-items: flex-start;
 		gap: 6px;
 	}
+	.sms-message-wrap {
+		display: flex;
+		align-items: flex-start;
+		gap: 4px;
+		max-width: 100%;
+	}
+	.sms-message-wrap.in {
+		align-self: flex-start;
+		flex-direction: row;
+	}
+	.sms-message-wrap.out {
+		align-self: flex-end;
+		flex-direction: row;
+	}
+	.sms-message-actions {
+		display: flex;
+		flex-direction: column;
+		gap: 0;
+		flex-shrink: 0;
+		padding-top: 2px;
+	}
 	.sms-bubble-time {
 		font-size: 0.7rem;
 		color: #9e9e9e;
@@ -181,19 +203,29 @@
 			{
 				@foreach (var message in ViewModel.Messages)
 				{
-					<div class="sms-bubble @(message.IsIncoming ? "in" : "out") @(ViewModel.IsSelected(message) ? "sel" : null)"
-						@key="message.Model.Id"
-						@onclick="() => OnMessageClick(message)"
-						@oncontextmenu="() => ViewModel.SelectMessage(message)"
-						@oncontextmenu:preventDefault="true">
-						<div class="sms-bubble-row">
-							@if (ViewModel.IsSelectionMode)
-							{
-								<MudIcon Icon="@(ViewModel.IsSelected(message) ? Icons.Material.Filled.CheckCircle : Icons.Material.Outlined.RadioButtonUnchecked)" Size="Size.Small" Class="mt-1" />
-							}
-							<div>@message.Body</div>
+					<div class="sms-message-wrap @(message.IsIncoming ? "in" : "out")" @key="message.Model.Id">
+						<div class="sms-bubble @(message.IsIncoming ? "in" : "out") @(ViewModel.IsSelected(message) ? "sel" : null)"
+							@onclick="() => OnMessageClick(message)"
+							@oncontextmenu="() => ViewModel.SelectMessage(message)"
+							@oncontextmenu:preventDefault="true">
+							<div class="sms-bubble-row">
+								@if (ViewModel.IsSelectionMode)
+								{
+									<MudIcon Icon="@(ViewModel.IsSelected(message) ? Icons.Material.Filled.CheckCircle : Icons.Material.Outlined.RadioButtonUnchecked)" Size="Size.Small" Class="mt-1" />
+								}
+								<div>@message.Body</div>
+							</div>
+							<div class="sms-bubble-time">@message.TimeText</div>
 						</div>
-						<div class="sms-bubble-time">@message.TimeText</div>
+						@if (!ViewModel.IsSelectionMode)
+						{
+							<div class="sms-message-actions">
+								<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small"
+									OnClick="() => SaveMessageToWebdavAsync(message)" title="@LanguageService["webdav_quick_save"]" />
+								<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small"
+									OnClick="() => ShareMessageAsync(message)" title="@LanguageService["share"]" />
+							</div>
+						}
 					</div>
 				}
 			}
@@ -273,14 +305,14 @@
 	/// <inheritdoc/>
 	protected override async Task OnAfterRenderAsync(bool firstRender)
 	{
-		// Keep the newest message in view when a conversation is opened or a message is added.
+		// Newest messages are at the top — keep the top of the thread in view.
 		int count = ViewModel.IsConversationOpen ? ViewModel.Messages.Count : -1;
 		if (ViewModel.IsConversationOpen && (count != _lastMessageCount))
 		{
 			_lastMessageCount = count;
 			try
 			{
-				await ScrollManager.ScrollToBottomAsync(".sms-messages", ScrollBehavior.Auto);
+				await ScrollManager.ScrollToAsync(".sms-messages", 0, 0, ScrollBehavior.Auto);
 			}
 			catch (Exception)
 			{
@@ -374,6 +406,39 @@
 			FeedbackService.ShowToast(LanguageService.LoadTextFmt("webdav_quick_saved", WebdavQuickSaveService.LastFileName));
 		else
 			FeedbackService.ShowToast(LanguageService["webdav_quick_save_failed"] + " — " + WebdavQuickSaveService.LastError, FeedbackSeverity.Warning);
+	}
+
+	private async Task SaveMessageToWebdavAsync(SmsMessageItemViewModel message)
+	{
+		if (message == null)
+			return;
+		if (!WebdavQuickSaveService.IsConfigured)
+		{
+			FeedbackService.ShowToast(LanguageService["webdav_quick_not_configured"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		string direction = message.IsIncoming ? "←" : "→";
+		string text = string.Format(
+			"{0}\n{1}\n{2} {3}\n{4}",
+			ViewModel.ConversationTitle ?? string.Empty,
+			new string('-', 40),
+			message.TimeText,
+			direction,
+			message.Body ?? string.Empty);
+
+		bool ok = await WebdavQuickSaveService.SaveTextAsync("Sms", text);
+		if (ok)
+			FeedbackService.ShowToast(LanguageService.LoadTextFmt("webdav_quick_saved", WebdavQuickSaveService.LastFileName));
+		else
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_failed"] + " — " + WebdavQuickSaveService.LastError, FeedbackSeverity.Warning);
+	}
+
+	private async Task ShareMessageAsync(SmsMessageItemViewModel message)
+	{
+		if (message == null || string.IsNullOrEmpty(message.Body))
+			return;
+		await SharingService.ShareText(message.Body);
 	}
 
 	/// <inheritdoc/>

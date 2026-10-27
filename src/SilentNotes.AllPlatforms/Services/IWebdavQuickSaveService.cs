@@ -38,6 +38,11 @@ namespace SilentNotes.Services
         Task<bool> SaveBytesAsync(string tabPrefix, byte[] content, string extension);
 
         /// <summary>
+        /// Uploads raw bytes using an explicit remote file name (sanitized).
+        /// </summary>
+        Task<bool> SaveBytesAsAsync(string fileName, byte[] content);
+
+        /// <summary>
         /// Uploads an existing local file, keeping its extension when possible.
         /// </summary>
         Task<bool> SaveLocalFileAsync(string tabPrefix, string localFilePath);

@@ -91,6 +91,7 @@ namespace SilentNotes.ViewModels
             ClearHistoryCommand = new AsyncRelayCommand(ClearHistoryAsync);
             ShareCreateTextCommand = new AsyncRelayCommand(() => _sharingService.ShareText(CreateText));
             CopyCreateTextCommand = new AsyncRelayCommand(CopyCreateTextAsync);
+            GenerateFromItemCommand = new AsyncRelayCommand<QrItemViewModel>(GenerateFromItemAsync);
 
             Reload();
         }
@@ -118,6 +119,9 @@ namespace SilentNotes.ViewModels
 
         /// <summary>Gets the command to save the generated QR code image.</summary>
         public ICommand SaveQrImageCommand { get; }
+
+        /// <summary>Gets the command which opens the create overlay for a scanned item.</summary>
+        public ICommand GenerateFromItemCommand { get; }
 
         /// <summary>Gets the command to open a scanned URL in the browser.</summary>
         public ICommand OpenItemCommand { get; }
@@ -373,6 +377,48 @@ namespace SilentNotes.ViewModels
             {
                 IsBusy = false;
             }
+        }
+
+        /// <summary>
+        /// Opens the create overlay with the scanned text and generates a QR code image.
+        /// </summary>
+        public async Task GenerateFromItemAsync(QrItemViewModel item)
+        {
+            if (item == null || string.IsNullOrWhiteSpace(item.Text))
+                return;
+
+            CloseOverlay();
+            CreateText = item.Text;
+            IsCreateVisible = true;
+            await GenerateQrAsync();
+        }
+
+        /// <summary>
+        /// Generates a JPEG QR image for the given text at the requested quality.
+        /// </summary>
+        public Task<byte[]> GenerateQrJpegBytesAsync(string text, int quality = 25)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return Task.FromResult<byte[]>(null);
+            return _qrService.GenerateQrJpegAsync(text.Trim(), QrImageSize, quality);
+        }
+
+        /// <summary>
+        /// Builds a WebDAV file name from a decoded URL host, falling back to a timestamped name.
+        /// </summary>
+        public static string BuildHostJpegFileName(string text)
+        {
+            if (Uri.TryCreate(text, UriKind.Absolute, out Uri uri)
+                && ((uri.Scheme == Uri.UriSchemeHttp) || (uri.Scheme == Uri.UriSchemeHttps))
+                && !string.IsNullOrWhiteSpace(uri.Host))
+            {
+                return uri.Host + ".jpg";
+            }
+
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "qr_{0:yyyyMMdd_HHmmss}.jpg",
+                DateTime.Now);
         }
 
         /// <summary>

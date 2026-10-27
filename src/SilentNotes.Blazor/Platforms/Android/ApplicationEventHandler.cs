@@ -67,6 +67,9 @@ namespace SilentNotes.Platforms
             // Check whether the app was started to open a document in the Reader tab.
             ConsumeDocumentIntent(activity.Intent);
 
+            // Check whether the app was started by a Telegram deep link (t.me / tg://).
+            ConsumeTelegramLinkIntent(activity.Intent);
+
             // Prevent notes from being visible in list of recent apps and screenshots
             ISettingsService settingsService = Ioc.Instance.GetService<ISettingsService>();
             SettingsModel settings = settingsService.LoadSettingsOrDefault();
@@ -87,6 +90,7 @@ namespace SilentNotes.Platforms
             ConsumeTabIntent(intent);
             ConsumeMediaIntent(intent);
             ConsumeDocumentIntent(intent);
+            ConsumeTelegramLinkIntent(intent);
         }
 
         /// <summary>
@@ -120,14 +124,16 @@ namespace SilentNotes.Platforms
                 if (data == null)
                     return null;
 
-                // Ignore calendar/tel intents which also use VIEW.
+                // Ignore calendar/tel/Telegram intents which also use VIEW.
                 string scheme = data.Scheme ?? string.Empty;
                 if (string.Equals(scheme, "tel", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(scheme, "sms", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(scheme, "smsto", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(scheme, "mms", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(scheme, "mmsto", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(data.Host, "com.android.calendar", StringComparison.OrdinalIgnoreCase))
+                    string.Equals(scheme, "tg", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(data.Host, "com.android.calendar", StringComparison.OrdinalIgnoreCase) ||
+                    SilentNotes.Workers.TelegramLinkParser.IsTelegramLink(data.ToString()))
                 {
                     return null;
                 }
@@ -211,7 +217,9 @@ namespace SilentNotes.Platforms
                     string.Equals(scheme, "smsto", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(scheme, "mms", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(scheme, "mmsto", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(data.Host, "com.android.calendar", StringComparison.OrdinalIgnoreCase))
+                    string.Equals(scheme, "tg", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(data.Host, "com.android.calendar", StringComparison.OrdinalIgnoreCase) ||
+                    SilentNotes.Workers.TelegramLinkParser.IsTelegramLink(data.ToString()))
                 {
                     return null;
                 }
@@ -286,6 +294,39 @@ namespace SilentNotes.Platforms
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Checks whether the intent opens a Telegram deep link (https://t.me/…, tg://…), and
+        /// remembers it in <see cref="TelegramLinkRequest.Pending"/> so the TG tab can open it.
+        /// </summary>
+        private void ConsumeTelegramLinkIntent(Intent intent)
+        {
+            string link = ParseTelegramLinkIntent(intent);
+            if (string.IsNullOrWhiteSpace(link))
+                return;
+
+            TelegramLinkRequest.Pending = new TelegramLinkRequest { Link = link };
+            Ioc.Instance.GetService<IMessengerService>()?.Send(new TelegramLinkMessage());
+        }
+
+        private static string ParseTelegramLinkIntent(Intent intent)
+        {
+            if (intent == null || intent.Action != Intent.ActionView)
+                return null;
+
+            global::Android.Net.Uri data = intent.Data;
+            if (data == null)
+                return null;
+
+            string raw = data.ToString();
+            if (string.IsNullOrWhiteSpace(raw))
+                return null;
+
+            if (!SilentNotes.Workers.TelegramLinkParser.IsTelegramLink(raw))
+                return null;
+
+            return raw;
         }
 
         private void ConsumeTabIntent(Intent intent)

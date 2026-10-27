@@ -4,8 +4,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using Android.Content.PM;
+using Android.Graphics;
 using AndroidX.Core.Content;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
@@ -30,6 +32,41 @@ namespace SilentNotes.Platforms.Services
         public QrService(IAppContextService appContextService)
         {
             _appContext = appContextService;
+        }
+
+        /// <inheritdoc/>
+        public override async Task<byte[]> GenerateQrJpegAsync(string text, int size, int quality)
+        {
+            byte[] png = await GenerateQrPngAsync(text, size);
+            if (png == null || png.Length == 0)
+                return null;
+
+            return await Task.Run(() =>
+            {
+                Bitmap bitmap = null;
+                try
+                {
+                    bitmap = BitmapFactory.DecodeByteArray(png, 0, png.Length);
+                    if (bitmap == null)
+                        return null;
+
+                    using (var stream = new MemoryStream())
+                    {
+                        int clamped = Math.Clamp(quality, 1, 100);
+                        if (!bitmap.Compress(Bitmap.CompressFormat.Jpeg, clamped, stream))
+                            return null;
+                        return stream.ToArray();
+                    }
+                }
+                catch (Exception)
+                {
+                    return null;
+                }
+                finally
+                {
+                    bitmap?.Recycle();
+                }
+            });
         }
 
         /// <inheritdoc/>

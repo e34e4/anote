@@ -206,6 +206,8 @@
 					{
 						<button class="qr-btn primary" @onclick="() => ViewModel.OpenItemCommand.Execute(ViewModel.Result)">@LanguageService["qr_open_link"]</button>
 					}
+					<button class="qr-btn" @onclick="() => GenerateFromScan(ViewModel.Result)">@LanguageService["qr_generate"]</button>
+					<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" OnClick="() => SaveScanQrToWebdavAsync(ViewModel.Result)" title="@LanguageService["webdav_quick_save"]" />
 					<button class="qr-btn" @onclick="() => ViewModel.CopyItemCommand.Execute(ViewModel.Result)">@LanguageService["qr_copy"]</button>
 					<button class="qr-btn" @onclick="() => ViewModel.ShareItemCommand.Execute(ViewModel.Result)">@LanguageService["qr_share"]</button>
 				</div>
@@ -230,6 +232,8 @@
 					{
 						<MudIconButton Icon="@Icons.Material.Filled.OpenInBrowser" Size="Size.Small" OnClick="@(() => ViewModel.OpenItemCommand.Execute(item))" title="@LanguageService["qr_open_link"]" />
 					}
+					<MudIconButton Icon="@Icons.Material.Filled.QrCode2" Size="Size.Small" OnClick="@(() => GenerateFromScan(item))" title="@LanguageService["qr_generate"]" />
+					<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small" OnClick="@(() => SaveScanQrToWebdavAsync(item))" title="@LanguageService["webdav_quick_save"]" />
 					<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" OnClick="@(() => ViewModel.ShareItemCommand.Execute(item))" title="@LanguageService["qr_share"]" />
 					<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="@(() => ViewModel.CopyItemCommand.Execute(item))" title="@LanguageService["qr_copy"]" />
 				</div>
@@ -259,6 +263,8 @@
 					{
 						<MudIconButton Icon="@Icons.Material.Filled.OpenInBrowser" Size="Size.Small" OnClick="@(() => ViewModel.OpenItemCommand.Execute(item))" title="@LanguageService["qr_open_link"]" />
 					}
+					<MudIconButton Icon="@Icons.Material.Filled.QrCode2" Size="Size.Small" OnClick="@(() => GenerateFromScan(item))" title="@LanguageService["qr_generate"]" />
+					<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small" OnClick="@(() => SaveScanQrToWebdavAsync(item))" title="@LanguageService["webdav_quick_save"]" />
 					<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" OnClick="@(() => ViewModel.ShareItemCommand.Execute(item))" title="@LanguageService["qr_share"]" />
 					<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ViewModel.DeleteItemCommand.Execute(item))" title="@LanguageService["qr_delete"]" />
 				</div>
@@ -368,6 +374,37 @@
 		}
 
 		bool ok = await WebdavQuickSaveService.SaveBytesAsync("Qr", png, "png");
+		if (ok)
+			FeedbackService.ShowToast(LanguageService.LoadTextFmt("webdav_quick_saved", WebdavQuickSaveService.LastFileName));
+		else
+			FeedbackService.ShowToast(LanguageService["webdav_quick_save_failed"] + " — " + WebdavQuickSaveService.LastError, FeedbackSeverity.Warning);
+	}
+
+	private async Task GenerateFromScan(QrItemViewModel item)
+	{
+		await ViewModel.GenerateFromItemAsync(item);
+		StateHasChanged();
+	}
+
+	private async Task SaveScanQrToWebdavAsync(QrItemViewModel item)
+	{
+		if (item == null || string.IsNullOrWhiteSpace(item.Text))
+			return;
+		if (!WebdavQuickSaveService.IsConfigured)
+		{
+			FeedbackService.ShowToast(LanguageService["webdav_quick_not_configured"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		byte[] jpeg = await ViewModel.GenerateQrJpegBytesAsync(item.Text, 25);
+		if (jpeg == null || jpeg.Length == 0)
+		{
+			FeedbackService.ShowToast(LanguageService["qr_save_failed"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		string fileName = QrViewModel.BuildHostJpegFileName(item.Text);
+		bool ok = await WebdavQuickSaveService.SaveBytesAsAsync(fileName, jpeg);
 		if (ok)
 			FeedbackService.ShowToast(LanguageService.LoadTextFmt("webdav_quick_saved", WebdavQuickSaveService.LastFileName));
 		else

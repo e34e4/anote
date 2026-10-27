@@ -266,6 +266,14 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Message to inform the main page that a Telegram deep link should be opened in the TG tab
+    /// (from Mini App navigation or an Android VIEW intent for t.me / tg://).
+    /// </summary>
+    public class TelegramLinkMessage
+    {
+    }
+
+    /// <summary>
     /// Enumeration of possible sources of a sent message.
     /// </summary>
     public enum MessageSender

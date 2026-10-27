@@ -77,6 +77,7 @@ namespace SilentNotes.Platforms
             (14, "▶️", "tab_player", "Player"),
             (15, "📖", "tab_reader", "Reader"),
             (16, "🔑", "tab_password", "Password"),
+            (17, "✈", "tab_tg", "TG"),
         };
 
         private static readonly string[] BrowserPackages = new[]

@@ -493,6 +493,12 @@
 			@if (!ViewModel.IsEditingAccount)
 			{
 				<button class="mail-btn" @onclick="SignInGoogleAsync">@LanguageService["mail_google_sign_in"]</button>
+				<button class="mail-btn" @onclick="ExportAccountsAsync" title="@LanguageService["mail_export_accounts"]">
+					<MudIcon Icon="@Icons.Material.Filled.FileDownload" Size="Size.Small" />
+				</button>
+				<button class="mail-btn" @onclick="ImportAccountsAsync" title="@LanguageService["mail_import_accounts"]">
+					<MudIcon Icon="@Icons.Material.Filled.FileUpload" Size="Size.Small" />
+				</button>
 				<button class="mail-btn primary" @onclick="() => ViewModel.StartAddAccount()">
 					<MudIcon Icon="@Icons.Material.Filled.Add" Size="Size.Small" />
 					<span>@LanguageService["mail_add_account"]</span>
@@ -617,6 +623,18 @@
 	private async Task SignInGoogleAsync()
 	{
 		await ViewModel.StartGoogleSignInAsync();
+		StateHasChanged();
+	}
+
+	private async Task ExportAccountsAsync()
+	{
+		await ViewModel.ExportAccountsAsync();
+		StateHasChanged();
+	}
+
+	private async Task ImportAccountsAsync()
+	{
+		await ViewModel.ImportAccountsAsync();
 		StateHasChanged();
 	}
 

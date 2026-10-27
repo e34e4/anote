@@ -151,8 +151,8 @@
 
 <div class="clock-root">
 	<div class="clock-sections">
-		<button class="clock-section-btn @(ViewModel.IsAlarmSection ? "active" : null)" @onclick="() => ViewModel.ShowAlarmCommand.Execute(null)">@LanguageService["clock_alarm"]</button>
 		<button class="clock-section-btn @(ViewModel.IsClockSection ? "active" : null)" @onclick="() => ViewModel.ShowClockCommand.Execute(null)">@LanguageService["clock_clock"]</button>
+		<button class="clock-section-btn @(ViewModel.IsAlarmSection ? "active" : null)" @onclick="() => ViewModel.ShowAlarmCommand.Execute(null)">@LanguageService["clock_alarm"]</button>
 		<button class="clock-section-btn @(ViewModel.IsTimerSection ? "active" : null)" @onclick="() => ViewModel.ShowTimerCommand.Execute(null)">@LanguageService["clock_timer"]</button>
 		<button class="clock-section-btn @(ViewModel.IsStopwatchSection ? "active" : null)" @onclick="() => ViewModel.ShowStopwatchCommand.Execute(null)">@LanguageService["clock_stopwatch"]</button>
 	</div>

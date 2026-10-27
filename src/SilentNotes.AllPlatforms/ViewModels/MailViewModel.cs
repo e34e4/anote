@@ -9,10 +9,12 @@ using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using System.Xml.Linq;
 using CommunityToolkit.Mvvm.Input;
 using SilentNotes.Crypto;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.ViewModels
 {
@@ -23,6 +25,7 @@ namespace SilentNotes.ViewModels
     {
         private readonly IMailService _mailService;
         private readonly IFilePickerService _filePickerService;
+        private readonly IFolderPickerService _folderPickerService;
         private readonly ILanguageService _languageService;
         private readonly IFeedbackService _feedbackService;
         private readonly INativeBrowserService _nativeBrowserService;
@@ -77,10 +80,12 @@ namespace SilentNotes.ViewModels
             IFeedbackService feedbackService,
             INativeBrowserService nativeBrowserService = null,
             IMessengerService messengerService = null,
-            ICryptoRandomService randomService = null)
+            ICryptoRandomService randomService = null,
+            IFolderPickerService folderPickerService = null)
         {
             _mailService = mailService;
             _filePickerService = filePickerService;
+            _folderPickerService = folderPickerService;
             _languageService = languageService;
             _feedbackService = feedbackService;
             _nativeBrowserService = nativeBrowserService;
@@ -991,6 +996,141 @@ namespace SilentNotes.ViewModels
 
             _mailService?.SaveStore(_store);
             NotifyChanged();
+        }
+
+        /// <summary>
+        /// Exports mailbox account settings to a portable XML file for re-import after reinstall.
+        /// </summary>
+        public async Task ExportAccountsAsync()
+        {
+            if (_folderPickerService == null)
+            {
+                _feedbackService?.ShowToast(_languageService["mail_export_failed"], FeedbackSeverity.Warning);
+                return;
+            }
+            if (_store.Accounts.Count == 0)
+            {
+                _feedbackService?.ShowToast(_languageService["mail_no_account"], FeedbackSeverity.Warning);
+                return;
+            }
+
+            try
+            {
+                if (!await _folderPickerService.PickFolder())
+                    return;
+
+                var export = new MailAccountsExportModel();
+                foreach (MailAccountModel account in _store.Accounts)
+                {
+                    export.Accounts.Add(new MailAccountExportItemModel
+                    {
+                        DisplayName = account.DisplayName ?? string.Empty,
+                        EmailAddress = account.EmailAddress ?? string.Empty,
+                        ImapHost = account.ImapHost ?? string.Empty,
+                        ImapPort = account.ImapPort,
+                        ImapUseSsl = account.ImapUseSsl,
+                        SmtpHost = account.SmtpHost ?? string.Empty,
+                        SmtpPort = account.SmtpPort,
+                        SmtpUseSsl = account.SmtpUseSsl,
+                        Username = account.Username ?? string.Empty,
+                        Password = account.Password ?? string.Empty,
+                        AuthMode = account.AuthMode ?? MailAuthModes.Password,
+                        RefreshToken = account.RefreshToken ?? string.Empty,
+                        AccessToken = account.AccessToken ?? string.Empty,
+                        AccessTokenExpiryUtc = account.AccessTokenExpiryUtc,
+                    });
+                }
+
+                byte[] bytes = XmlUtils.SerializeToXmlBytes(export);
+                bool ok = await _folderPickerService.TrySaveFileToPickedFolder(MailAccountsExportModel.FileName, bytes);
+                if (ok)
+                    _feedbackService?.ShowToast(_languageService["mail_export_success"]);
+                else
+                    _feedbackService?.ShowToast(_languageService["mail_export_failed"], FeedbackSeverity.Warning);
+            }
+            catch (Exception)
+            {
+                _feedbackService?.ShowToast(_languageService["mail_export_failed"], FeedbackSeverity.Error);
+            }
+        }
+
+        /// <summary>
+        /// Imports mailbox account settings from a previously exported XML file.
+        /// </summary>
+        public async Task ImportAccountsAsync()
+        {
+            if (_filePickerService == null)
+            {
+                _feedbackService?.ShowToast(_languageService["mail_import_failed"], FeedbackSeverity.Warning);
+                return;
+            }
+
+            try
+            {
+                if (!await _filePickerService.PickFile(new[] { ".xml" }, "text/xml"))
+                    return;
+
+                byte[] bytes = await _filePickerService.ReadPickedFile();
+                if (bytes == null || bytes.Length == 0)
+                {
+                    _feedbackService?.ShowToast(_languageService["mail_import_failed"], FeedbackSeverity.Warning);
+                    return;
+                }
+
+                XDocument xml = XmlUtils.LoadFromXmlBytes(bytes);
+                MailAccountsExportModel export = XmlUtils.DeserializeFromXmlDocument<MailAccountsExportModel>(xml);
+                if (export?.Accounts == null || export.Accounts.Count == 0)
+                {
+                    _feedbackService?.ShowToast(_languageService["mail_import_failed"], FeedbackSeverity.Warning);
+                    return;
+                }
+
+                int added = 0;
+                foreach (MailAccountExportItemModel item in export.Accounts)
+                {
+                    if (string.IsNullOrWhiteSpace(item.EmailAddress) && string.IsNullOrWhiteSpace(item.ImapHost))
+                        continue;
+
+                    string email = (item.EmailAddress ?? string.Empty).Trim();
+                    MailAccountModel existing = _store.Accounts.FirstOrDefault(a =>
+                        string.Equals(a.EmailAddress, email, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(a.ImapHost ?? string.Empty, item.ImapHost ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+
+                    MailAccountModel target = existing ?? new MailAccountModel();
+                    target.DisplayName = item.DisplayName ?? string.Empty;
+                    target.EmailAddress = email;
+                    target.ImapHost = item.ImapHost ?? string.Empty;
+                    target.ImapPort = item.ImapPort > 0 ? item.ImapPort : 993;
+                    target.ImapUseSsl = item.ImapUseSsl;
+                    target.SmtpHost = item.SmtpHost ?? string.Empty;
+                    target.SmtpPort = item.SmtpPort > 0 ? item.SmtpPort : 465;
+                    target.SmtpUseSsl = item.SmtpUseSsl;
+                    target.Username = string.IsNullOrWhiteSpace(item.Username) ? email : item.Username.Trim();
+                    target.Password = item.Password ?? string.Empty;
+                    target.AuthMode = string.IsNullOrWhiteSpace(item.AuthMode) ? MailAuthModes.Password : item.AuthMode;
+                    target.RefreshToken = item.RefreshToken ?? string.Empty;
+                    target.AccessToken = item.AccessToken ?? string.Empty;
+                    target.AccessTokenExpiryUtc = item.AccessTokenExpiryUtc;
+
+                    if (existing == null)
+                    {
+                        _store.Accounts.Add(target);
+                        added++;
+                    }
+                }
+
+                if (_store.Accounts.Count == 1)
+                    _selectedAccountId = _store.Accounts[0].Id;
+
+                _mailService?.SaveStore(_store);
+                NotifyChanged();
+                _feedbackService?.ShowToast(
+                    string.Format(CultureInfo.InvariantCulture, _languageService["mail_import_success"], added));
+            }
+            catch (Exception)
+            {
+                _feedbackService?.ShowToast(_languageService["mail_import_failed"], FeedbackSeverity.Error);
+            }
         }
 
         private MailAccountModel BuildEditedAccountModel()

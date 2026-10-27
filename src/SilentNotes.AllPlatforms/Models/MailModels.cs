@@ -104,6 +104,68 @@ namespace SilentNotes.Models
     }
 
     /// <summary>
+    /// Portable export of mailbox account settings (passwords in cleartext for re-import
+    /// after a new installation).
+    /// </summary>
+    [XmlRoot("anote_mail_accounts")]
+    public class MailAccountsExportModel
+    {
+        public const string FileName = "anote_mail_accounts.xml";
+
+        [XmlArray("accounts")]
+        [XmlArrayItem("account")]
+        public List<MailAccountExportItemModel> Accounts { get; set; } = new List<MailAccountExportItemModel>();
+    }
+
+    /// <summary>
+    /// A single mailbox account in an export/import file.
+    /// </summary>
+    public class MailAccountExportItemModel
+    {
+        [XmlElement("display_name")]
+        public string DisplayName { get; set; } = string.Empty;
+
+        [XmlElement("email")]
+        public string EmailAddress { get; set; } = string.Empty;
+
+        [XmlElement("imap_host")]
+        public string ImapHost { get; set; } = string.Empty;
+
+        [XmlElement("imap_port")]
+        public int ImapPort { get; set; } = 993;
+
+        [XmlElement("imap_ssl")]
+        public bool ImapUseSsl { get; set; } = true;
+
+        [XmlElement("smtp_host")]
+        public string SmtpHost { get; set; } = string.Empty;
+
+        [XmlElement("smtp_port")]
+        public int SmtpPort { get; set; } = 465;
+
+        [XmlElement("smtp_ssl")]
+        public bool SmtpUseSsl { get; set; } = true;
+
+        [XmlElement("username")]
+        public string Username { get; set; } = string.Empty;
+
+        [XmlElement("password")]
+        public string Password { get; set; } = string.Empty;
+
+        [XmlElement("auth_mode")]
+        public string AuthMode { get; set; } = MailAuthModes.Password;
+
+        [XmlElement("refresh_token")]
+        public string RefreshToken { get; set; } = string.Empty;
+
+        [XmlElement("access_token")]
+        public string AccessToken { get; set; } = string.Empty;
+
+        [XmlElement("access_token_expiry_utc")]
+        public DateTime AccessTokenExpiryUtc { get; set; }
+    }
+
+    /// <summary>
     /// Represents a single email message in Inbox, Starred, Sent, Drafts, or Trash.
     /// </summary>
     public class MailMessageModel

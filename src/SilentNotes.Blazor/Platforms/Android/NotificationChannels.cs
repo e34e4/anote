@@ -28,6 +28,9 @@ namespace SilentNotes
         /// <summary>Channel for incoming and active phone calls.</summary>
         public const string CallChannelId = "anote_call";
 
+        /// <summary>Channel for Telegram incoming messages.</summary>
+        public const string TelegramChannelId = "anote_telegram";
+
         /// <summary>Creates all notification channels, can be called repeatedly.</summary>
         public static void CreateAll(Context context)
         {
@@ -62,6 +65,12 @@ namespace SilentNotes
             callChannel.EnableVibration(true);
             callChannel.LockscreenVisibility = NotificationVisibility.Public;
             manager.CreateNotificationChannel(callChannel);
+
+            var telegramChannel = new NotificationChannel(TelegramChannelId, "Telegram", NotificationImportance.High);
+            telegramChannel.Description = "Incoming Telegram messages";
+            telegramChannel.EnableVibration(true);
+            telegramChannel.SetSound(RingtoneManager.GetDefaultUri(RingtoneType.Notification), NotificationAudioAttributes());
+            manager.CreateNotificationChannel(telegramChannel);
         }
 
         /// <summary>Gets audio attributes which play on the alarm stream.</summary>

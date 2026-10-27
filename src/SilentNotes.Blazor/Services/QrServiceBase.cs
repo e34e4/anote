@@ -92,5 +92,38 @@ namespace SilentNotes.Platforms.Services
                 return null;
             }
         }
+
+        /// <inheritdoc/>
+        public virtual async Task<byte[]> GenerateQrJpegAsync(string text, int size, int quality)
+        {
+            if (string.IsNullOrEmpty(text))
+                return null;
+
+            try
+            {
+                using (var stream = new MemoryStream())
+                {
+                    await BarcodeGenerator.WriteToStreamAsync(text, stream, new BarcodeGeneratorOptions
+                    {
+                        Format = BarcodeFormat.QrCode,
+                        Width = size,
+                        Height = size,
+                        Margin = 2,
+                        ForegroundColor = Colors.Black,
+                        BackgroundColor = Colors.White,
+                    },
+                    new BarcodeImageOptions
+                    {
+                        Format = BarcodeImageFormat.Jpeg,
+                    });
+                    return stream.ToArray();
+                }
+            }
+            catch (Exception)
+            {
+                // Fall back to PNG generation when JPEG encoding is unavailable.
+                return await GenerateQrPngAsync(text, size);
+            }
+        }
     }
 }

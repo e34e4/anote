@@ -1,0 +1,1084 @@
+@using CommunityToolkit.Mvvm.Input
+@using Microsoft.JSInterop
+@using MudBlazor
+@using SilentNotes.Models
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+@implements IDisposable
+
+@inject ILanguageService LanguageService
+@inject IMessengerService MessengerService
+@inject IFeedbackService FeedbackService
+@inject IJSRuntime JSRuntime
+
+<style type="text/css">
+	.tg-root {
+		background-color: #000000;
+		min-height: calc(100vh - 208px);
+		padding: 8px;
+		color: #ffffff;
+	}
+	.tg-topbar {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-bottom: 8px;
+	}
+	.tg-account-label {
+		flex: 1 1 auto;
+		min-width: 0;
+		font-size: 0.9rem;
+		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		color: #e0e0e0;
+	}
+	.tg-btn {
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background-color: #0c0c0c;
+		color: #ffffff;
+		height: 36px;
+		padding: 0 12px;
+		font-size: 0.84rem;
+		font-weight: 600;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		cursor: pointer;
+	}
+	.tg-btn.primary {
+		border-color: var(--mud-palette-primary);
+		color: var(--mud-palette-primary);
+	}
+	.tg-card {
+		border: 1px solid #262626;
+		border-radius: 12px;
+		background-color: #0a0a0a;
+		padding: 12px;
+		margin-bottom: 10px;
+	}
+	.tg-field {
+		width: 100%;
+		margin-bottom: 8px;
+	}
+	.tg-hint {
+		font-size: 0.78rem;
+		color: #9e9e9e;
+		margin-bottom: 10px;
+		line-height: 1.4;
+	}
+	.tg-status {
+		font-size: 0.8rem;
+		color: #ffab91;
+		margin: 6px 0;
+		word-break: break-word;
+	}
+	.tg-chat-row {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		padding: 10px 6px;
+		border-bottom: 1px solid #1c1c1c;
+		cursor: pointer;
+	}
+	.tg-avatar {
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
+		background-color: #1e293b;
+		color: #38bdf8;
+		font-weight: 700;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+	.tg-avatar.bot {
+		background-color: #1a3328;
+		color: #86efac;
+	}
+	.tg-chat-body {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.tg-chat-top {
+		display: flex;
+		justify-content: space-between;
+		gap: 8px;
+	}
+	.tg-chat-title-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		flex: 1 1 auto;
+	}
+	.tg-chat-title {
+		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		min-width: 0;
+	}
+	.tg-chat-time {
+		font-size: 0.72rem;
+		color: #9e9e9e;
+		flex-shrink: 0;
+	}
+	.tg-chat-preview {
+		font-size: 0.82rem;
+		color: #8a8a8a;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		margin-top: 2px;
+	}
+	.tg-unread {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 14px;
+		height: 14px;
+		line-height: 1;
+		border-radius: 7px;
+		padding: 0 4px;
+		background-color: var(--mud-palette-primary);
+		color: #000000;
+		font-size: 0.62rem;
+		font-weight: 700;
+		flex-shrink: 0;
+	}
+	.tg-avatar-col {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		flex-shrink: 0;
+	}
+	.tg-chat-check {
+		width: 14px;
+		height: 14px;
+		accent-color: var(--mud-palette-primary);
+		cursor: pointer;
+	}
+	.tg-chat-row.selected {
+		background: #0c131d;
+	}
+	.tg-muted-mark {
+		font-size: 0.68rem;
+		color: #94a3b8;
+		flex-shrink: 0;
+	}
+	.tg-archive-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 10px 6px;
+		border-bottom: 1px solid #1c1c1c;
+		cursor: pointer;
+		color: #e2e8f0;
+	}
+	.tg-archive-icon {
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
+		background: #1e293b;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #94a3b8;
+		flex-shrink: 0;
+	}
+	.tg-chat-panel {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+	.tg-selection-bar {
+		position: sticky;
+		top: 0;
+		z-index: 6;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		padding: 8px 4px;
+		margin-bottom: 6px;
+		border: 1px solid #262626;
+		border-radius: 10px;
+		background: #0a0a0a;
+		box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+	}
+	.tg-selection-bar .tg-btn {
+		height: 30px;
+		font-size: 0.75rem;
+		padding: 0 8px;
+	}
+	.tg-open-app {
+		margin-top: 6px;
+		height: 28px;
+		font-size: 0.75rem;
+		padding: 0 10px;
+		border-color: #2563eb;
+		background: #1d4ed8;
+		color: #fff;
+	}
+	.tg-pinned-mark {
+		font-size: 0.68rem;
+		color: #93c5fd;
+		flex-shrink: 0;
+	}
+	.tg-conv-header {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin-bottom: 8px;
+	}
+	.tg-conv-title {
+		font-size: 1.05rem;
+		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.tg-messages {
+		overflow-y: auto;
+		max-height: calc(100vh - 390px);
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 4px;
+	}
+	.tg-msg-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-top: 6px;
+	}
+	.tg-msg-actions .tg-format-btn {
+		font-size: 0.68rem;
+		padding: 1px 6px;
+	}
+	.tg-reaction-count {
+		font-size: 0.7rem;
+		color: #94a3b8;
+		margin-top: 4px;
+	}
+	.tg-reaction-count.mine {
+		color: #86efac;
+	}
+	.tg-forward-panel {
+		border: 1px solid #262626;
+		border-radius: 12px;
+		background: #0a0a0a;
+		padding: 10px;
+		margin-bottom: 8px;
+		max-height: 40vh;
+		overflow-y: auto;
+	}
+	.tg-bubble {
+		max-width: 88%;
+		padding: 8px 12px;
+		border-radius: 14px;
+		background-color: #1c1c1c;
+		word-break: break-word;
+		white-space: pre-wrap;
+	}
+	.tg-bubble.in {
+		align-self: flex-start;
+		border-bottom-left-radius: 4px;
+	}
+	.tg-bubble.out {
+		align-self: flex-end;
+		background-color: #14472f;
+		border-bottom-right-radius: 4px;
+	}
+	.tg-from {
+		font-size: 0.75rem;
+		color: #7dd3fc;
+		margin-bottom: 2px;
+		font-weight: 600;
+	}
+	.tg-reply {
+		font-size: 0.75rem;
+		color: #a3a3a3;
+		border-left: 2px solid #525252;
+		padding-left: 6px;
+		margin-bottom: 4px;
+	}
+	.tg-media-link {
+		display: inline-block;
+		margin-top: 4px;
+		color: #38bdf8;
+		text-decoration: underline;
+		cursor: pointer;
+		font-size: 0.85rem;
+	}
+	.tg-time {
+		font-size: 0.68rem;
+		color: #9e9e9e;
+		margin-top: 3px;
+		text-align: right;
+	}
+	.tg-bot-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-top: 6px;
+	}
+	.tg-bot-btn {
+		border: 1px solid #334155;
+		border-radius: 8px;
+		background: #0f172a;
+		color: #e2e8f0;
+		padding: 4px 8px;
+		font-size: 0.75rem;
+		cursor: pointer;
+	}
+	.tg-format-bar {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-bottom: 6px;
+	}
+	.tg-format-btn {
+		border: 1px solid #2b2b2b;
+		border-radius: 6px;
+		background: #111;
+		color: #ddd;
+		padding: 2px 8px;
+		font-size: 0.75rem;
+		cursor: pointer;
+	}
+	.tg-attach-list {
+		font-size: 0.78rem;
+		color: #a3a3a3;
+		margin-bottom: 6px;
+	}
+	.tg-composer {
+		display: flex;
+		align-items: flex-end;
+		gap: 4px;
+		margin-top: 8px;
+	}
+	.tg-sound-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		height: 36px;
+		padding: 0 4px;
+		color: #94a3b8;
+		cursor: pointer;
+		flex-shrink: 0;
+		user-select: none;
+	}
+	.tg-sound-toggle input {
+		width: 14px;
+		height: 14px;
+		accent-color: var(--mud-palette-primary);
+		cursor: pointer;
+	}
+	.tg-accounts-panel {
+		border: 1px solid #262626;
+		border-radius: 12px;
+		background: #0a0a0a;
+		padding: 10px;
+		margin-bottom: 10px;
+	}
+	.tg-account-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 4px;
+		border-bottom: 1px solid #1c1c1c;
+	}
+	.tg-account-row.active {
+		background: #0c131d;
+	}
+</style>
+
+<div class="tg-root">
+	@if (!string.IsNullOrEmpty(ViewModel.StatusMessage))
+	{
+		<div class="tg-status">@ViewModel.StatusMessage</div>
+	}
+
+	@if (ViewModel.NeedsApiCredentials)
+	{
+		<div class="tg-card">
+			<div style="font-weight:700;margin-bottom:6px;">@LanguageService["tg_api_setup_title"]</div>
+			<div class="tg-hint">@LanguageService["tg_api_setup_hint"]</div>
+			<MudTextField T="string" @bind-Value="ViewModel.ApiIdText" Label="@LanguageService["tg_api_id"]" Variant="Variant.Outlined" Margin="Margin.Dense" Class="tg-field" Immediate="true" />
+			<MudTextField T="string" @bind-Value="ViewModel.ApiHash" Label="@LanguageService["tg_api_hash"]" Variant="Variant.Outlined" Margin="Margin.Dense" Class="tg-field" Immediate="true" InputType="InputType.Password" />
+			<button class="tg-btn primary" @onclick="SaveApiAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_save_api"]</button>
+		</div>
+	}
+	else if (ViewModel.IsLoginFlow)
+	{
+		<div class="tg-card">
+			<div style="font-weight:700;margin-bottom:6px;">@LanguageService["tg_login_title"]</div>
+			@if (ViewModel.AuthState == TelegramAuthState.NeedQr)
+			{
+				<div class="tg-hint">@LanguageService["tg_login_qr_hint"]</div>
+				@if (!string.IsNullOrEmpty(ViewModel.CodeDeliveryHint))
+				{
+					<div class="tg-hint" style="color:#7dd3fc;">@ViewModel.CodeDeliveryHint</div>
+				}
+				@if (!string.IsNullOrEmpty(ViewModel.QrLoginImageDataUrl))
+				{
+					<div style="display:flex;justify-content:center;margin:12px 0;">
+						<img src="@ViewModel.QrLoginImageDataUrl" alt="Telegram login QR" width="220" height="220" style="background:#fff;border-radius:8px;padding:8px;" />
+					</div>
+				}
+				else
+				{
+					<div class="tg-hint">@LanguageService["tg_connecting"]</div>
+				}
+			}
+			else if (ViewModel.AuthState == TelegramAuthState.NeedPhone)
+			{
+				<div class="tg-hint">@LanguageService["tg_login_phone_hint"]</div>
+				<div class="tg-hint" style="color:#fbbf24;">@LanguageService["tg_login_sms_note"]</div>
+				<MudTextField T="string" @bind-Value="ViewModel.LoginPhone" Label="@LanguageService["tg_phone"]" Variant="Variant.Outlined" Margin="Margin.Dense" Class="tg-field" Immediate="true" />
+			}
+			else if (ViewModel.AuthState == TelegramAuthState.NeedCode)
+			{
+				<div class="tg-hint">@LanguageService["tg_login_code_hint"]</div>
+				@if (!string.IsNullOrEmpty(ViewModel.LoginPhone))
+				{
+					<div class="tg-hint" style="color:#86efac;">@LanguageService["tg_login_phone_used"] @ViewModel.LoginPhone</div>
+				}
+				@if (!string.IsNullOrEmpty(ViewModel.CodeDeliveryHint))
+				{
+					<div class="tg-hint" style="color:#7dd3fc;">@ViewModel.CodeDeliveryHint</div>
+				}
+				<MudTextField T="string" @bind-Value="ViewModel.LoginCode" Label="@LanguageService["tg_code"]" Variant="Variant.Outlined" Margin="Margin.Dense" Class="tg-field" Immediate="true" />
+				<div class="tg-hint">@LanguageService["tg_login_code_stay"]</div>
+			}
+			else if (ViewModel.AuthState == TelegramAuthState.NeedPassword)
+			{
+				<div class="tg-hint">@LanguageService["tg_login_password_hint"]</div>
+				<MudTextField T="string" @bind-Value="ViewModel.LoginPassword" Label="@LanguageService["tg_password"]" Variant="Variant.Outlined" Margin="Margin.Dense" Class="tg-field" Immediate="true" InputType="InputType.Password" />
+			}
+			else
+			{
+				<div class="tg-hint">@LanguageService["tg_connecting"]</div>
+			}
+			<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+				@if (ViewModel.AuthState == TelegramAuthState.NeedPhone || ViewModel.AuthState == TelegramAuthState.NeedCode || ViewModel.AuthState == TelegramAuthState.NeedPassword)
+				{
+					<button class="tg-btn primary" @onclick="ContinueLoginAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_continue"]</button>
+				}
+				@if (ViewModel.AuthState == TelegramAuthState.NeedPhone)
+				{
+					<button class="tg-btn primary" @onclick="StartQrLoginAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_login_qr"]</button>
+				}
+				@if (ViewModel.AuthState == TelegramAuthState.NeedCode)
+				{
+					<button class="tg-btn" @onclick="ResendCodeAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_resend_code"]</button>
+					<button class="tg-btn" @onclick="StartQrLoginAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_login_qr"]</button>
+					<button class="tg-btn" @onclick="() => ViewModel.OpenOfficialTelegram()">@LanguageService["tg_open_telegram"]</button>
+				}
+				@if (ViewModel.AuthState == TelegramAuthState.NeedQr)
+				{
+					<button class="tg-btn primary" @onclick="() => ViewModel.OpenOfficialTelegram()">@LanguageService["tg_open_devices"]</button>
+				}
+				<button class="tg-btn" @onclick="CancelLoginAsync" disabled="@ViewModel.IsBusy">@LanguageService["cancel"]</button>
+			</div>
+		</div>
+	}
+	else if (ViewModel.IsChatOpen)
+	{
+		<div class="tg-conv-header">
+			<MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Color="Color.Inherit" OnClick="() => ViewModel.CloseChatCommand.Execute(null)" title="@LanguageService["back"]" />
+			<div class="tg-conv-title">@ViewModel.OpenChatTitle @(ViewModel.OpenChatIsBot ? "(bot)" : null)</div>
+			<MudSpacer />
+			@if (ViewModel.OpenChatHasBotApp)
+			{
+				<button class="tg-btn tg-open-app" style="margin:0;" @onclick="() => OpenCurrentBotAppAsync()">@ViewModel.OpenChatBotAppLabel</button>
+			}
+			<MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Inherit" OnClick="RefreshAsync" title="@LanguageService["tg_refresh"]" />
+		</div>
+
+		@if (ViewModel.IsForwardPickerOpen)
+		{
+			<div class="tg-forward-panel">
+				<div style="font-weight:600;margin-bottom:6px;">@LanguageService["tg_forward_pick"]</div>
+				@foreach (var target in ViewModel.ForwardTargets)
+				{
+					<button class="tg-btn" style="width:100%;margin-bottom:4px;justify-content:flex-start;" @key="@("fwd-"+target.Id)" @onclick="() => CompleteForwardAsync(target.Id)">
+						@target.Title
+					</button>
+				}
+				<button class="tg-btn" @onclick="() => ViewModel.CancelForwardPicker()">@LanguageService["cancel"]</button>
+			</div>
+		}
+
+		<div class="tg-messages" @ref="_messagesContainer" @onscroll="OnMessagesScroll">
+			@if (ViewModel.Messages.Count == 0)
+			{
+				<MudText Align="Align.Center" Class="ma-6 mud-text-secondary">@LanguageService["tg_chat_empty"]</MudText>
+			}
+			else
+			{
+				@foreach (var msg in ViewModel.Messages)
+				{
+					<div class="tg-bubble @(msg.IsOutgoing ? "out" : "in")" @key="@("msg-"+msg.Id)">
+						@if (!msg.IsOutgoing && !string.IsNullOrEmpty(msg.FromName))
+						{
+							<div class="tg-from">@msg.FromName</div>
+						}
+						@if (!string.IsNullOrEmpty(msg.ReplyPreview))
+						{
+							<div class="tg-reply">@msg.ReplyPreview</div>
+						}
+						@if (!string.IsNullOrEmpty(msg.FormattedText))
+						{
+							<span>@msg.FormattedText</span>
+						}
+						@if (msg.HasMedia && msg.MediaKind != TelegramMediaKinds.Sticker && msg.MediaKind != TelegramMediaKinds.None)
+						{
+							<span class="tg-media-link" @onclick="() => DownloadMediaAsync(msg)" @onclick:stopPropagation="true">
+								@(string.IsNullOrEmpty(msg.MediaLabel) ? msg.MediaKind : msg.MediaLabel) — @LanguageService["tg_download"]
+							</span>
+						}
+						else if (msg.MediaKind == TelegramMediaKinds.Sticker)
+						{
+							<div class="tg-chat-preview">[Sticker]</div>
+						}
+						@if (msg.Buttons != null && msg.Buttons.Count > 0)
+						{
+							<div class="tg-bot-row">
+								@foreach (var btn in msg.Buttons)
+								{
+									<button class="tg-bot-btn" @onclick="() => ClickBotAsync(btn)">@btn.Text</button>
+								}
+							</div>
+						}
+						<div class="tg-time">@FormatTime(msg.Date)</div>
+						<div class="tg-reaction-count @(msg.HasMyReaction ? "mine" : null)">
+							@LanguageService["tg_reactions"]: @msg.ReactionCount
+						</div>
+						<div class="tg-msg-actions">
+							<button class="tg-format-btn" @onclick="() => ViewModel.BeginReply(msg)">@LanguageService["tg_reply"]</button>
+							<button class="tg-format-btn" @onclick="() => ViewModel.BeginForward(msg, dropAuthor: true)">@LanguageService["tg_fwd_no_quote"]</button>
+							<button class="tg-format-btn" @onclick="() => ViewModel.BeginForward(msg, dropAuthor: false)">@LanguageService["tg_fwd_normal"]</button>
+							<button class="tg-format-btn" @onclick="() => SaveWebdavAsync(msg)">@LanguageService["tg_save_webdav"]</button>
+							<button class="tg-format-btn" @onclick="() => CopyMsgAsync(msg)">@LanguageService["tg_copy"]</button>
+							<button class="tg-format-btn" @onclick="() => DeleteMsgAsync(msg)">@LanguageService["tg_delete_for_me"]</button>
+							@if (msg.IsOutgoing)
+							{
+								<button class="tg-format-btn" @onclick="() => ViewModel.BeginEditMessage(msg)">@LanguageService["tg_edit"]</button>
+							}
+							<button class="tg-format-btn" @onclick="() => LikeMsgAsync(msg)">@LanguageService["tg_like"]</button>
+						</div>
+					</div>
+				}
+				@if (ViewModel.HasMoreMessages)
+				{
+					<div style="text-align:center;padding:8px;">
+						<button class="tg-btn" @onclick="LoadOlderAsync" disabled="@(ViewModel.IsBusy || ViewModel.IsLoadingOlder)">
+							@(ViewModel.IsLoadingOlder ? LanguageService["tg_loading_older"] : LanguageService["tg_load_older"])
+						</button>
+					</div>
+				}
+			}
+		</div>
+
+		<div class="tg-format-bar">
+			<button class="tg-format-btn" @onclick='() => ViewModel.WrapComposerFormat("*")' title="Bold"><b>B</b></button>
+			<button class="tg-format-btn" @onclick='() => ViewModel.WrapComposerFormat("_")' title="Italic"><i>I</i></button>
+			<button class="tg-format-btn" @onclick='() => ViewModel.WrapComposerFormat("`")' title="Code">`</button>
+			<button class="tg-format-btn" @onclick='() => ViewModel.WrapComposerFormat("```", "```")' title="Pre">pre</button>
+			<button class="tg-format-btn" @onclick='() => ViewModel.WrapComposerFormat("__")' title="Underline"><u>U</u></button>
+			<button class="tg-format-btn" @onclick='() => ViewModel.WrapComposerFormat("~")' title="Strike">S</button>
+			<button class="tg-format-btn" @onclick='() => ViewModel.WrapComposerFormat("||")' title="Spoiler">||</button>
+			<button class="tg-format-btn" @onclick='() => ViewModel.InsertComposerSnippet("[text](https://)")' title="Link">link</button>
+		</div>
+
+		@if (ViewModel.PendingAttachments.Count > 0)
+		{
+			<div class="tg-attach-list">
+				@for (int i = 0; i < ViewModel.PendingAttachments.Count; i++)
+				{
+					int index = i;
+					var att = ViewModel.PendingAttachments[i];
+					<div>
+						@(att.IsPhoto ? "img" : "file") @att.FileName
+						<button class="tg-format-btn" @onclick="() => ViewModel.RemovePendingAttachment(index)">×</button>
+					</div>
+				}
+			</div>
+		}
+
+		@if (ViewModel.IsEditingMessage)
+		{
+			<div class="tg-hint" style="color:#7dd3fc;">
+				@LanguageService["tg_editing"]
+				<button class="tg-format-btn" @onclick="() => ViewModel.CancelEditMessage()">@LanguageService["cancel"]</button>
+			</div>
+		}
+
+		@if (ViewModel.IsReplying)
+		{
+			<div class="tg-hint" style="color:#86efac;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+				<span>@LanguageService["tg_replying"]: @ViewModel.ReplyPreview</span>
+				<button class="tg-format-btn" @onclick="() => ViewModel.CancelReply()">@LanguageService["cancel"]</button>
+			</div>
+		}
+
+		<div class="tg-composer">
+			<label class="tg-sound-toggle" title="@LanguageService["tg_send_with_sound"]">
+				<input type="checkbox" checked="@ViewModel.SendWithSound" @onchange="OnSendWithSoundChanged" />
+				<MudIcon Icon="@(ViewModel.SendWithSound ? Icons.Material.Filled.VolumeUp : Icons.Material.Filled.VolumeOff)" Size="Size.Small" />
+			</label>
+			<MudIconButton Icon="@Icons.Material.Filled.AttachFile" Color="Color.Inherit" OnClick="AttachFileAsync" title="@LanguageService["tg_attach_file"]" />
+			<MudIconButton Icon="@Icons.Material.Filled.Image" Color="Color.Inherit" OnClick="AttachPhotoAsync" title="@LanguageService["tg_attach_photo"]" />
+			<MudTextField T="string" @bind-Value="ViewModel.ComposerText" Placeholder="@(ViewModel.IsEditingMessage ? LanguageService["tg_edit_placeholder"] : LanguageService["tg_type_message"])"
+				Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" Class="flex-grow-1" Immediate="true" />
+			<MudIconButton Icon="@(ViewModel.IsEditingMessage ? Icons.Material.Filled.Check : Icons.Material.Filled.Send)" Color="Color.Primary" Disabled="@(!ViewModel.CanSend)" OnClick="SendAsync" title="@(ViewModel.IsEditingMessage ? LanguageService["tg_edit"] : LanguageService["tg_send"])" />
+		</div>
+	}
+	else
+	{
+		<div class="tg-topbar">
+			<div class="tg-account-label">@ViewModel.ActiveAccountLabel</div>
+			<button class="tg-btn" @onclick="() => ViewModel.OpenAccountsCommand.Execute(null)" title="@LanguageService["tg_accounts"]">⋮</button>
+			<button class="tg-btn" @onclick="RefreshAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_refresh"]</button>
+		</div>
+
+		@if (ViewModel.IsAccountsMenuOpen)
+		{
+			<div class="tg-accounts-panel">
+				<div style="font-weight:600;margin-bottom:6px;">@LanguageService["tg_accounts"]</div>
+				@foreach (var account in ViewModel.Accounts)
+				{
+					<div class="tg-account-row @(account.Id == ViewModel.ActiveAccountId ? "active" : null)">
+						<div style="flex:1;cursor:pointer;" @onclick="() => SwitchAccountAsync(account.Id)">
+							<div>@(string.IsNullOrWhiteSpace(account.DisplayName) ? account.Phone : account.DisplayName)</div>
+							<div class="tg-chat-preview">@account.Phone @(string.IsNullOrEmpty(account.Username) ? null : "@" + account.Username)</div>
+						</div>
+						<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => RemoveAccountAsync(account.Id)" title="@LanguageService["delete"]" />
+					</div>
+				}
+				<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+					<button class="tg-btn primary" @onclick="StartQrLoginAsync">@LanguageService["tg_login_qr"]</button>
+					<button class="tg-btn" @onclick="AddAccountAsync">@LanguageService["tg_add_account_phone"]</button>
+					<button class="tg-btn" @onclick="() => ViewModel.ShowApiSetupCommand.Execute(null)">@LanguageService["tg_api_setup_title"]</button>
+					<button class="tg-btn" @onclick="() => ViewModel.CloseOverlayCommand.Execute(null)">@LanguageService["close"]</button>
+				</div>
+			</div>
+		}
+
+		@if (!ViewModel.HasAccounts)
+		{
+			<div class="tg-card">
+				<div class="tg-hint">@LanguageService["tg_empty_accounts"]</div>
+				<div class="tg-hint" style="color:#fbbf24;">@LanguageService["tg_login_sms_note"]</div>
+				<button class="tg-btn primary" @onclick="StartQrLoginAsync">@LanguageService["tg_login_qr"]</button>
+				<button class="tg-btn" @onclick="AddAccountAsync">@LanguageService["tg_add_account_phone"]</button>
+			</div>
+		}
+		else
+		{
+			<div class="tg-chat-panel">
+			@if (ViewModel.IsArchiveFolderOpen)
+			{
+				<div class="tg-conv-header">
+					<MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Color="Color.Inherit" OnClick="() => ViewModel.CloseArchiveFolder()" title="@LanguageService["back"]" />
+					<div class="tg-conv-title">@LanguageService["tg_archived_chats"]</div>
+				</div>
+			}
+
+			@if (ViewModel.HasChatSelection)
+			{
+				<div class="tg-selection-bar">
+					<span class="tg-hint" style="margin:0;align-self:center;">@ViewModel.SelectedChatCount</span>
+					@if (ViewModel.IsArchiveFolderOpen)
+					{
+						<button class="tg-btn" @onclick="ArchiveSelectedAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_unarchive"]</button>
+					}
+					else
+					{
+						<button class="tg-btn" @onclick="ArchiveSelectedAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_archive"]</button>
+					}
+					@if (ViewModel.SelectionHasUnpinned)
+					{
+						<button class="tg-btn" @onclick="PinSelectedAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_pin"]</button>
+					}
+					@if (ViewModel.SelectionHasPinned)
+					{
+						<button class="tg-btn" @onclick="UnpinSelectedAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_unpin"]</button>
+					}
+					<button class="tg-btn" @onclick="DeleteSelectedAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_delete_for_me"]</button>
+					<button class="tg-btn" @onclick="MuteSelectedAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_mute"]</button>
+					<button class="tg-btn" @onclick="UnmuteSelectedAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_unmute"]</button>
+					<button class="tg-btn" @onclick="ReadSelectedAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_read_all"]</button>
+					<button class="tg-btn" @onclick="() => ViewModel.ClearChatSelection()">@LanguageService["cancel"]</button>
+				</div>
+			}
+
+			@if (ViewModel.ShowArchivedFolderRow)
+			{
+				<div class="tg-archive-row" @onclick="() => ViewModel.OpenArchiveFolder()">
+					<div class="tg-archive-icon">
+						<MudIcon Icon="@Icons.Material.Filled.Archive" Size="Size.Small" />
+					</div>
+					<div class="tg-chat-body">
+						<div class="tg-chat-top">
+							<div class="tg-chat-title-row">
+								<div class="tg-chat-title">@LanguageService["tg_archived_chats"]</div>
+								@if (ViewModel.ArchivedUnreadCount > 0)
+								{
+									<div class="tg-unread">@ViewModel.ArchivedUnreadCount</div>
+								}
+							</div>
+							<div class="tg-chat-time">@ViewModel.ArchivedChatCount</div>
+						</div>
+						<div class="tg-chat-preview">@LanguageService["tg_archived_chats_hint"]</div>
+					</div>
+				</div>
+			}
+
+			@if (ViewModel.HasNoChats)
+			{
+				<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@(ViewModel.IsArchiveFolderOpen ? LanguageService["tg_empty_archived"] : LanguageService["tg_empty_chats"])</MudText>
+			}
+			else if (ViewModel.HasNoMatches)
+			{
+				<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["tg_no_matches"]</MudText>
+			}
+			else
+			{
+				@foreach (var chat in ViewModel.FilteredChats)
+				{
+					bool selected = ViewModel.IsChatSelected(chat.Id);
+					<div class="tg-chat-row @(selected ? "selected" : null)" @key="@("chat-"+chat.Id)" @onclick="() => OpenChatAsync(chat)">
+						<div class="tg-avatar-col">
+							<div class="tg-avatar @(chat.IsBot ? "bot" : null)">@GetInitial(chat.Title)</div>
+							<input type="checkbox" class="tg-chat-check" checked="@selected"
+								@onclick:stopPropagation="true"
+								@onchange="() => ViewModel.ToggleChatSelection(chat.Id)" />
+						</div>
+						<div class="tg-chat-body">
+							<div class="tg-chat-top">
+								<div class="tg-chat-title-row">
+									<div class="tg-chat-title">@chat.Title @(chat.IsBot ? "· bot" : null)</div>
+									@if (chat.IsPinned)
+									{
+										<span class="tg-pinned-mark" title="@LanguageService["tg_pin"]">pin</span>
+									}
+									@if (chat.IsMuted)
+									{
+										<span class="tg-muted-mark" title="@LanguageService["tg_mute"]">mute</span>
+									}
+									@if (chat.UnreadCount > 0)
+									{
+										<div class="tg-unread">@chat.UnreadCount</div>
+									}
+								</div>
+								<div class="tg-chat-time">@FormatTime(chat.LastMessageAt)</div>
+							</div>
+							<div class="tg-chat-preview">@chat.LastMessagePreview</div>
+							@if (chat.HasBotApp)
+							{
+								<button class="tg-btn tg-open-app" @onclick:stopPropagation="true" @onclick="() => OpenBotAppAsync(chat)">
+									@(string.IsNullOrWhiteSpace(chat.BotAppLabel) ? LanguageService["tg_open_app"] : chat.BotAppLabel)
+								</button>
+							}
+						</div>
+					</div>
+				}
+			}
+			</div>
+		}
+	}
+
+	@if (ViewModel.IsBusy)
+	{
+		<MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-2" />
+	}
+</div>
+
+@code {
+	[Parameter]
+	public TelegramViewModel ViewModel { get; set; }
+
+	private ElementReference _messagesContainer;
+
+	protected override async Task OnInitializedAsync()
+	{
+		ViewModel.StateChanged += OnStateChanged;
+		MessengerService.Register<AfterResumeMessage>(this, (recipient, message) => InvokeAsync(StateHasChanged));
+		await ViewModel.InitializeAsync();
+	}
+
+	public void Dispose()
+	{
+		if (ViewModel != null)
+			ViewModel.StateChanged -= OnStateChanged;
+		MessengerService.Unregister<AfterResumeMessage>(this);
+	}
+
+	private void OnStateChanged()
+	{
+		InvokeAsync(StateHasChanged);
+	}
+
+	private static string GetInitial(string title)
+	{
+		if (string.IsNullOrWhiteSpace(title))
+			return "?";
+		return title.Trim().Substring(0, 1).ToUpperInvariant();
+	}
+
+	private static string FormatTime(DateTime dt)
+	{
+		if (dt == default)
+			return string.Empty;
+		DateTime local = dt.Kind == DateTimeKind.Utc ? dt.ToLocalTime() : dt;
+		if (local.Date == DateTime.Today)
+			return local.ToString("HH:mm");
+		return local.ToString("dd.MM HH:mm");
+	}
+
+	private async Task SaveApiAsync()
+	{
+		if (ViewModel.SaveApiCredentialsCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.SaveApiCredentialsCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task ContinueLoginAsync()
+	{
+		if (ViewModel.ContinueLoginCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.ContinueLoginCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task CancelLoginAsync()
+	{
+		if (ViewModel.CancelLoginCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.CancelLoginCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task ResendCodeAsync()
+	{
+		if (ViewModel.ResendCodeCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.ResendCodeCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task AddAccountAsync()
+	{
+		if (ViewModel.AddAccountCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.AddAccountCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task StartQrLoginAsync()
+	{
+		if (ViewModel.StartQrLoginCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.StartQrLoginCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task ArchiveSelectedAsync()
+	{
+		await ViewModel.ArchiveSelectedChatsAsync();
+		StateHasChanged();
+	}
+
+	private async Task DeleteSelectedAsync()
+	{
+		await ViewModel.DeleteSelectedChatsAsync();
+		StateHasChanged();
+	}
+
+	private async Task MuteSelectedAsync()
+	{
+		await ViewModel.MuteSelectedChatsAsync();
+		StateHasChanged();
+	}
+
+	private async Task UnmuteSelectedAsync()
+	{
+		await ViewModel.UnmuteSelectedChatsAsync();
+		StateHasChanged();
+	}
+
+	private async Task ReadSelectedAsync()
+	{
+		await ViewModel.ReadSelectedChatsAsync();
+		StateHasChanged();
+	}
+
+	private async Task PinSelectedAsync()
+	{
+		await ViewModel.PinSelectedChatsAsync();
+		StateHasChanged();
+	}
+
+	private async Task UnpinSelectedAsync()
+	{
+		await ViewModel.UnpinSelectedChatsAsync();
+		StateHasChanged();
+	}
+
+	private async Task OpenBotAppAsync(TelegramChatModel chat)
+	{
+		await ViewModel.OpenBotAppAsync(chat);
+		StateHasChanged();
+	}
+
+	private async Task OpenCurrentBotAppAsync()
+	{
+		await ViewModel.OpenCurrentBotAppAsync();
+		StateHasChanged();
+	}
+
+	private async Task LoadOlderAsync()
+	{
+		await ViewModel.LoadOlderMessagesAsync();
+		StateHasChanged();
+	}
+
+	private async Task OnMessagesScroll(EventArgs args)
+	{
+		if (!ViewModel.HasMoreMessages || ViewModel.IsLoadingOlder)
+			return;
+		try
+		{
+			bool nearBottom = await JSRuntime.InvokeAsync<bool>(
+				"eval",
+				"(function(el){ if(!el) return false; return (el.scrollHeight - el.scrollTop - el.clientHeight) < 96; })(document.querySelector('.tg-messages'))");
+			if (!nearBottom)
+				return;
+		}
+		catch
+		{
+			return;
+		}
+
+		await ViewModel.LoadOlderMessagesAsync();
+		StateHasChanged();
+	}
+
+	private async Task CompleteForwardAsync(string chatKey)
+	{
+		await ViewModel.CompleteForwardAsync(chatKey);
+		StateHasChanged();
+	}
+
+	private async Task CopyMsgAsync(TelegramMessageModel msg)
+	{
+		await ViewModel.CopyMessageTextAsync(msg);
+		StateHasChanged();
+	}
+
+	private async Task SaveWebdavAsync(TelegramMessageModel msg)
+	{
+		await ViewModel.SaveMessageToWebdavAsync(msg);
+		StateHasChanged();
+	}
+
+	private async Task DeleteMsgAsync(TelegramMessageModel msg)
+	{
+		await ViewModel.DeleteMessageAsync(msg);
+		StateHasChanged();
+	}
+
+	private async Task LikeMsgAsync(TelegramMessageModel msg)
+	{
+		await ViewModel.ToggleLikeAsync(msg);
+		StateHasChanged();
+	}
+
+	private void OnSendWithSoundChanged(ChangeEventArgs e)
+	{
+		ViewModel.SendWithSound = e?.Value is bool b && b
+			|| string.Equals(e?.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase)
+			|| string.Equals(e?.Value?.ToString(), "on", StringComparison.OrdinalIgnoreCase);
+		StateHasChanged();
+	}
+
+	private async Task RefreshAsync()
+	{
+		if (ViewModel.RefreshCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.RefreshCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task OpenChatAsync(TelegramChatModel chat)
+	{
+		await ViewModel.OpenChatAsync(chat);
+		StateHasChanged();
+	}
+
+	private async Task SwitchAccountAsync(string id)
+	{
+		await ViewModel.SwitchAccountAsync(id);
+		StateHasChanged();
+	}
+
+	private async Task RemoveAccountAsync(string id)
+	{
+		await ViewModel.RemoveAccountAsync(id);
+		StateHasChanged();
+	}
+
+	private async Task SendAsync()
+	{
+		if (ViewModel.SendCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.SendCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task AttachFileAsync()
+	{
+		if (ViewModel.AttachFileCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.AttachFileCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task AttachPhotoAsync()
+	{
+		if (ViewModel.AttachPhotoCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.AttachPhotoCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task DownloadMediaAsync(TelegramMessageModel msg)
+	{
+		await ViewModel.DownloadMediaAsync(msg);
+		StateHasChanged();
+	}
+
+	private async Task ClickBotAsync(TelegramBotButtonModel btn)
+	{
+		await ViewModel.ClickBotButtonAsync(btn);
+		StateHasChanged();
+	}
+}
