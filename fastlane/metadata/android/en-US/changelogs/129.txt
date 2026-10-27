@@ -1,0 +1,1 @@
+Contacts SMS opens the in-app SMS composer with the selected number. SMS tab has a New message button with a typed number field. External sms/smsto intents are handled by aNote.

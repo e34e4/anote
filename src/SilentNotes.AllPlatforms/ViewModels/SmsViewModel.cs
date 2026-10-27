@@ -387,13 +387,42 @@ namespace SilentNotes.ViewModels
 
         private void ComposeNew()
         {
+            ComposeNew(null, null);
+        }
+
+        /// <summary>
+        /// Opens a new conversation composer, optionally pre-filled with a phone number and body.
+        /// </summary>
+        /// <param name="phoneNumber">Phone number to send to, or null for an empty To field.</param>
+        /// <param name="body">Optional message body to pre-fill.</param>
+        public void ComposeNew(string phoneNumber, string body = null)
+        {
             SetSelectionMode(false);
             _openThreadId = 0;
-            _openAddress = string.Empty;
+            _openAddress = phoneNumber?.Trim() ?? string.Empty;
             _openTitle = _languageService["sms_new_message"];
             _messages = new List<SmsMessageItemViewModel>();
+            _composerText = body ?? string.Empty;
             IsConversationOpen = true;
-            OnPropertyChanged(nameof(IsNewConversation), nameof(ConversationTitle), nameof(OpenAddress), nameof(Messages), nameof(HasNoMessages), nameof(CanSend));
+            OnPropertyChanged(
+                nameof(IsNewConversation),
+                nameof(ConversationTitle),
+                nameof(OpenAddress),
+                nameof(Messages),
+                nameof(HasNoMessages),
+                nameof(ComposerText),
+                nameof(CanSend));
+        }
+
+        /// <summary>
+        /// Handles a pending SMS compose request (from a contact action or an external sms/smsto intent).
+        /// </summary>
+        /// <param name="request">The compose request.</param>
+        public void HandleIntent(SmsIntentRequest request)
+        {
+            if (request == null)
+                return;
+            ComposeNew(request.PhoneNumber, request.Body);
         }
 
         private void LoadMessages()

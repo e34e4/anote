@@ -12,6 +12,7 @@ using CommunityToolkit.Mvvm.Input;
 using SilentNotes.Models;
 using SilentNotes.Services;
 using SilentNotes.Workers;
+using SilentNotes;
 
 namespace SilentNotes.ViewModels
 {
@@ -32,6 +33,7 @@ namespace SilentNotes.ViewModels
         private readonly INativeBrowserService _browserService;
         private readonly IFilePickerService _filePickerService;
         private readonly IFeedbackService _feedbackService;
+        private readonly IMessengerService _messengerService;
 
         private string _filter;
         private Guid? _editingContactId;
@@ -45,9 +47,10 @@ namespace SilentNotes.ViewModels
         /// <param name="languageService">A language service.</param>
         /// <param name="repositoryService">The storage service used to persist changes.</param>
         /// <param name="clipboardService">The service used to copy a phone number.</param>
-        /// <param name="browserService">The service used to launch call/sms/telegram links.</param>
+        /// <param name="browserService">The service used to launch call/telegram links.</param>
         /// <param name="filePickerService">The service used to import a contacts file.</param>
         /// <param name="feedbackService">The service used to show toast messages.</param>
+        /// <param name="messengerService">Used to open the SMS tab for in-app compose.</param>
         public ContactsViewModel(
             NoteRepositoryModel model,
             ILanguageService languageService,
@@ -55,7 +58,8 @@ namespace SilentNotes.ViewModels
             IClipboardService clipboardService,
             INativeBrowserService browserService,
             IFilePickerService filePickerService,
-            IFeedbackService feedbackService)
+            IFeedbackService feedbackService,
+            IMessengerService messengerService = null)
         {
             _model = model;
             _languageService = languageService;
@@ -64,12 +68,13 @@ namespace SilentNotes.ViewModels
             _browserService = browserService;
             _filePickerService = filePickerService;
             _feedbackService = feedbackService;
+            _messengerService = messengerService;
 
             AddCommand = new RelayCommand(Add);
             DeleteCommand = new RelayCommand<ContactItemViewModel>(Delete);
             CopyCommand = new AsyncRelayCommand<string>(CopyPhone);
             CallCommand = new RelayCommand<string>(phone => OpenExternal("tel:" + EncodePhone(phone)));
-            SmsCommand = new RelayCommand<string>(phone => OpenExternal("smsto:" + EncodePhone(phone)));
+            SmsCommand = new RelayCommand<string>(StartSms);
             TelegramCommand = new RelayCommand<string>(phone => OpenExternal("https://t.me/" + EncodePhone(phone)));
             StartEditNumbersCommand = new RelayCommand<ContactItemViewModel>(StartEditNumbers);
             SaveNumbersCommand = new RelayCommand(SaveNumbers);
@@ -309,6 +314,22 @@ namespace SilentNotes.ViewModels
         private void OpenExternal(string url)
         {
             _browserService.OpenWebsite(url);
+        }
+
+        private void StartSms(string phone)
+        {
+            if (string.IsNullOrWhiteSpace(phone))
+                return;
+
+            SmsIntentRequest.Pending = new SmsIntentRequest { PhoneNumber = phone.Trim() };
+            if (_messengerService != null)
+            {
+                _messengerService.Send(new SmsIntentMessage());
+                return;
+            }
+
+            // Fallback when no messenger is available (e.g. unit tests): open externally.
+            OpenExternal("smsto:" + EncodePhone(phone));
         }
 
         private async Task ImportAsync()

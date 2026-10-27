@@ -242,6 +242,19 @@
 	}
 	else
 	{
+		<div class="sms-toolbar">
+			@if (!ViewModel.IsEmpty)
+			{
+				<MudText Typo="Typo.caption" Class="mud-text-secondary">@ViewModel.CountText</MudText>
+			}
+			<MudSpacer />
+			@if (!ViewModel.IsEmpty && !ViewModel.HasNoMatches)
+			{
+				<MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.DoneAll" OnClick="MarkAllRead">@LanguageService["sms_mark_all_read"]</MudButton>
+			}
+			<MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="() => ViewModel.ComposeNewCommand.Execute(null)">@LanguageService["sms_new_sms"]</MudButton>
+		</div>
+
 		@if (ViewModel.IsEmpty)
 		{
 			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["sms_empty"]</MudText>
@@ -252,11 +265,6 @@
 		}
 		else
 		{
-			<div class="sms-toolbar">
-				<MudText Typo="Typo.caption" Class="mud-text-secondary">@ViewModel.CountText</MudText>
-				<MudSpacer />
-				<MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.DoneAll" OnClick="MarkAllRead">@LanguageService["sms_mark_all_read"]</MudButton>
-			</div>
 			@foreach (var thread in ViewModel.FilteredThreads)
 			{
 				<div class="sms-thread-row" @key="thread.Model.ThreadId">

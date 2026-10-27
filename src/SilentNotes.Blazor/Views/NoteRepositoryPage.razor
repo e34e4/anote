@@ -683,7 +683,8 @@
 			ClipboardService,
 			NativeBrowserService,
 			FilePickerService,
-			FeedbackService);
+			FeedbackService,
+			MessengerService);
 
 		_calculatorViewModel = new CalculatorViewModel(LanguageService, SettingsService);
 		_calendarViewModel = new CalendarViewModel(DeviceCalendarService, LanguageService, FeedbackService);
@@ -788,6 +789,15 @@
 			SetActiveTab(11);
 		}
 
+		// When the app was started by an sms/smsto intent or a contact SMS action, open the SMS tab.
+		SmsIntentRequest pendingSmsIntent = SmsIntentRequest.Pending;
+		if (pendingSmsIntent != null)
+		{
+			SmsIntentRequest.Pending = null;
+			_smsViewModel.HandleIntent(pendingSmsIntent);
+			SetActiveTab(7);
+		}
+
 		// When a tab was selected from the floating button menu, activate it.
 		TabIntentRequest pendingTabIntent = TabIntentRequest.Pending;
 		if (pendingTabIntent != null)
@@ -837,6 +847,8 @@
 			this, (recipient, message) => OnSmsChanged());
 		MessengerService.Register<PhoneIntentMessage>(
 			this, (recipient, message) => OnPhoneIntent());
+		MessengerService.Register<SmsIntentMessage>(
+			this, (recipient, message) => OnSmsIntent());
 		MessengerService.Register<TabIntentMessage>(
 			this, (recipient, message) => OnTabIntent());
 		MessengerService.Register<MediaIntentMessage>(
@@ -902,6 +914,7 @@
 		MessengerService.Unregister<ClockIntentMessage>(this);
 		MessengerService.Unregister<SmsChangedMessage>(this);
 		MessengerService.Unregister<PhoneIntentMessage>(this);
+		MessengerService.Unregister<SmsIntentMessage>(this);
 		MessengerService.Unregister<TabIntentMessage>(this);
 		MessengerService.Unregister<MediaIntentMessage>(this);
 		MessengerService.Unregister<DocumentIntentMessage>(this);
@@ -977,6 +990,21 @@
 			PhoneIntentRequest.Pending = null;
 			SetActiveTab(11);
 			_phoneViewModel?.HandleIntent(request);
+			StateHasChanged();
+		});
+	}
+
+	private void OnSmsIntent()
+	{
+		InvokeAsync(() =>
+		{
+			SmsIntentRequest request = SmsIntentRequest.Pending;
+			if (request == null)
+				return;
+
+			SmsIntentRequest.Pending = null;
+			SetActiveTab(7);
+			_smsViewModel?.HandleIntent(request);
 			StateHasChanged();
 		});
 	}

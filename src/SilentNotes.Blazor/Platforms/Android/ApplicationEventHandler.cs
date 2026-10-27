@@ -58,6 +58,9 @@ namespace SilentNotes.Platforms
             // Check whether the app was started by a phone/dial intent or incoming call.
             ConsumePhoneIntent(activity.Intent);
 
+            // Check whether the app was started by an sms/smsto compose intent.
+            ConsumeSmsIntent(activity.Intent);
+
             // Check whether the app was started from the floating button menu to open a specific tab.
             ConsumeTabIntent(activity.Intent);
 
@@ -87,6 +90,7 @@ namespace SilentNotes.Platforms
             ConsumeCalendarIntent(intent);
             ConsumeClockIntent(intent);
             ConsumePhoneIntent(intent);
+            ConsumeSmsIntent(intent);
             ConsumeTabIntent(intent);
             ConsumeMediaIntent(intent);
             ConsumeDocumentIntent(intent);
@@ -367,6 +371,68 @@ namespace SilentNotes.Platforms
                 PhoneIntentRequest.Pending = new PhoneIntentRequest { PhoneNumber = number };
                 Ioc.Instance.GetService<IMessengerService>()?.Send(new PhoneIntentMessage());
             }
+        }
+
+        /// <summary>
+        /// Checks whether the intent opens an SMS composer (SENDTO/VIEW with sms/smsto/mms/mmsto),
+        /// and remembers it in <see cref="SmsIntentRequest.Pending"/> so the SMS tab can compose.
+        /// </summary>
+        private void ConsumeSmsIntent(Intent intent)
+        {
+            SmsIntentRequest request = ParseSmsIntent(intent);
+            if (request == null)
+                return;
+
+            SmsIntentRequest.Pending = request;
+            Ioc.Instance.GetService<IMessengerService>()?.Send(new SmsIntentMessage());
+        }
+
+        private static SmsIntentRequest ParseSmsIntent(Intent intent)
+        {
+            if (intent == null)
+                return null;
+
+            string action = intent.Action;
+            global::Android.Net.Uri data = intent.Data;
+            string scheme = data?.Scheme ?? string.Empty;
+            bool isSmsScheme =
+                string.Equals(scheme, "sms", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(scheme, "smsto", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(scheme, "mms", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(scheme, "mmsto", StringComparison.OrdinalIgnoreCase);
+
+            if (!isSmsScheme)
+                return null;
+
+            if ((action != Intent.ActionSendto) && (action != Intent.ActionView))
+                return null;
+
+            string number = data.SchemeSpecificPart ?? string.Empty;
+            int queryIndex = number.IndexOf('?', StringComparison.Ordinal);
+            if (queryIndex >= 0)
+                number = number.Substring(0, queryIndex);
+            number = global::Android.Net.Uri.Decode(number)?.Trim() ?? string.Empty;
+
+            string body = GetStringExtraSafe(intent, "sms_body");
+            if (string.IsNullOrEmpty(body))
+                body = GetStringExtraSafe(intent, Intent.ExtraText);
+            if (string.IsNullOrEmpty(body))
+            {
+                try
+                {
+                    body = data.GetQueryParameter("body");
+                }
+                catch (Exception)
+                {
+                    body = null;
+                }
+            }
+
+            return new SmsIntentRequest
+            {
+                PhoneNumber = string.IsNullOrEmpty(number) ? null : number,
+                Body = string.IsNullOrEmpty(body) ? null : body,
+            };
         }
 
         /// <summary>

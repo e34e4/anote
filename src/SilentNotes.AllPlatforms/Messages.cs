@@ -235,6 +235,14 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Message to inform the main page that an SMS compose intent was received (or a contact SMS
+    /// action was used), so the SMS tab can open a new conversation.
+    /// </summary>
+    public class SmsIntentMessage
+    {
+    }
+
+    /// <summary>
     /// Message to inform the Phone tab that a phone call state or call history has changed.
     /// </summary>
     public class PhoneCallChangedMessage
