@@ -214,7 +214,7 @@ namespace SilentNotes.ViewModels
             get
             {
                 return _model.RssFeeds
-                    .Select(feed => new RssFeedItemViewModel(feed))
+                    .Select((feed, index) => new RssFeedItemViewModel(feed, index + 1))
                     .ToList();
             }
         }
@@ -497,20 +497,23 @@ namespace SilentNotes.ViewModels
 
             IsBusy = true;
             StatusMessage = _languageService["rss_fetching"];
-            var errors = new List<string>();
+            var errorNumbers = new List<int>();
             int mergedTotal = 0;
 
             try
             {
-                foreach (RssFeedModel feed in _model.RssFeeds.ToList())
+                IReadOnlyList<RssFeedModel> feedsSnapshot = _model.RssFeeds.ToList();
+                for (int feedIndex = 0; feedIndex < feedsSnapshot.Count; feedIndex++)
                 {
+                    RssFeedModel feed = feedsSnapshot[feedIndex];
+                    int feedNumber = feedIndex + 1;
                     try
                     {
                         string xml = await DownloadFeedXmlAsync(feed.Url);
                         RssFeedParser.ParsedFeed parsed = RssFeedParser.Parse(xml);
                         if (parsed == null)
                         {
-                            errors.Add(feed.Title ?? feed.Url);
+                            errorNumbers.Add(feedNumber);
                             continue;
                         }
 
@@ -556,7 +559,7 @@ namespace SilentNotes.ViewModels
                     }
                     catch (Exception)
                     {
-                        errors.Add(feed.Title ?? feed.Url);
+                        errorNumbers.Add(feedNumber);
                     }
                 }
 
@@ -564,9 +567,11 @@ namespace SilentNotes.ViewModels
                 NotifyFeedsChanged();
                 NotifyListChanged();
 
-                if (errors.Count > 0)
+                if (errorNumbers.Count > 0)
                 {
-                    StatusMessage = _languageService.LoadTextFmt("rss_fetch_partial", errors.Count);
+                    string numbers = string.Join(", ", errorNumbers.Select(n =>
+                        n.ToString(CultureInfo.InvariantCulture)));
+                    StatusMessage = _languageService.LoadTextFmt("rss_fetch_partial", numbers);
                     _feedbackService.ShowToast(StatusMessage, FeedbackSeverity.Warning);
                 }
                 else
@@ -884,10 +889,14 @@ namespace SilentNotes.ViewModels
     {
         private readonly RssFeedModel _model;
 
-        public RssFeedItemViewModel(RssFeedModel model)
+        public RssFeedItemViewModel(RssFeedModel model, int number = 0)
         {
             _model = model;
+            Number = number;
         }
+
+        /// <summary>1-based position in the Feeds list (for error reporting).</summary>
+        public int Number { get; }
 
         public Guid Id { get { return _model.Id; } }
         public string Title { get { return string.IsNullOrWhiteSpace(_model.Title) ? _model.Url : _model.Title; } }

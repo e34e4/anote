@@ -153,6 +153,10 @@ namespace SilentNotes.Models
         [XmlElement("reply_to_msg_id")]
         public int ReplyToMsgId { get; set; }
 
+        /// <summary>Display name of the author of the quoted / replied-to message.</summary>
+        [XmlElement("reply_from_name")]
+        public string ReplyFromName { get; set; } = string.Empty;
+
         [XmlElement("reply_preview")]
         public string ReplyPreview { get; set; } = string.Empty;
 

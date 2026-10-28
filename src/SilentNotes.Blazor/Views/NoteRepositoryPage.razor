@@ -1340,10 +1340,10 @@
 		_persistedActiveTab = index;
 		if (index == 16)
 			_passwordViewModel?.EnsureLoaded();
-		if (index == RssViewModel.TabIndex && _rssViewModel != null && _rssViewModel.HasFeeds && !_rssViewModel.IsBusy)
+		if (index == RssViewModel.TabIndex && _rssViewModel != null && _rssViewModel.HasFeeds)
 		{
+			// Show cached articles immediately; remote fetch is manual via Refresh.
 			_rssViewModel.LoadFromCache();
-			_ = _rssViewModel.RefreshAsync();
 		}
 	}
 

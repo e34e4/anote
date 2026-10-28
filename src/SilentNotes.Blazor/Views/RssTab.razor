@@ -112,6 +112,21 @@
 		margin-bottom: 8px;
 		background: #0a0a0a;
 	}
+	.rss-feed-number {
+		width: 28px;
+		height: 28px;
+		border-radius: 8px;
+		background: #1a1a1a;
+		border: 1px solid #2a2a2a;
+		color: #c8c8c8;
+		font-size: 0.78rem;
+		font-weight: 700;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		margin-right: 8px;
+	}
 	.rss-feed-url {
 		color: #8e8e8e;
 		font-size: 0.78rem;
@@ -148,6 +163,7 @@
 					{
 						<div class="rss-feed-card" @key="feed.Id">
 							<div class="d-flex align-center">
+								<div class="rss-feed-number" title="#@feed.Number">@feed.Number</div>
 								<div class="flex-grow-1">
 									<MudText Typo="Typo.subtitle2">@feed.Title</MudText>
 									<div class="rss-feed-url">@feed.Url</div>

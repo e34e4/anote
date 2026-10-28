@@ -301,11 +301,49 @@
 		font-weight: 600;
 	}
 	.tg-reply {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
 		font-size: 0.75rem;
 		color: #a3a3a3;
-		border-left: 2px solid #525252;
-		padding-left: 6px;
-		margin-bottom: 4px;
+		border-left: 2px solid #38bdf8;
+		padding: 4px 4px 4px 8px;
+		margin-bottom: 6px;
+		background: rgba(56, 189, 248, 0.08);
+		border-radius: 0 8px 8px 0;
+		cursor: pointer;
+	}
+	.tg-reply-body {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.tg-reply-from {
+		font-weight: 700;
+		color: #7dd3fc;
+		margin-bottom: 1px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.tg-reply-text {
+		color: #c4c4c4;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.tg-reply-jump {
+		flex-shrink: 0;
+		width: 22px;
+		height: 22px;
+		border: none;
+		border-radius: 6px;
+		background: transparent;
+		color: #38bdf8;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		cursor: pointer;
 	}
 	.tg-media-link {
 		display: inline-block;
@@ -524,14 +562,30 @@
 			{
 				@foreach (var msg in ViewModel.Messages)
 				{
-					<div class="tg-bubble @(msg.IsOutgoing ? "out" : "in")" @key="@("msg-"+msg.Id)">
+					<div class="tg-bubble @(msg.IsOutgoing ? "out" : "in")" id="@($"tg-msg-{msg.Id}")" @key="@("msg-"+msg.Id)">
 						@if (!msg.IsOutgoing && !string.IsNullOrEmpty(msg.FromName))
 						{
 							<div class="tg-from">@msg.FromName</div>
 						}
-						@if (!string.IsNullOrEmpty(msg.ReplyPreview))
+						@if (msg.ReplyToMsgId > 0)
 						{
-							<div class="tg-reply">@msg.ReplyPreview</div>
+							<div class="tg-reply" @onclick="() => ScrollToMessageAsync(msg.ReplyToMsgId)" @onclick:stopPropagation="true"
+								title="@LanguageService["tg_jump_to_reply"]">
+								<div class="tg-reply-body">
+									@if (!string.IsNullOrEmpty(msg.ReplyFromName))
+									{
+										<div class="tg-reply-from">@msg.ReplyFromName</div>
+									}
+									@if (!string.IsNullOrEmpty(msg.ReplyPreview))
+									{
+										<div class="tg-reply-text">@msg.ReplyPreview</div>
+									}
+								</div>
+								<button type="button" class="tg-reply-jump" @onclick="() => ScrollToMessageAsync(msg.ReplyToMsgId)" @onclick:stopPropagation="true"
+									title="@LanguageService["tg_jump_to_reply"]">
+									<MudIcon Icon="@Icons.Material.Filled.SubdirectoryArrowLeft" Size="Size.Small" />
+								</button>
+							</div>
 						}
 						@if (!string.IsNullOrEmpty(msg.FormattedText))
 						{
@@ -980,6 +1034,21 @@
 
 		await ViewModel.LoadOlderMessagesAsync();
 		StateHasChanged();
+	}
+
+	private async Task ScrollToMessageAsync(int messageId)
+	{
+		if (messageId <= 0)
+			return;
+		try
+		{
+			await JSRuntime.InvokeVoidAsync(
+				"eval",
+				$"(function(){{ var el = document.getElementById('tg-msg-{messageId}'); if(!el) return; el.scrollIntoView({{behavior:'smooth', block:'center'}}); el.style.outline='1px solid #38bdf8'; setTimeout(function(){{ el.style.outline=''; }}, 1200); }})()");
+		}
+		catch
+		{
+		}
 	}
 
 	private async Task CompleteForwardAsync(string chatKey)

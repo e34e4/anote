@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -1257,6 +1258,7 @@ namespace SilentNotes.Services
                     .OrderByDescending(m => m.Date)
                     .ThenByDescending(m => m.Id)
                     .ToList();
+                EnrichReplyMetadata(mapped);
 
                 int pageSize = Math.Clamp(limit, 1, 100);
                 lock (runtime.Gate)
@@ -1534,6 +1536,7 @@ namespace SilentNotes.Services
                         int cmp = b.Date.CompareTo(a.Date);
                         return cmp != 0 ? cmp : b.Id.CompareTo(a.Id);
                     });
+                    EnrichReplyMetadata(runtime.Messages);
                     runtime.HasMoreMessages = mapped.Count >= pageSize;
                 }
 
@@ -2463,6 +2466,7 @@ namespace SilentNotes.Services
                         int cmp = b.Date.CompareTo(a.Date);
                         return cmp != 0 ? cmp : b.Id.CompareTo(a.Id);
                     });
+                    EnrichReplyMetadata(runtime.Messages);
                 }
 
                 TelegramChatModel chat = runtime.Chats.FirstOrDefault(c => string.Equals(c.Id, chatKey, StringComparison.Ordinal));
@@ -2685,6 +2689,27 @@ namespace SilentNotes.Services
                 model.ReplyToMsgId = replyHdr.reply_to_msg_id;
                 if (!string.IsNullOrEmpty(replyHdr.quote_text))
                     model.ReplyPreview = TelegramTextUtils.ReplaceEmojisWithSymbolic(replyHdr.quote_text);
+
+                if (replyHdr.flags.HasFlag(MessageReplyHeader.Flags.has_reply_from) && replyHdr.reply_from != null)
+                {
+                    MessageFwdHeader fwd = replyHdr.reply_from;
+                    if (!string.IsNullOrWhiteSpace(fwd.from_name))
+                        model.ReplyFromName = fwd.from_name;
+                    else if (!string.IsNullOrWhiteSpace(fwd.post_author))
+                        model.ReplyFromName = fwd.post_author;
+                    else if (fwd.from_id != null)
+                        model.ReplyFromName = ResolvePeerDisplayName(runtime, fwd.from_id);
+                }
+
+                // Fill preview/author from an already-loaded message in this chat when available.
+                TelegramMessageModel replied;
+                lock (runtime.Gate)
+                {
+                    replied = runtime.Messages.FirstOrDefault(m =>
+                        m.Id == model.ReplyToMsgId
+                        && string.Equals(m.ChatKey, chatKey, StringComparison.Ordinal));
+                }
+                ApplyReplySource(model, replied);
             }
 
             var spans = new List<TelegramTextEntitySpan>();
@@ -2706,6 +2731,58 @@ namespace SilentNotes.Services
             if (msg.flags.HasFlag(Message.Flags.has_reactions) && msg.reactions != null)
                 ApplyReactions(model, msg.reactions);
             return model;
+        }
+
+        /// <summary>
+        /// Fills missing reply preview / author fields by looking up quoted messages in the loaded list.
+        /// </summary>
+        private static void EnrichReplyMetadata(IList<TelegramMessageModel> messages)
+        {
+            if (messages == null || messages.Count == 0)
+                return;
+
+            var byId = new Dictionary<int, TelegramMessageModel>();
+            foreach (TelegramMessageModel message in messages)
+            {
+                if (message == null || message.Id <= 0)
+                    continue;
+                byId[message.Id] = message;
+            }
+
+            foreach (TelegramMessageModel message in messages)
+            {
+                if (message == null || message.ReplyToMsgId <= 0)
+                    continue;
+                if (!byId.TryGetValue(message.ReplyToMsgId, out TelegramMessageModel replied))
+                    continue;
+                ApplyReplySource(message, replied);
+            }
+        }
+
+        private static void ApplyReplySource(TelegramMessageModel model, TelegramMessageModel replied)
+        {
+            if (model == null || replied == null)
+                return;
+
+            if (string.IsNullOrWhiteSpace(model.ReplyFromName))
+            {
+                if (replied.IsOutgoing)
+                    model.ReplyFromName = "You";
+                else if (!string.IsNullOrWhiteSpace(replied.FromName))
+                    model.ReplyFromName = replied.FromName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(model.ReplyPreview))
+                return;
+
+            string preview = replied.Text;
+            if (string.IsNullOrWhiteSpace(preview))
+                preview = replied.MediaLabel;
+            if (string.IsNullOrWhiteSpace(preview))
+                preview = "#" + replied.Id.ToString(CultureInfo.InvariantCulture);
+            model.ReplyPreview = TelegramTextUtils.ReplaceEmojisWithSymbolic(preview);
+            if (model.ReplyPreview.Length > 160)
+                model.ReplyPreview = model.ReplyPreview.Substring(0, 157) + "…";
         }
 
         private static void ApplyReactions(TelegramMessageModel model, MessageReactions reactions)
