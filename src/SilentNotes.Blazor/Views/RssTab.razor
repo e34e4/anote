@@ -217,15 +217,15 @@
 			<MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">@ViewModel.StatusMessage</MudText>
 		}
 
-		@if (ViewModel.IsBusy)
+		@if (ViewModel.IsEmpty)
+		{
+			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["rss_empty"]</MudText>
+		}
+		else if (ViewModel.HasFeeds && ViewModel.VisibleArticles.Count == 0 && ViewModel.IsBusy)
 		{
 			<div class="d-flex justify-center ma-6">
 				<MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Medium" />
 			</div>
-		}
-		else if (ViewModel.IsEmpty)
-		{
-			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["rss_empty"]</MudText>
 		}
 		else if (ViewModel.HasNoArticles)
 		{
@@ -233,6 +233,12 @@
 		}
 		else
 		{
+			@if (ViewModel.IsBusy)
+			{
+				<div class="d-flex justify-center mb-2">
+					<MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Small" />
+				</div>
+			}
 			<div class="rss-list">
 				@foreach (var article in ViewModel.VisibleArticles)
 				{

@@ -49,6 +49,7 @@
 @inject IPasswordVaultSyncService PasswordVaultSyncService
 @inject ITelegramService TelegramService
 @inject IWebdavQuickSaveService WebdavQuickSaveService
+@inject IRssArticleCacheService RssArticleCacheService
 
 <style type="text/css">
 	.mud-main-content {
@@ -710,6 +711,7 @@
 			noteRepositoryModel,
 			LanguageService,
 			RepositoryStorageService,
+			RssArticleCacheService,
 			FilePickerService,
 			FeedbackService,
 			WebdavQuickSaveService,
@@ -1338,8 +1340,11 @@
 		_persistedActiveTab = index;
 		if (index == 16)
 			_passwordViewModel?.EnsureLoaded();
-		if (index == RssViewModel.TabIndex && _rssViewModel != null && _rssViewModel.HasFeeds && _rssViewModel.VisibleArticles.Count == 0 && !_rssViewModel.IsBusy)
+		if (index == RssViewModel.TabIndex && _rssViewModel != null && _rssViewModel.HasFeeds && !_rssViewModel.IsBusy)
+		{
+			_rssViewModel.LoadFromCache();
 			_ = _rssViewModel.RefreshAsync();
+		}
 	}
 
 	/// <summary>

@@ -3,16 +3,16 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-using NUnit.Framework;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SilentNotes.Models;
 using SilentNotes.Workers;
 
 namespace SilentNotesTest.Workers
 {
-    [TestFixture]
+    [TestClass]
     public class RssFeedParserTest
     {
-        [Test]
+        [TestMethod]
         public void ParsesRss20Feed()
         {
             const string xml = @"<?xml version=""1.0""?>
@@ -40,7 +40,7 @@ namespace SilentNotesTest.Workers
             Assert.IsNotNull(feed.Items[0].PublishedAt);
         }
 
-        [Test]
+        [TestMethod]
         public void ParsesAtomFeed()
         {
             const string xml = @"<?xml version=""1.0"" encoding=""utf-8""?>
@@ -64,7 +64,7 @@ namespace SilentNotesTest.Workers
             Assert.IsTrue(feed.Items[0].ItemKey.StartsWith("g:"));
         }
 
-        [Test]
+        [TestMethod]
         public void OpmlRoundTrip()
         {
             var feeds = new RssFeedListModel

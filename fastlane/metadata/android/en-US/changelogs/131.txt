@@ -1,0 +1,3 @@
+• RSS tab caches articles locally (SQLite) and opens instantly
+• New feed items are merged by guid/date; cache capped at ~1 GB
+• Cached list stays visible while feeds refresh in the background

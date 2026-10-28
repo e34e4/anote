@@ -201,6 +201,9 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\RssFeedListModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\RssReadItemModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\RssReadItemListModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\RssCachedArticleModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IRssArticleCacheService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\RssArticleCacheServiceBase.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\RssViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\RssFeedParser.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\OpmlFormat.cs" />

@@ -30,6 +30,7 @@ namespace SilentNotes.ViewModels
         private readonly NoteRepositoryModel _model;
         private readonly ILanguageService _languageService;
         private readonly IRepositoryStorageService _repositoryService;
+        private readonly IRssArticleCacheService _articleCache;
         private readonly IFilePickerService _filePickerService;
         private readonly IFeedbackService _feedbackService;
         private readonly IWebdavQuickSaveService _webdavQuickSave;
@@ -45,6 +46,7 @@ namespace SilentNotes.ViewModels
         private bool _isBusy;
         private string _statusMessage;
         private int _loadedPages = 1;
+        private bool _cacheLoaded;
         private RssArticleViewModel _openedArticle;
         private readonly List<RssArticleViewModel> _allArticles = new List<RssArticleViewModel>();
         private readonly Dictionary<Guid, List<RssArticleViewModel>> _articlesByFeed =
@@ -57,6 +59,7 @@ namespace SilentNotes.ViewModels
             NoteRepositoryModel model,
             ILanguageService languageService,
             IRepositoryStorageService repositoryService,
+            IRssArticleCacheService articleCache,
             IFilePickerService filePickerService,
             IFeedbackService feedbackService,
             IWebdavQuickSaveService webdavQuickSave,
@@ -66,6 +69,7 @@ namespace SilentNotes.ViewModels
             _model = model;
             _languageService = languageService;
             _repositoryService = repositoryService;
+            _articleCache = articleCache;
             _filePickerService = filePickerService;
             _feedbackService = feedbackService;
             _webdavQuickSave = webdavQuickSave;
@@ -421,6 +425,13 @@ namespace SilentNotes.ViewModels
 
             _model.RssFeeds.Remove(model);
             _articlesByFeed.Remove(feed.Id);
+            try
+            {
+                _articleCache.RemoveFeed(feed.Id);
+            }
+            catch (Exception)
+            {
+            }
             Persist();
             NotifyFeedsChanged();
             RebuildAllArticles();
@@ -428,6 +439,46 @@ namespace SilentNotes.ViewModels
             RaiseStateChanged();
         }
 
+        /// <summary>
+        /// Loads articles from the local SQLite cache so the RSS tab can render immediately.
+        /// Safe to call repeatedly; subsequent calls are no-ops while articles are already loaded.
+        /// </summary>
+        public void LoadFromCache()
+        {
+            if (!HasFeeds)
+            {
+                _allArticles.Clear();
+                _articlesByFeed.Clear();
+                _loadedPages = 1;
+                _cacheLoaded = true;
+                NotifyListChanged();
+                RaiseStateChanged();
+                return;
+            }
+
+            if (_cacheLoaded && _articlesByFeed.Count > 0)
+                return;
+
+            try
+            {
+                IReadOnlyList<RssCachedArticleModel> cached = _articleCache.LoadArticles(
+                    _model.RssFeeds.Select(f => f.Id));
+                ApplyCachedArticles(cached);
+                _cacheLoaded = true;
+            }
+            catch (Exception)
+            {
+                _cacheLoaded = true;
+            }
+
+            NotifyListChanged();
+            RaiseStateChanged();
+        }
+
+        /// <summary>
+        /// Fetches remote feeds and merges newer articles into the local cache and UI.
+        /// Existing cached articles remain visible while the fetch runs.
+        /// </summary>
         public async Task RefreshAsync()
         {
             if (!HasFeeds)
@@ -435,21 +486,22 @@ namespace SilentNotes.ViewModels
                 _allArticles.Clear();
                 _articlesByFeed.Clear();
                 _loadedPages = 1;
+                _cacheLoaded = true;
                 NotifyListChanged();
                 RaiseStateChanged();
                 return;
             }
 
+            if (!_cacheLoaded || _articlesByFeed.Count == 0)
+                LoadFromCache();
+
             IsBusy = true;
             StatusMessage = _languageService["rss_fetching"];
             var errors = new List<string>();
+            int mergedTotal = 0;
 
             try
             {
-                _articlesByFeed.Clear();
-                _allArticles.Clear();
-                _loadedPages = 1;
-
                 foreach (RssFeedModel feed in _model.RssFeeds.ToList())
                 {
                     try
@@ -482,16 +534,25 @@ namespace SilentNotes.ViewModels
                             Persist();
                         }
 
-                        var articles = parsed.Items
-                            .Select(item => new RssArticleViewModel(
-                                feed.Id,
-                                feed.Title ?? feed.Url,
-                                item,
-                                _model.RssReadItems.ContainsKey(item.ItemKey)))
-                            .OrderByDescending(a => a.PublishedAt ?? DateTime.MinValue)
+                        List<RssCachedArticleModel> fetched = parsed.Items
+                            .Select(item => ToCachedArticle(feed.Id, item))
                             .ToList();
 
-                        _articlesByFeed[feed.Id] = articles;
+                        int merged = _articleCache.MergeArticles(feed.Id, fetched);
+                        mergedTotal += merged;
+
+                        // Rebuild this feed's in-memory list from cache so we keep older items
+                        // that are no longer in the remote window.
+                        IReadOnlyList<RssCachedArticleModel> feedCached = _articleCache.LoadArticles(new[] { feed.Id });
+                        string feedTitle = feed.Title ?? feed.Url;
+                        _articlesByFeed[feed.Id] = feedCached
+                            .Select(c => new RssArticleViewModel(
+                                c,
+                                feedTitle,
+                                _model.RssReadItems.ContainsKey(c.ItemKey)))
+                            .OrderByDescending(a => a.PublishedAt ?? DateTime.MinValue)
+                            .ThenBy(a => a.Title, StringComparer.OrdinalIgnoreCase)
+                            .ToList();
                     }
                     catch (Exception)
                     {
@@ -511,6 +572,8 @@ namespace SilentNotes.ViewModels
                 else
                 {
                     StatusMessage = _languageService.LoadTextFmt("rss_fetch_ok", _allArticles.Count);
+                    if (mergedTotal > 0)
+                        StatusMessage = StatusMessage + " (+" + mergedTotal.ToString(CultureInfo.InvariantCulture) + ")";
                 }
             }
             finally
@@ -518,6 +581,52 @@ namespace SilentNotes.ViewModels
                 IsBusy = false;
                 RaiseStateChanged();
             }
+        }
+
+        private void ApplyCachedArticles(IReadOnlyList<RssCachedArticleModel> cached)
+        {
+            _articlesByFeed.Clear();
+            _allArticles.Clear();
+            _loadedPages = 1;
+
+            if (cached == null || cached.Count == 0)
+                return;
+
+            Dictionary<Guid, string> feedTitles = _model.RssFeeds.ToDictionary(
+                f => f.Id,
+                f => f.Title ?? f.Url);
+
+            foreach (IGrouping<Guid, RssCachedArticleModel> group in cached.GroupBy(c => c.FeedId))
+            {
+                string feedTitle = feedTitles.TryGetValue(group.Key, out string title)
+                    ? title
+                    : group.Key.ToString();
+                _articlesByFeed[group.Key] = group
+                    .Select(c => new RssArticleViewModel(
+                        c,
+                        feedTitle,
+                        _model.RssReadItems.ContainsKey(c.ItemKey)))
+                    .OrderByDescending(a => a.PublishedAt ?? DateTime.MinValue)
+                    .ThenBy(a => a.Title, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+
+            RebuildAllArticles();
+        }
+
+        private static RssCachedArticleModel ToCachedArticle(Guid feedId, RssFeedParser.ParsedItem item)
+        {
+            return new RssCachedArticleModel
+            {
+                FeedId = feedId,
+                ItemKey = item.ItemKey,
+                Title = item.Title,
+                Link = item.Link,
+                Summary = item.Summary,
+                ContentHtml = item.ContentHtml ?? string.Empty,
+                PublishedAt = item.PublishedAt,
+                CachedAt = DateTime.UtcNow,
+            };
         }
 
         private void LoadMore()
@@ -804,6 +913,20 @@ namespace SilentNotes.ViewModels
             ContentHtml = RssFeedParser.SanitizeHtml(item.ContentHtml);
             ContentPlain = RssFeedParser.StripHtml(item.ContentHtml);
             PublishedAt = item.PublishedAt;
+            _isRead = isRead;
+        }
+
+        public RssArticleViewModel(RssCachedArticleModel cached, string feedTitle, bool isRead)
+        {
+            FeedId = cached.FeedId;
+            FeedTitle = feedTitle;
+            ItemKey = cached.ItemKey;
+            Title = cached.Title;
+            Link = cached.Link;
+            Summary = cached.Summary;
+            ContentHtml = RssFeedParser.SanitizeHtml(cached.ContentHtml);
+            ContentPlain = RssFeedParser.StripHtml(cached.ContentHtml);
+            PublishedAt = cached.PublishedAt;
             _isRead = isRead;
         }
 
