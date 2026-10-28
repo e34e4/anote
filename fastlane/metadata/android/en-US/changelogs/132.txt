@@ -1,0 +1,3 @@
+• RSS no longer auto-fetches on tab open; use Refresh to load new items
+• Failed RSS feeds are reported by list number (shown in Feeds)
+• Telegram chats show quoted replies with author and jump-to-message link
