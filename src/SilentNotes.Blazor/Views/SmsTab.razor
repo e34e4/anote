@@ -235,7 +235,7 @@
 		{
 			<div class="sms-composer">
 				<MudTextField T="string" @bind-Value="ViewModel.ComposerText" Placeholder="@LanguageService["sms_type_message"]"
-					Variant="Variant.Outlined" Margin="Margin.Dense" Lines="1" Class="flex-grow-1" Immediate="true" />
+					Variant="Variant.Outlined" Margin="Margin.Dense" Lines="4" Class="flex-grow-1" Immediate="true" />
 				<MudIconButton Icon="@Icons.Material.Filled.Send" Color="Color.Primary" Disabled="@(!ViewModel.CanSend)" OnClick="SendAsync" title="@LanguageService["sms_send"]" />
 			</div>
 		}

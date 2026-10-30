@@ -202,6 +202,23 @@
 			</MudAlert>
 		}
 
+		<div class="reader-roots">
+			@for (int i = 0; i < ViewModel.PathTabs.Count; i++)
+			{
+				int tabIndex = i;
+				<button class="reader-chip @(tabIndex == ViewModel.ActivePathTabIndex ? "active" : null)"
+					@onclick="() => ViewModel.SelectPathTabCommand.Execute(tabIndex)"
+					title="@(ViewModel.PathTabs[tabIndex].Path)">
+					@(string.IsNullOrEmpty(ViewModel.PathTabs[tabIndex].Label) ? "/" : ViewModel.PathTabs[tabIndex].Label)
+					@if (ViewModel.PathTabs.Count > 1)
+					{
+						<span @onclick:stopPropagation="true" @onclick="() => ViewModel.ClosePathTabCommand.Execute(tabIndex)"> ✕</span>
+					}
+				</button>
+			}
+			<button class="reader-chip" @onclick="() => ViewModel.AddPathTabCommand.Execute(null)" title="@LanguageService["path_tab_add"]">+</button>
+		</div>
+
 		<div class="reader-toolbar">
 			@if (ViewModel.CanNavigateUp)
 			{

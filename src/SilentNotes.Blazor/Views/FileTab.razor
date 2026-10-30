@@ -95,6 +95,23 @@
 </style>
 
 <div class="file-root">
+	<div class="file-toolbar" style="flex-wrap:wrap;">
+		@for (int i = 0; i < ViewModel.PathTabs.Count; i++)
+		{
+			int tabIndex = i;
+			<button class="file-btn @(tabIndex == ViewModel.ActivePathTabIndex ? "primary" : null)"
+				@onclick="() => SelectPathTabAsync(tabIndex)"
+				title="@(ViewModel.PathTabs[tabIndex].Path)">
+				<span>@(string.IsNullOrEmpty(ViewModel.PathTabs[tabIndex].Label) ? "/" : ViewModel.PathTabs[tabIndex].Label)</span>
+				@if (ViewModel.PathTabs.Count > 1)
+				{
+					<span @onclick:stopPropagation="true" @onclick="() => ClosePathTabAsync(tabIndex)">✕</span>
+				}
+			</button>
+		}
+		<button class="file-btn" @onclick="AddPathTabAsync" title="@LanguageService["path_tab_add"]">+</button>
+	</div>
+
 	<div class="file-toolbar">
 		@if (ViewModel.CanNavigateUp)
 		{
@@ -105,6 +122,8 @@
 
 		<MudIconButton Icon="@Icons.Material.Filled.UploadFile" Size="Size.Small" Color="Color.Primary"
 			Disabled="@ViewModel.IsBusy" OnClick="UploadFileAsync" title="@LanguageService["file_upload"]" />
+		<MudIconButton Icon="@Icons.Material.Filled.NoteAdd" Size="Size.Small" Color="Color.Inherit"
+			Disabled="@(!ViewModel.IsConfigured || ViewModel.IsBusy)" OnClick="() => ViewModel.OpenNewTextFileCommand.Execute(null)" title="@LanguageService["file_new_txt"]" />
 		<MudIconButton Icon="@Icons.Material.Filled.CreateNewFolder" Size="Size.Small" Color="Color.Inherit"
 			Disabled="@(!ViewModel.IsConfigured || ViewModel.IsBusy)" OnClick="() => ViewModel.OpenNewFolderCommand.Execute(null)" title="@LanguageService["file_new_folder"]" />
 		<MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Color="Color.Inherit"
@@ -119,6 +138,16 @@
 			<MudTextField T="string" @bind-Value="ViewModel.NewFolderName" Placeholder="@LanguageService["file_folder_name"]"
 				Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1" Immediate="true" />
 			<MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Primary" Size="Size.Small" OnClick="CreateFolderAsync" />
+			<MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="() => ViewModel.CloseOverlayCommand.Execute(null)" />
+		</div>
+	}
+
+	@if (ViewModel.IsNewTextFileOpen)
+	{
+		<div class="d-flex align-center gap-2 my-2">
+			<MudTextField T="string" @bind-Value="ViewModel.NewTextFileName" Placeholder="@LanguageService["file_txt_name"]"
+				Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1" Immediate="true" />
+			<MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Primary" Size="Size.Small" OnClick="CreateTextFileAsync" />
 			<MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="() => ViewModel.CloseOverlayCommand.Execute(null)" />
 		</div>
 	}
@@ -267,6 +296,30 @@
 	private async Task CreateFolderAsync()
 	{
 		await ViewModel.CreateFolderAsync();
+		StateHasChanged();
+	}
+
+	private async Task CreateTextFileAsync()
+	{
+		await ViewModel.CreateTextFileAsync();
+		StateHasChanged();
+	}
+
+	private async Task AddPathTabAsync()
+	{
+		await ViewModel.AddPathTabAsync();
+		StateHasChanged();
+	}
+
+	private async Task ClosePathTabAsync(int index)
+	{
+		await ViewModel.ClosePathTabAsync(index);
+		StateHasChanged();
+	}
+
+	private async Task SelectPathTabAsync(int index)
+	{
+		await ViewModel.SelectPathTabAsync(index);
 		StateHasChanged();
 	}
 

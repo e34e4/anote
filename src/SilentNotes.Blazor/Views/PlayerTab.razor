@@ -133,6 +133,23 @@
 			</MudAlert>
 		}
 
+		<div class="player-roots">
+			@for (int i = 0; i < ViewModel.PathTabs.Count; i++)
+			{
+				int tabIndex = i;
+				<button class="player-chip @(tabIndex == ViewModel.ActivePathTabIndex ? "active" : null)"
+					@onclick="() => ViewModel.SelectPathTabCommand.Execute(tabIndex)"
+					title="@(ViewModel.PathTabs[tabIndex].Path)">
+					@(string.IsNullOrEmpty(ViewModel.PathTabs[tabIndex].Label) ? "/" : ViewModel.PathTabs[tabIndex].Label)
+					@if (ViewModel.PathTabs.Count > 1)
+					{
+						<span @onclick:stopPropagation="true" @onclick="() => ViewModel.ClosePathTabCommand.Execute(tabIndex)"> ✕</span>
+					}
+				</button>
+			}
+			<button class="player-chip" @onclick="() => ViewModel.AddPathTabCommand.Execute(null)" title="@LanguageService["path_tab_add"]">+</button>
+		</div>
+
 		<div class="player-toolbar">
 			@if (ViewModel.CanNavigateUp)
 			{
@@ -144,6 +161,13 @@
 				OnClick="PickFileAsync" title="@LanguageService["player_pick"]" />
 			<MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Color="Color.Inherit"
 				OnClick="() => ViewModel.RefreshCommand.Execute(null)" title="@LanguageService["player_refresh"]" />
+		</div>
+
+		<div class="player-toolbar">
+			<MudTextField T="string" @bind-Value="ViewModel.UrlDraft" Placeholder="@LanguageService["player_url_hint"]"
+				Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1" Immediate="true" />
+			<MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Color="Color.Primary"
+				OnClick="() => ViewModel.OpenUrlCommand.Execute(null)" title="@LanguageService["player_open_url"]" />
 		</div>
 
 		<div class="player-roots">

@@ -93,6 +93,12 @@ namespace SilentNotes.Models
             FloatingGestureSwipeRight = string.Empty;
             FloatingGestureLongPress = ":capture_text";
             FloatingGestureDoubleClick = string.Empty;
+            FilePathTabs = new List<PathTabSessionModel>();
+            PlayerPathTabs = new List<PathTabSessionModel>();
+            ReaderPathTabs = new List<PathTabSessionModel>();
+            FilePathTabIndex = 0;
+            PlayerPathTabIndex = 0;
+            ReaderPathTabIndex = 0;
         }
 
         /// <summary>
@@ -627,6 +633,45 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("screenshot_quality")]
         public int ScreenshotQuality { get; set; }
+
+        /// <summary>
+        /// Gets or sets WebDAV sub-path sessions for the File tab.
+        /// </summary>
+        [XmlArray("file_path_tabs")]
+        [XmlArrayItem("tab")]
+        public List<PathTabSessionModel> FilePathTabs { get; set; }
+
+        /// <summary>
+        /// Gets or sets the active File path session index.
+        /// </summary>
+        [XmlElement("file_path_tab_index")]
+        public int FilePathTabIndex { get; set; }
+
+        /// <summary>
+        /// Gets or sets local folder sessions for the Player tab.
+        /// </summary>
+        [XmlArray("player_path_tabs")]
+        [XmlArrayItem("tab")]
+        public List<PathTabSessionModel> PlayerPathTabs { get; set; }
+
+        /// <summary>
+        /// Gets or sets the active Player path session index.
+        /// </summary>
+        [XmlElement("player_path_tab_index")]
+        public int PlayerPathTabIndex { get; set; }
+
+        /// <summary>
+        /// Gets or sets local folder sessions for the Reader tab.
+        /// </summary>
+        [XmlArray("reader_path_tabs")]
+        [XmlArrayItem("tab")]
+        public List<PathTabSessionModel> ReaderPathTabs { get; set; }
+
+        /// <summary>
+        /// Gets or sets the active Reader path session index.
+        /// </summary>
+        [XmlElement("reader_path_tab_index")]
+        public int ReaderPathTabIndex { get; set; }
 
         /// <summary>
         /// Gets a value indicating whether a cloud storage is set.

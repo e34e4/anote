@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -24,20 +25,26 @@ namespace SilentNotes.ViewModels
         private readonly IMediaPlayerService _mediaService;
         private readonly ILanguageService _languageService;
         private readonly IFeedbackService _feedbackService;
+        private readonly ISettingsService _settingsService;
 
         private string _filter;
         private string _kindFilter = "all"; // all | audio | video | image
+        private string _urlDraft;
         private List<MediaItemViewModel> _items = new List<MediaItemViewModel>();
         private bool _isBusy;
+        private int _activePathTabIndex;
+        private List<PathTabSessionModel> _pathTabs = new List<PathTabSessionModel>();
 
         public PlayerViewModel(
             IMediaPlayerService mediaService,
             ILanguageService languageService,
-            IFeedbackService feedbackService)
+            IFeedbackService feedbackService,
+            ISettingsService settingsService = null)
         {
             _mediaService = mediaService;
             _languageService = languageService;
             _feedbackService = feedbackService;
+            _settingsService = settingsService;
 
             _mediaService.StateChanged += OnMediaStateChanged;
 
@@ -46,12 +53,17 @@ namespace SilentNotes.ViewModels
             NavigateUpCommand = new RelayCommand(NavigateUp);
             EnterItemCommand = new AsyncRelayCommand<MediaItemViewModel>(EnterOrOpenAsync);
             PickFileCommand = new AsyncRelayCommand(PickFileAsync);
+            OpenUrlCommand = new AsyncRelayCommand(OpenUrlAsync);
             TogglePlayCommand = new RelayCommand(TogglePlay);
             StopCommand = new RelayCommand(() => _mediaService.Stop());
             SeekCommand = new RelayCommand<double>(Seek);
             SetKindFilterCommand = new RelayCommand<string>(SetKindFilter);
             GoToRootCommand = new RelayCommand<string>(GoToRoot);
+            AddPathTabCommand = new RelayCommand(AddPathTab);
+            ClosePathTabCommand = new RelayCommand<int>(ClosePathTab);
+            SelectPathTabCommand = new RelayCommand<int>(SelectPathTab);
 
+            LoadPathTabsFromSettings();
             Reload();
         }
 
@@ -63,11 +75,28 @@ namespace SilentNotes.ViewModels
         public ICommand NavigateUpCommand { get; }
         public ICommand EnterItemCommand { get; }
         public ICommand PickFileCommand { get; }
+        public ICommand OpenUrlCommand { get; }
         public ICommand TogglePlayCommand { get; }
         public ICommand StopCommand { get; }
         public ICommand SeekCommand { get; }
         public ICommand SetKindFilterCommand { get; }
         public ICommand GoToRootCommand { get; }
+        public ICommand AddPathTabCommand { get; }
+        public ICommand ClosePathTabCommand { get; }
+        public ICommand SelectPathTabCommand { get; }
+
+        /// <summary>Gets or sets a URL (YouTube / http media) to open in the player.</summary>
+        public string UrlDraft
+        {
+            get => _urlDraft;
+            set => SetProperty(ref _urlDraft, value);
+        }
+
+        /// <summary>Gets path sessions for the Player browser.</summary>
+        public IReadOnlyList<PathTabSessionModel> PathTabs => _pathTabs;
+
+        /// <summary>Gets the active path session index.</summary>
+        public int ActivePathTabIndex => _activePathTabIndex;
 
         public bool IsSupported => _mediaService.IsSupported;
 
@@ -226,6 +255,8 @@ namespace SilentNotes.ViewModels
         public void NavigateUp()
         {
             _mediaService.NavigateUp();
+            SaveCurrentPathToActiveTab();
+            PersistPathTabs();
             Reload();
         }
 
@@ -234,7 +265,147 @@ namespace SilentNotes.ViewModels
             if (string.IsNullOrEmpty(key))
                 return;
             _mediaService.GoToRoot(key);
+            SaveCurrentPathToActiveTab();
+            PersistPathTabs();
             Reload();
+        }
+
+        private async Task OpenUrlAsync()
+        {
+            string url = (_urlDraft ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(url))
+                return;
+
+            try
+            {
+                await _mediaService.PlayUriAsync(url, null, url);
+            }
+            catch (Exception ex)
+            {
+                _feedbackService?.ShowToast(_languageService.LoadTextFmt("player_play_failed", ex.Message), FeedbackSeverity.Warning);
+            }
+            RaiseStateChanged();
+        }
+
+        private void AddPathTab()
+        {
+            _pathTabs.Add(new PathTabSessionModel
+            {
+                Path = _mediaService.CurrentDirectory ?? string.Empty,
+                Label = MakePathLabel(_mediaService.CurrentDirectory),
+            });
+            _activePathTabIndex = _pathTabs.Count - 1;
+            PersistPathTabs();
+            OnPropertyChanged(nameof(PathTabs), nameof(ActivePathTabIndex));
+            RaiseStateChanged();
+        }
+
+        private void ClosePathTab(int index)
+        {
+            if (_pathTabs.Count <= 1 || index < 0 || index >= _pathTabs.Count)
+                return;
+
+            _pathTabs.RemoveAt(index);
+            if (_activePathTabIndex >= _pathTabs.Count)
+                _activePathTabIndex = _pathTabs.Count - 1;
+            else if (_activePathTabIndex > index)
+                _activePathTabIndex--;
+
+            PersistPathTabs();
+            ApplyActivePathTab();
+        }
+
+        private void SelectPathTab(int index)
+        {
+            if (index < 0 || index >= _pathTabs.Count || index == _activePathTabIndex)
+                return;
+
+            SaveCurrentPathToActiveTab();
+            _activePathTabIndex = index;
+            PersistPathTabs();
+            ApplyActivePathTab();
+        }
+
+        private void LoadPathTabsFromSettings()
+        {
+            if (_settingsService == null)
+            {
+                _pathTabs = new List<PathTabSessionModel>
+                {
+                    new PathTabSessionModel
+                    {
+                        Path = _mediaService.CurrentDirectory ?? string.Empty,
+                        Label = MakePathLabel(_mediaService.CurrentDirectory),
+                    },
+                };
+                _activePathTabIndex = 0;
+                return;
+            }
+
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            _pathTabs = settings.PlayerPathTabs != null && settings.PlayerPathTabs.Count > 0
+                ? new List<PathTabSessionModel>(settings.PlayerPathTabs)
+                : new List<PathTabSessionModel>
+                {
+                    new PathTabSessionModel
+                    {
+                        Path = _mediaService.CurrentDirectory ?? string.Empty,
+                        Label = MakePathLabel(_mediaService.CurrentDirectory),
+                    },
+                };
+            _activePathTabIndex = Math.Clamp(settings.PlayerPathTabIndex, 0, _pathTabs.Count - 1);
+            string path = _pathTabs[_activePathTabIndex].Path;
+            if (!string.IsNullOrEmpty(path))
+                _mediaService.EnterDirectory(path);
+        }
+
+        private void PersistPathTabs()
+        {
+            if (_settingsService == null)
+                return;
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            settings.PlayerPathTabs = _pathTabs.Select(t => new PathTabSessionModel
+            {
+                Path = t.Path ?? string.Empty,
+                Label = t.Label ?? string.Empty,
+            }).ToList();
+            settings.PlayerPathTabIndex = _activePathTabIndex;
+            _settingsService.TrySaveSettingsToLocalDevice(settings);
+        }
+
+        private void SaveCurrentPathToActiveTab()
+        {
+            if (_activePathTabIndex < 0 || _activePathTabIndex >= _pathTabs.Count)
+                return;
+            _pathTabs[_activePathTabIndex].Path = _mediaService.CurrentDirectory ?? string.Empty;
+            _pathTabs[_activePathTabIndex].Label = MakePathLabel(_mediaService.CurrentDirectory);
+            OnPropertyChanged(nameof(PathTabs));
+        }
+
+        private void ApplyActivePathTab()
+        {
+            if (_activePathTabIndex < 0 || _activePathTabIndex >= _pathTabs.Count)
+                _activePathTabIndex = 0;
+            string path = _pathTabs[_activePathTabIndex].Path;
+            if (!string.IsNullOrEmpty(path))
+                _mediaService.EnterDirectory(path);
+            OnPropertyChanged(nameof(PathTabs), nameof(ActivePathTabIndex));
+            Reload();
+        }
+
+        private static string MakePathLabel(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return "/";
+            try
+            {
+                string name = Path.GetFileName(path.TrimEnd('/', '\\'));
+                return string.IsNullOrEmpty(name) ? "/" : name;
+            }
+            catch (Exception)
+            {
+                return "/";
+            }
         }
 
         private void SetKindFilter(string kind)
@@ -253,6 +424,8 @@ namespace SilentNotes.ViewModels
                 if (item.Kind == MediaKind.Folder)
                 {
                     _mediaService.EnterDirectory(item.Path);
+                    SaveCurrentPathToActiveTab();
+                    PersistPathTabs();
                     Reload();
                     return;
                 }

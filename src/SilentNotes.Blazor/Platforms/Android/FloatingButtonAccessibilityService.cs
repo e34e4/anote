@@ -6,12 +6,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Android.AccessibilityServices;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.Graphics;
 using Android.Graphics.Drawables;
+using Android.Provider;
 using Android.OS;
 using Android.Runtime;
 using Android.Views;
@@ -25,6 +27,7 @@ using SilentNotes.Services;
 using SilentNotes.Workers;
 using Color = Android.Graphics.Color;
 using Orientation = Android.Widget.Orientation;
+using Uri = Android.Net.Uri;
 
 namespace SilentNotes.Platforms
 {
@@ -79,7 +82,20 @@ namespace SilentNotes.Platforms
             (15, "📖", "tab_reader", "Reader"),
             (16, "🔑", "tab_password", "Password"),
             (17, "✈", "tab_tg", "TG"),
+            (19, "🌐", "tab_abro", "Abro"),
         };
+
+        private const string PreferenceKeyShortcuts = "menu_shortcuts";
+        private const string ShortcutTypeApp = "a";
+        private const string ShortcutTypeFolder = "f";
+        private const string DefaultFolderPath = "/storage/emulated/0/";
+
+        private sealed class MenuShortcut
+        {
+            public string Type { get; set; }
+            public string Value { get; set; }
+            public string Label { get; set; }
+        }
 
         private static readonly string[] BrowserPackages = new[]
         {
@@ -788,7 +804,7 @@ namespace SilentNotes.Platforms
                 };
 
                 const int columns = 4;
-                var allButtons = new List<(string Icon, string Label, System.Action OnClick, bool IsAccent)>();
+                var allButtons = new List<(string Icon, string Label, System.Action OnClick, bool IsAccent, System.Action OnLongClick)>();
 
                 foreach (var tab in TabDefinitions)
                 {
@@ -800,7 +816,27 @@ namespace SilentNotes.Platforms
                     {
                         HideMenuOverlay();
                         OpenApplicationAtTab(tabIdx);
-                    }, false));
+                    }, false, null));
+                }
+
+                // Custom shortcuts (apps and folders) added by the user, long-press removes them
+                foreach (MenuShortcut shortcut in LoadShortcuts())
+                {
+                    MenuShortcut entry = shortcut;
+                    bool isFolder = entry.Type == ShortcutTypeFolder;
+                    allButtons.Add((isFolder ? "📂" : "📱", entry.Label, () =>
+                    {
+                        HideMenuOverlay();
+                        if (isFolder)
+                            LaunchFolder(entry.Value);
+                        else
+                            LaunchInstalledApp(entry.Value);
+                    }, false, () =>
+                    {
+                        RemoveShortcut(entry);
+                        Toast.MakeText(this, "Removed", ToastLength.Short)?.Show();
+                        RebuildMenuOverlay();
+                    }));
                 }
 
                 // Keyboard Switcher button (Kunzisoft KeyboardSwitcher functionality)
@@ -811,7 +847,7 @@ namespace SilentNotes.Platforms
                 {
                     HideMenuOverlay();
                     ShowKeyboardSwitcher();
-                }, true));
+                }, true, null));
 
                 string shotFullLabel = language?["floating_menu_screenshot_full"];
                 if (string.IsNullOrWhiteSpace(shotFullLabel) || shotFullLabel == "floating_menu_screenshot_full")
@@ -820,7 +856,7 @@ namespace SilentNotes.Platforms
                 {
                     HideMenuOverlay();
                     StartScreenshot(partial: false);
-                }, true));
+                }, true, null));
 
                 string shotPartialLabel = language?["floating_menu_screenshot_partial"];
                 if (string.IsNullOrWhiteSpace(shotPartialLabel) || shotPartialLabel == "floating_menu_screenshot_partial")
@@ -829,7 +865,10 @@ namespace SilentNotes.Platforms
                 {
                     HideMenuOverlay();
                     StartScreenshot(partial: true);
-                }, true));
+                }, true, null));
+
+                allButtons.Add(("➕", "+ App", () => ShowAddAppDialog(), true, null));
+                allButtons.Add(("➕", "+ Folder", () => ShowAddFolderDialog(), true, null));
 
                 for (int i = 0; i < allButtons.Count; i += columns)
                 {
@@ -848,7 +887,7 @@ namespace SilentNotes.Platforms
                         if (idx < allButtons.Count)
                         {
                             var item = allButtons[idx];
-                            global::Android.Views.View btnView = CreateMenuGridButton(item.Icon, item.Label, item.IsAccent, item.OnClick, density);
+                            global::Android.Views.View btnView = CreateMenuGridButton(item.Icon, item.Label, item.IsAccent, item.OnClick, density, item.OnLongClick);
                             row.AddView(btnView, cellParams);
                         }
                         else
@@ -1107,7 +1146,8 @@ namespace SilentNotes.Platforms
             string label,
             bool isAccent,
             System.Action onClick,
-            float density)
+            float density,
+            System.Action onLongClick = null)
         {
             var box = new LinearLayout(this)
             {
@@ -1143,6 +1183,14 @@ namespace SilentNotes.Platforms
             box.AddView(labelTv);
 
             box.Click += (s, e) => onClick?.Invoke();
+            if (onLongClick != null)
+            {
+                box.LongClick += (s, e) =>
+                {
+                    e.Handled = true;
+                    onLongClick();
+                };
+            }
             return box;
         }
 
@@ -1274,6 +1322,314 @@ namespace SilentNotes.Platforms
             {
                 global::Android.Util.Log.Error(LogTag, "Failed to launch app " + packageName + ": " + ex);
                 return false;
+            }
+        }
+
+        private List<MenuShortcut> LoadShortcuts()
+        {
+            var result = new List<MenuShortcut>();
+            try
+            {
+                var preferences = GetSharedPreferences(PreferencesName, FileCreationMode.Private);
+                string json = preferences.GetString(PreferenceKeyShortcuts, null);
+                if (string.IsNullOrWhiteSpace(json))
+                    return result;
+
+                using (JsonDocument doc = JsonDocument.Parse(json))
+                {
+                    if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                        return result;
+
+                    foreach (JsonElement item in doc.RootElement.EnumerateArray())
+                    {
+                        if (item.ValueKind != JsonValueKind.Object)
+                            continue;
+
+                        string type = item.TryGetProperty("t", out JsonElement t) ? t.GetString() : null;
+                        string value = item.TryGetProperty("v", out JsonElement v) ? v.GetString() : null;
+                        string label = item.TryGetProperty("l", out JsonElement l) ? l.GetString() : null;
+                        if (string.IsNullOrWhiteSpace(value) || (type != ShortcutTypeApp && type != ShortcutTypeFolder))
+                            continue;
+
+                        result.Add(new MenuShortcut
+                        {
+                            Type = type,
+                            Value = value,
+                            Label = string.IsNullOrWhiteSpace(label) ? value : label,
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not load the menu shortcuts: " + ex);
+            }
+            return result;
+        }
+
+        private void SaveShortcuts(IList<MenuShortcut> shortcuts)
+        {
+            try
+            {
+                using (var stream = new System.IO.MemoryStream())
+                {
+                    using (var writer = new Utf8JsonWriter(stream))
+                    {
+                        writer.WriteStartArray();
+                        foreach (MenuShortcut shortcut in shortcuts)
+                        {
+                            writer.WriteStartObject();
+                            writer.WriteString("t", shortcut.Type);
+                            writer.WriteString("v", shortcut.Value);
+                            writer.WriteString("l", shortcut.Label);
+                            writer.WriteEndObject();
+                        }
+                        writer.WriteEndArray();
+                    }
+
+                    string json = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+                    var preferences = GetSharedPreferences(PreferencesName, FileCreationMode.Private);
+                    preferences.Edit().PutString(PreferenceKeyShortcuts, json).Apply();
+                }
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not save the menu shortcuts: " + ex);
+            }
+        }
+
+        private void AddShortcut(string type, string value, string label)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+
+            List<MenuShortcut> shortcuts = LoadShortcuts();
+            if (!shortcuts.Any(x => x.Type == type && string.Equals(x.Value, value, StringComparison.Ordinal)))
+            {
+                shortcuts.Add(new MenuShortcut
+                {
+                    Type = type,
+                    Value = value,
+                    Label = string.IsNullOrWhiteSpace(label) ? value : label,
+                });
+                SaveShortcuts(shortcuts);
+            }
+        }
+
+        private void RemoveShortcut(MenuShortcut shortcut)
+        {
+            if (shortcut == null)
+                return;
+
+            List<MenuShortcut> shortcuts = LoadShortcuts();
+            shortcuts.RemoveAll(x => x.Type == shortcut.Type && string.Equals(x.Value, shortcut.Value, StringComparison.Ordinal));
+            SaveShortcuts(shortcuts);
+        }
+
+        private void RebuildMenuOverlay()
+        {
+            HideMenuOverlay();
+            ShowMenuOverlay();
+        }
+
+        private bool LaunchFolder(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+
+            string normalized = path.Trim();
+            if (normalized.Length > 1)
+                normalized = normalized.TrimEnd('/');
+
+            // 1. Storage access framework document uri, understood by the system file manager
+            try
+            {
+                string documentId = ToDocumentId(normalized);
+                if (documentId != null)
+                {
+                    Uri documentUri = DocumentsContract.BuildDocumentUri("com.android.externalstorage.documents", documentId);
+                    var intent = new Intent(Intent.ActionView);
+                    intent.SetDataAndType(documentUri, "vnd.android.document/directory");
+                    intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.GrantReadUriPermission);
+                    StartActivity(intent);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Warn(LogTag, "Document uri folder launch failed: " + ex.Message);
+            }
+
+            // 2. Plain file uri and the legacy "resource/folder" mime type
+            foreach (string mime in new[] { "resource/folder", "vnd.android.document/directory" })
+            {
+                try
+                {
+                    var intent = new Intent(Intent.ActionView);
+                    intent.SetDataAndType(Uri.FromFile(new Java.IO.File(normalized)), mime);
+                    intent.AddFlags(ActivityFlags.NewTask);
+                    StartActivity(intent);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    global::Android.Util.Log.Warn(LogTag, "Folder launch with " + mime + " failed: " + ex.Message);
+                }
+            }
+
+            Toast.MakeText(this, "Cannot open " + normalized, ToastLength.Short)?.Show();
+            return false;
+        }
+
+        /// <summary>
+        /// Converts a path like /storage/emulated/0/Download to the document id "primary:Download".
+        /// </summary>
+        private static string ToDocumentId(string path)
+        {
+            string[] primaryRoots = new[] { "/storage/emulated/0", "/sdcard", "/storage/self/primary" };
+            foreach (string root in primaryRoots)
+            {
+                if (path == root)
+                    return "primary:";
+                if (path.StartsWith(root + "/", StringComparison.Ordinal))
+                    return "primary:" + path.Substring(root.Length + 1);
+            }
+
+            const string storagePrefix = "/storage/";
+            if (path.StartsWith(storagePrefix, StringComparison.Ordinal))
+            {
+                string[] parts = path.Substring(storagePrefix.Length).Split('/', 2);
+                if (parts.Length > 0 && parts[0].Length > 0)
+                    return parts[0] + ":" + (parts.Length > 1 ? parts[1] : string.Empty);
+            }
+            return null;
+        }
+
+        private global::Android.Content.Context CreateDialogContext()
+        {
+            return new ContextThemeWrapper(this, global::Android.Resource.Style.ThemeDeviceDefaultDialogAlert);
+        }
+
+        private void ShowOverlayDialog(AlertDialog dialog)
+        {
+            try
+            {
+                dialog.Window?.SetType(WindowManagerTypes.AccessibilityOverlay);
+                dialog.Show();
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not show the dialog: " + ex);
+            }
+        }
+
+        private void ShowAddAppDialog()
+        {
+            try
+            {
+                PackageManager pm = PackageManager;
+                if (pm == null)
+                    return;
+
+                var mainIntent = new Intent(Intent.ActionMain, null);
+                mainIntent.AddCategory(Intent.CategoryLauncher);
+
+                IList<ResolveInfo> apps;
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
+                {
+                    apps = pm.QueryIntentActivities(
+                        mainIntent,
+                        PackageManager.ResolveInfoFlags.Of((long)PackageInfoFlags.MatchAll));
+                }
+                else
+                {
+                    #pragma warning disable CS0618
+                    apps = pm.QueryIntentActivities(mainIntent, PackageInfoFlags.MatchAll);
+                    #pragma warning restore CS0618
+                }
+
+                var entries = new List<(string Package, string Label)>();
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (apps != null)
+                {
+                    foreach (ResolveInfo info in apps)
+                    {
+                        string pkg = info?.ActivityInfo?.PackageName;
+                        if (string.IsNullOrEmpty(pkg) || !seen.Add(pkg))
+                            continue;
+
+                        string label = info.LoadLabel(pm)?.ToString();
+                        if (string.IsNullOrWhiteSpace(label))
+                            label = pkg;
+                        entries.Add((pkg, label));
+                    }
+                }
+                entries = entries.OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
+                if (entries.Count == 0)
+                    return;
+
+                var builder = new AlertDialog.Builder(CreateDialogContext());
+                builder.SetTitle("+ App");
+                builder.SetItems(entries.Select(x => x.Label).ToArray(), (s, e) =>
+                {
+                    if (e.Which < 0 || e.Which >= entries.Count)
+                        return;
+                    var picked = entries[e.Which];
+                    AddShortcut(ShortcutTypeApp, picked.Package, picked.Label);
+                    RebuildMenuOverlay();
+                });
+                builder.SetNegativeButton(global::Android.Resource.String.Cancel, (s, e) => { });
+                ShowOverlayDialog(builder.Create());
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not show the add app dialog: " + ex);
+            }
+        }
+
+        private void ShowAddFolderDialog()
+        {
+            try
+            {
+                Context dialogContext = CreateDialogContext();
+                float density = Resources.DisplayMetrics.Density;
+
+                var input = new EditText(dialogContext)
+                {
+                    Text = DefaultFolderPath,
+                };
+                input.SetSingleLine(true);
+                input.SetSelection(input.Text.Length);
+
+                var container = new FrameLayout(dialogContext);
+                int pad = (int)(20 * density);
+                container.SetPadding(pad, pad / 2, pad, 0);
+                container.AddView(input, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+
+                var builder = new AlertDialog.Builder(dialogContext);
+                builder.SetTitle("+ Folder");
+                builder.SetView(container);
+                builder.SetPositiveButton(global::Android.Resource.String.Ok, (s, e) =>
+                {
+                    string path = input.Text?.Trim();
+                    if (string.IsNullOrEmpty(path))
+                        return;
+                    if (path.Length > 1)
+                        path = path.TrimEnd('/');
+
+                    string label = path.Substring(path.LastIndexOf('/') + 1);
+                    if (string.IsNullOrWhiteSpace(label))
+                        label = path;
+                    AddShortcut(ShortcutTypeFolder, path, label);
+                    RebuildMenuOverlay();
+                });
+                builder.SetNegativeButton(global::Android.Resource.String.Cancel, (s, e) => { });
+                ShowOverlayDialog(builder.Create());
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not show the add folder dialog: " + ex);
             }
         }
 

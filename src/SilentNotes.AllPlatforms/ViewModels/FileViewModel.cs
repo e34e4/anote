@@ -33,8 +33,12 @@ namespace SilentNotes.ViewModels
         private bool _isLoadedOnce;
         private bool _isSettingsOpen;
         private bool _isNewFolderOpen;
+        private bool _isNewTextFileOpen;
         private string _newFolderName;
+        private string _newTextFileName;
         private string _lastError;
+        private int _activePathTabIndex;
+        private List<PathTabSessionModel> _pathTabs = new List<PathTabSessionModel>();
 
         private string _editUrl;
         private string _editFolder;
@@ -55,6 +59,7 @@ namespace SilentNotes.ViewModels
             _feedbackService = feedbackService;
 
             LoadCredentialsFromSettings();
+            LoadPathTabsFromSettings();
 
             RefreshCommand = new AsyncRelayCommand(RefreshAsync);
             UploadFileCommand = new AsyncRelayCommand(UploadFileAsync);
@@ -62,8 +67,23 @@ namespace SilentNotes.ViewModels
             OpenSettingsCommand = new RelayCommand(OpenSettings);
             CloseOverlayCommand = new RelayCommand(CloseOverlay);
             SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync);
-            OpenNewFolderCommand = new RelayCommand(() => { _newFolderName = string.Empty; IsNewFolderOpen = true; });
+            OpenNewFolderCommand = new RelayCommand(() =>
+            {
+                IsNewTextFileOpen = false;
+                _newFolderName = string.Empty;
+                IsNewFolderOpen = true;
+            });
             CreateFolderCommand = new AsyncRelayCommand(CreateFolderAsync);
+            OpenNewTextFileCommand = new RelayCommand(() =>
+            {
+                IsNewFolderOpen = false;
+                _newTextFileName = "note.txt";
+                IsNewTextFileOpen = true;
+            });
+            CreateTextFileCommand = new AsyncRelayCommand(CreateTextFileAsync);
+            AddPathTabCommand = new AsyncRelayCommand(AddPathTabAsync);
+            ClosePathTabCommand = new AsyncRelayCommand<int>(ClosePathTabAsync);
+            SelectPathTabCommand = new AsyncRelayCommand<int>(SelectPathTabAsync);
         }
 
         public ICommand RefreshCommand { get; }
@@ -74,6 +94,11 @@ namespace SilentNotes.ViewModels
         public ICommand SaveSettingsCommand { get; }
         public ICommand OpenNewFolderCommand { get; }
         public ICommand CreateFolderCommand { get; }
+        public ICommand OpenNewTextFileCommand { get; }
+        public ICommand CreateTextFileCommand { get; }
+        public ICommand AddPathTabCommand { get; }
+        public ICommand ClosePathTabCommand { get; }
+        public ICommand SelectPathTabCommand { get; }
 
         /// <summary>Gets a value indicating whether WebDAV server URL is configured.</summary>
         public bool IsConfigured => !string.IsNullOrWhiteSpace(EffectiveUrl);
@@ -150,8 +175,15 @@ namespace SilentNotes.ViewModels
             set => SetProperty(ref _isNewFolderOpen, value);
         }
 
+        /// <summary>Gets or sets a value indicating whether the new text file input bar is open.</summary>
+        public bool IsNewTextFileOpen
+        {
+            get => _isNewTextFileOpen;
+            set => SetProperty(ref _isNewTextFileOpen, value);
+        }
+
         /// <summary>Gets a value indicating whether any overlay is open (for back button handling).</summary>
-        public bool IsAnyOverlayOpen => _isSettingsOpen || _isNewFolderOpen;
+        public bool IsAnyOverlayOpen => _isSettingsOpen || _isNewFolderOpen || _isNewTextFileOpen;
 
         /// <summary>Gets or sets the name of the folder to create.</summary>
         public string NewFolderName
@@ -159,6 +191,19 @@ namespace SilentNotes.ViewModels
             get => _newFolderName;
             set => SetProperty(ref _newFolderName, value);
         }
+
+        /// <summary>Gets or sets the name of the text file to create.</summary>
+        public string NewTextFileName
+        {
+            get => _newTextFileName;
+            set => SetProperty(ref _newTextFileName, value);
+        }
+
+        /// <summary>Gets path sessions (sub-tabs) for the File browser.</summary>
+        public IReadOnlyList<PathTabSessionModel> PathTabs => _pathTabs;
+
+        /// <summary>Gets the active path session index.</summary>
+        public int ActivePathTabIndex => _activePathTabIndex;
 
         public string EditUrl
         {
@@ -193,10 +238,11 @@ namespace SilentNotes.ViewModels
         public async Task InitializeAsync()
         {
             LoadCredentialsFromSettings();
+            LoadPathTabsFromSettings();
             if (!_isLoadedOnce && IsConfigured)
             {
                 _isLoadedOnce = true;
-                await RefreshAsync();
+                await ApplyActivePathTabAsync();
             }
         }
 
@@ -205,6 +251,7 @@ namespace SilentNotes.ViewModels
         {
             IsSettingsOpen = false;
             IsNewFolderOpen = false;
+            IsNewTextFileOpen = false;
         }
 
         private void OpenSettings()
@@ -278,6 +325,8 @@ namespace SilentNotes.ViewModels
             if (item.IsDirectory)
             {
                 _currentSubPath = CombinePaths(_currentSubPath, item.Name);
+                SaveCurrentPathToActiveTab();
+                PersistPathTabs();
                 await RefreshAsync();
             }
             else
@@ -294,6 +343,8 @@ namespace SilentNotes.ViewModels
 
             int lastSlash = _currentSubPath.LastIndexOf('/');
             _currentSubPath = (lastSlash > 0) ? _currentSubPath.Substring(0, lastSlash) : string.Empty;
+            SaveCurrentPathToActiveTab();
+            PersistPathTabs();
             await RefreshAsync();
         }
 
@@ -366,6 +417,82 @@ namespace SilentNotes.ViewModels
             {
                 IsBusy = false;
             }
+        }
+
+        /// <summary>Creates a new empty .txt file in the current WebDAV folder.</summary>
+        public async Task CreateTextFileAsync()
+        {
+            string name = _newTextFileName?.Trim().Trim('/');
+            if (string.IsNullOrEmpty(name) || IsBusy || !IsConfigured)
+                return;
+
+            if (!name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                name += ".txt";
+
+            IsBusy = true;
+            LastError = null;
+            try
+            {
+                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
+                byte[] content = System.Text.Encoding.UTF8.GetBytes(string.Empty);
+                await _webdavService.UploadFileAsync(
+                    EffectiveUrl, remoteFolder, name, content, EffectiveUsername, EffectivePassword);
+                IsNewTextFileOpen = false;
+                _newTextFileName = string.Empty;
+                _feedbackService?.ShowToast(_languageService.LoadTextFmt("file_created_txt", name));
+                await RefreshAsync();
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                _feedbackService?.ShowToast(_languageService["file_create_txt_failed"] + " — " + ex.Message, FeedbackSeverity.Warning);
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+
+        /// <summary>Adds a new path session starting at the current folder.</summary>
+        public async Task AddPathTabAsync()
+        {
+            _pathTabs.Add(new PathTabSessionModel
+            {
+                Path = _currentSubPath ?? string.Empty,
+                Label = MakePathLabel(_currentSubPath),
+            });
+            _activePathTabIndex = _pathTabs.Count - 1;
+            PersistPathTabs();
+            OnPropertyChanged(nameof(PathTabs), nameof(ActivePathTabIndex));
+            await Task.CompletedTask;
+        }
+
+        /// <summary>Closes a path session by index.</summary>
+        public async Task ClosePathTabAsync(int index)
+        {
+            if (_pathTabs.Count <= 1 || index < 0 || index >= _pathTabs.Count)
+                return;
+
+            _pathTabs.RemoveAt(index);
+            if (_activePathTabIndex >= _pathTabs.Count)
+                _activePathTabIndex = _pathTabs.Count - 1;
+            else if (_activePathTabIndex > index)
+                _activePathTabIndex--;
+
+            PersistPathTabs();
+            await ApplyActivePathTabAsync();
+        }
+
+        /// <summary>Selects a path session by index.</summary>
+        public async Task SelectPathTabAsync(int index)
+        {
+            if (index < 0 || index >= _pathTabs.Count || index == _activePathTabIndex)
+                return;
+
+            SaveCurrentPathToActiveTab();
+            _activePathTabIndex = index;
+            PersistPathTabs();
+            await ApplyActivePathTabAsync();
         }
 
         /// <summary>Downloads a remote file and saves it to the device Downloads folder.</summary>
@@ -504,6 +631,56 @@ namespace SilentNotes.ViewModels
             if (string.IsNullOrEmpty(b))
                 return a;
             return a + "/" + b;
+        }
+
+        private void LoadPathTabsFromSettings()
+        {
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            _pathTabs = settings.FilePathTabs != null && settings.FilePathTabs.Count > 0
+                ? new List<PathTabSessionModel>(settings.FilePathTabs)
+                : new List<PathTabSessionModel> { new PathTabSessionModel { Path = string.Empty, Label = "/" } };
+            _activePathTabIndex = Math.Clamp(settings.FilePathTabIndex, 0, _pathTabs.Count - 1);
+            _currentSubPath = _pathTabs[_activePathTabIndex].Path ?? string.Empty;
+            OnPropertyChanged(nameof(PathTabs), nameof(ActivePathTabIndex), nameof(CurrentPathDisplay), nameof(CanNavigateUp));
+        }
+
+        private void PersistPathTabs()
+        {
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            settings.FilePathTabs = _pathTabs.Select(t => new PathTabSessionModel
+            {
+                Path = t.Path ?? string.Empty,
+                Label = t.Label ?? string.Empty,
+            }).ToList();
+            settings.FilePathTabIndex = _activePathTabIndex;
+            _settingsService.TrySaveSettingsToLocalDevice(settings);
+        }
+
+        private void SaveCurrentPathToActiveTab()
+        {
+            if (_activePathTabIndex < 0 || _activePathTabIndex >= _pathTabs.Count)
+                return;
+            _pathTabs[_activePathTabIndex].Path = _currentSubPath ?? string.Empty;
+            _pathTabs[_activePathTabIndex].Label = MakePathLabel(_currentSubPath);
+            OnPropertyChanged(nameof(PathTabs));
+        }
+
+        private async Task ApplyActivePathTabAsync()
+        {
+            if (_activePathTabIndex < 0 || _activePathTabIndex >= _pathTabs.Count)
+                _activePathTabIndex = 0;
+            _currentSubPath = _pathTabs[_activePathTabIndex].Path ?? string.Empty;
+            OnPropertyChanged(nameof(PathTabs), nameof(ActivePathTabIndex), nameof(CurrentPathDisplay), nameof(CanNavigateUp));
+            await RefreshAsync();
+        }
+
+        private static string MakePathLabel(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return "/";
+            string trimmed = path.Trim('/').Trim();
+            int slash = trimmed.LastIndexOf('/');
+            return slash >= 0 ? trimmed.Substring(slash + 1) : trimmed;
         }
     }
 

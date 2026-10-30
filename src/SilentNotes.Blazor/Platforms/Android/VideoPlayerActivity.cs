@@ -10,6 +10,7 @@ using Android.Content.PM;
 using Android.Media;
 using Android.OS;
 using Android.Views;
+using Android.Webkit;
 using Android.Widget;
 using Color = Android.Graphics.Color;
 using ImageButton = Android.Widget.ImageButton;
@@ -20,6 +21,7 @@ namespace SilentNotes
 {
     /// <summary>
     /// Fullscreen video player used by the Player tab. Supports file paths and content URIs.
+    /// Web pages and YouTube links are shown in a fullscreen WebView instead of a VideoView.
     /// </summary>
     [Activity(
         Label = "aNote Player",
@@ -32,8 +34,13 @@ namespace SilentNotes
         public const string ExtraUri = "silentnotes.video.uri";
         public const string ExtraPath = "silentnotes.video.path";
         public const string ExtraTitle = "silentnotes.video.title";
+        public const string ExtraUseWebView = "silentnotes.video.usewebview";
 
         private VideoView _videoView;
+        private global::Android.Webkit.WebView _webView;
+        private FrameLayout _webRoot;
+        private global::Android.Views.View _customView;
+        private WebChromeClient.ICustomViewCallback _customViewCallback;
         private TextView _titleView;
         private ImageButton _playPauseButton;
         private SeekBar _seekBar;
@@ -47,6 +54,12 @@ namespace SilentNotes
             base.OnCreate(savedInstanceState);
             RequestWindowFeature(WindowFeatures.NoTitle);
             Window?.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
+
+            if (Intent?.GetBooleanExtra(ExtraUseWebView, false) == true)
+            {
+                CreateWebViewLayout();
+                return;
+            }
 
             LinearLayout root = new LinearLayout(this)
             {
@@ -160,6 +173,201 @@ namespace SilentNotes
             _handler.PostDelayed(_tickAction, 400);
         }
 
+        private void CreateWebViewLayout()
+        {
+            string url = Intent?.GetStringExtra(ExtraUri) ?? Intent?.GetStringExtra(ExtraPath);
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                Toast.MakeText(this, "No video to play", ToastLength.Short).Show();
+                Finish();
+                return;
+            }
+
+            LinearLayout root = new LinearLayout(this)
+            {
+                Orientation = WidgetOrientation.Vertical,
+            };
+            root.SetBackgroundColor(Color.Black);
+            root.LayoutParameters = new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MatchParent,
+                ViewGroup.LayoutParams.MatchParent);
+
+            LinearLayout topBar = new LinearLayout(this)
+            {
+                Orientation = WidgetOrientation.Horizontal,
+            };
+            topBar.SetGravity(GravityFlags.CenterVertical);
+            topBar.SetPadding(24, 8, 8, 8);
+
+            _titleView = new TextView(this)
+            {
+                TextSize = 16,
+                Ellipsize = Android.Text.TextUtils.TruncateAt.End,
+            };
+            _titleView.SetSingleLine(true);
+            _titleView.SetTextColor(Color.White);
+            _titleView.Text = Intent?.GetStringExtra(ExtraTitle) ?? "Video";
+            _titleView.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+
+            ImageButton closeButton = new ImageButton(this);
+            closeButton.SetBackgroundColor(Color.Transparent);
+            closeButton.SetImageResource(global::Android.Resource.Drawable.IcMenuCloseClearCancel);
+            closeButton.Click += (_, __) => Finish();
+
+            topBar.AddView(_titleView);
+            topBar.AddView(closeButton);
+
+            _webRoot = new FrameLayout(this);
+            _webRoot.LayoutParameters = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MatchParent,
+                0,
+                1f);
+
+            _webView = new global::Android.Webkit.WebView(this);
+            _webView.LayoutParameters = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MatchParent,
+                ViewGroup.LayoutParams.MatchParent);
+            _webView.SetBackgroundColor(Color.Black);
+
+            WebSettings settings = _webView.Settings;
+            settings.JavaScriptEnabled = true;
+            settings.DomStorageEnabled = true;
+            settings.MediaPlaybackRequiresUserGesture = false;
+            settings.LoadWithOverviewMode = true;
+            settings.UseWideViewPort = true;
+
+            _webView.SetWebViewClient(new WebViewClient());
+            _webView.SetWebChromeClient(new PlayerChromeClient(this));
+            _webRoot.AddView(_webView);
+
+            root.AddView(topBar);
+            root.AddView(_webRoot);
+            SetContentView(root);
+
+            try
+            {
+                _webView.LoadUrl(ToEmbedUrl(url));
+            }
+            catch (Exception ex)
+            {
+                Toast.MakeText(this, "Playback failed: " + ex.Message, ToastLength.Long).Show();
+                Finish();
+            }
+        }
+
+        /// <summary>
+        /// Converts a YouTube watch / short link into an embeddable url, other urls are returned unchanged.
+        /// </summary>
+        internal static string ToEmbedUrl(string url)
+        {
+            string id = TryGetYouTubeId(url);
+            return string.IsNullOrEmpty(id)
+                ? url
+                : "https://www.youtube.com/embed/" + id + "?autoplay=1";
+        }
+
+        private static string TryGetYouTubeId(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url) || !System.Uri.TryCreate(url.Trim(), UriKind.Absolute, out System.Uri uri))
+                return null;
+
+            string host = uri.Host.ToLowerInvariant();
+            string[] segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            string id = null;
+
+            if (host == "youtu.be")
+            {
+                if (segments.Length > 0)
+                    id = segments[0];
+            }
+            else if (host == "youtube.com" || host.EndsWith(".youtube.com", StringComparison.Ordinal) ||
+                host == "youtube-nocookie.com" || host.EndsWith(".youtube-nocookie.com", StringComparison.Ordinal))
+            {
+                if (segments.Length >= 1 && segments[0] == "watch")
+                {
+                    foreach (string pair in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        if (pair.StartsWith("v=", StringComparison.Ordinal))
+                        {
+                            id = System.Uri.UnescapeDataString(pair.Substring(2));
+                            break;
+                        }
+                    }
+                }
+                else if (segments.Length >= 2 && (segments[0] == "shorts" || segments[0] == "embed" || segments[0] == "live" || segments[0] == "v"))
+                {
+                    id = segments[1];
+                }
+            }
+
+            if (string.IsNullOrEmpty(id) || id.Length != 11)
+                return null;
+            foreach (char c in id)
+            {
+                if (!(char.IsAsciiLetterOrDigit(c) || c == '-' || c == '_'))
+                    return null;
+            }
+            return id;
+        }
+
+        private void ShowCustomView(global::Android.Views.View view, WebChromeClient.ICustomViewCallback callback)
+        {
+            if (_customView != null)
+            {
+                callback?.OnCustomViewHidden();
+                return;
+            }
+            _customView = view;
+            _customViewCallback = callback;
+            _webView.Visibility = ViewStates.Gone;
+            _webRoot.AddView(view, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MatchParent,
+                ViewGroup.LayoutParams.MatchParent));
+        }
+
+        private void HideCustomView()
+        {
+            if (_customView == null)
+                return;
+            _webRoot.RemoveView(_customView);
+            _customView = null;
+            _webView.Visibility = ViewStates.Visible;
+            _customViewCallback?.OnCustomViewHidden();
+            _customViewCallback = null;
+        }
+
+        #pragma warning disable CS0672, CS0618
+        public override void OnBackPressed()
+        {
+            if (_customView != null)
+                HideCustomView();
+            else if (_webView != null && _webView.CanGoBack())
+                _webView.GoBack();
+            else
+                base.OnBackPressed();
+        }
+        #pragma warning restore CS0672, CS0618
+
+        private class PlayerChromeClient : WebChromeClient
+        {
+            private readonly VideoPlayerActivity _activity;
+
+            public PlayerChromeClient(VideoPlayerActivity activity)
+            {
+                _activity = activity;
+            }
+
+            public override void OnShowCustomView(global::Android.Views.View view, ICustomViewCallback callback)
+            {
+                _activity.ShowCustomView(view, callback);
+            }
+
+            public override void OnHideCustomView()
+            {
+                _activity.HideCustomView();
+            }
+        }
+
         public void OnPrepared(MediaPlayer mp)
         {
             mp?.SetVideoScalingMode(VideoScalingMode.ScaleToFit);
@@ -221,6 +429,18 @@ namespace SilentNotes
             return string.Format("{0}:{1:D2}", (int)t.TotalMinutes, t.Seconds);
         }
 
+        protected override void OnPause()
+        {
+            _webView?.OnPause();
+            base.OnPause();
+        }
+
+        protected override void OnResume()
+        {
+            base.OnResume();
+            _webView?.OnResume();
+        }
+
         protected override void OnDestroy()
         {
             _handler.RemoveCallbacksAndMessages(null);
@@ -231,11 +451,28 @@ namespace SilentNotes
             catch (Exception)
             {
             }
+            try
+            {
+                if (_webView != null)
+                {
+                    _webView.StopLoading();
+                    _webView.LoadUrl("about:blank");
+                    _webRoot?.RemoveView(_webView);
+                    _webView.Destroy();
+                    _webView = null;
+                }
+            }
+            catch (Exception)
+            {
+            }
             base.OnDestroy();
         }
 
-        /// <summary>Starts the fullscreen video player for a path or content URI.</summary>
-        public static void Start(Context context, string pathOrUri, string title)
+        /// <summary>
+        /// Starts the fullscreen video player for a path or content URI. With
+        /// <paramref name="useWebView"/> the url is shown in a fullscreen WebView instead.
+        /// </summary>
+        public static void Start(Context context, string pathOrUri, string title, bool useWebView = false)
         {
             Intent intent = new Intent(context, typeof(VideoPlayerActivity));
             // Stay in the same task as MainActivity so back returns to the Player tab.
@@ -252,6 +489,7 @@ namespace SilentNotes
                 intent.PutExtra(ExtraPath, pathOrUri);
             }
             intent.PutExtra(ExtraTitle, title ?? "Video");
+            intent.PutExtra(ExtraUseWebView, useWebView);
             context.StartActivity(intent);
         }
     }

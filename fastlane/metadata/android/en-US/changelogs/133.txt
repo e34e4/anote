@@ -1,0 +1,8 @@
+• Quick menu: add/remove app and folder shortcuts (long-press to remove)
+• Player: open YouTube and other http(s) video/audio URLs
+• Contacts Telegram button opens the in-app TG tab
+• SMS and TG composers are multiline
+• File tab: create new .txt files; path sub-tabs with restore on restart
+• Player and Reader: path sub-tabs persisted across restarts
+• Main tabs show icons (same as quick menu) instead of text labels
+• New Abro light browser tab next to TG (tabs, history, cookies/cache in /sdcard/abro)

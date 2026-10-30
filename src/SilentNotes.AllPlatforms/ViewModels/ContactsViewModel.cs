@@ -75,7 +75,7 @@ namespace SilentNotes.ViewModels
             CopyCommand = new AsyncRelayCommand<string>(CopyPhone);
             CallCommand = new RelayCommand<string>(phone => OpenExternal("tel:" + EncodePhone(phone)));
             SmsCommand = new RelayCommand<string>(StartSms);
-            TelegramCommand = new RelayCommand<string>(phone => OpenExternal("https://t.me/" + EncodePhone(phone)));
+            TelegramCommand = new RelayCommand<string>(StartTelegram);
             StartEditNumbersCommand = new RelayCommand<ContactItemViewModel>(StartEditNumbers);
             SaveNumbersCommand = new RelayCommand(SaveNumbers);
             CancelEditNumbersCommand = new RelayCommand(CancelEditNumbers);
@@ -330,6 +330,22 @@ namespace SilentNotes.ViewModels
 
             // Fallback when no messenger is available (e.g. unit tests): open externally.
             OpenExternal("smsto:" + EncodePhone(phone));
+        }
+
+        private void StartTelegram(string phone)
+        {
+            if (string.IsNullOrWhiteSpace(phone))
+                return;
+
+            string link = "https://t.me/" + EncodePhone(phone);
+            TelegramLinkRequest.Pending = new TelegramLinkRequest { Link = link };
+            if (_messengerService != null)
+            {
+                _messengerService.Send(new TelegramLinkMessage());
+                return;
+            }
+
+            OpenExternal(link);
         }
 
         private async Task ImportAsync()

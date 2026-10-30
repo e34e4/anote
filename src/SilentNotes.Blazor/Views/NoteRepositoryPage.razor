@@ -50,6 +50,7 @@
 @inject ITelegramService TelegramService
 @inject IWebdavQuickSaveService WebdavQuickSaveService
 @inject IRssArticleCacheService RssArticleCacheService
+@inject IAbroBrowserService AbroBrowserService
 
 <style type="text/css">
 	.mud-main-content {
@@ -82,9 +83,11 @@
 		flex: 1 1 0;
 		min-width: 0;
 		padding: 0 2px;
-		font-size: 0.8rem;
+		font-size: 1.05rem;
+		line-height: 1.2;
 		border-radius: 0;
 		color: var(--mud-palette-appbar-text);
+		min-height: 36px;
 	}
 	.app-header-tabs .mud-button.tab-active {
 		color: #ffffff;
@@ -372,31 +375,32 @@
 	</div>
 
 	<div class="app-header-row app-header-tabs">
-		<MudButton Class="@GetTabButtonClass(0)" OnClick="@(() => SetActiveTab(0))" Variant="Variant.Text">@LanguageService["tab_notes"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(1)" OnClick="@(() => SetActiveTab(1))" Variant="Variant.Text">@LanguageService["tab_clipboard"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(2)" OnClick="@(() => SetActiveTab(2))" Variant="Variant.Text">@LanguageService["tab_booky"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(3)" OnClick="@(() => SetActiveTab(3))" Variant="Variant.Text">@LanguageService["tab_phone"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(RssViewModel.TabIndex)" OnClick="@(() => SetActiveTab(RssViewModel.TabIndex))" Variant="Variant.Text">@LanguageService["tab_rss"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(0)" OnClick="@(() => SetActiveTab(0))" Variant="Variant.Text" title="@LanguageService["tab_notes"]">📝</MudButton>
+		<MudButton Class="@GetTabButtonClass(1)" OnClick="@(() => SetActiveTab(1))" Variant="Variant.Text" title="@LanguageService["tab_clipboard"]">📋</MudButton>
+		<MudButton Class="@GetTabButtonClass(2)" OnClick="@(() => SetActiveTab(2))" Variant="Variant.Text" title="@LanguageService["tab_booky"]">🔖</MudButton>
+		<MudButton Class="@GetTabButtonClass(3)" OnClick="@(() => SetActiveTab(3))" Variant="Variant.Text" title="@LanguageService["tab_phone"]">👤</MudButton>
+		<MudButton Class="@GetTabButtonClass(RssViewModel.TabIndex)" OnClick="@(() => SetActiveTab(RssViewModel.TabIndex))" Variant="Variant.Text" title="@LanguageService["tab_rss"]">📰</MudButton>
 	</div>
 	<div class="app-header-row app-header-tabs">
-		<MudButton Class="@GetTabButtonClass(4)" OnClick="@(() => SetActiveTab(4))" Variant="Variant.Text">@LanguageService["tab_calc"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(5)" OnClick="@(() => SetActiveTab(5))" Variant="Variant.Text">@LanguageService["tab_cald"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(6)" OnClick="@(() => SetActiveTab(6))" Variant="Variant.Text">@LanguageService["tab_clock"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(7)" OnClick="@(() => SetActiveTab(7))" Variant="Variant.Text">@LanguageService["tab_sms"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(8)" OnClick="@(() => SetActiveTab(8))" Variant="Variant.Text">@LanguageService["tab_qr"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(4)" OnClick="@(() => SetActiveTab(4))" Variant="Variant.Text" title="@LanguageService["tab_calc"]">🧮</MudButton>
+		<MudButton Class="@GetTabButtonClass(5)" OnClick="@(() => SetActiveTab(5))" Variant="Variant.Text" title="@LanguageService["tab_cald"]">📅</MudButton>
+		<MudButton Class="@GetTabButtonClass(6)" OnClick="@(() => SetActiveTab(6))" Variant="Variant.Text" title="@LanguageService["tab_clock"]">⏰</MudButton>
+		<MudButton Class="@GetTabButtonClass(7)" OnClick="@(() => SetActiveTab(7))" Variant="Variant.Text" title="@LanguageService["tab_sms"]">💬</MudButton>
+		<MudButton Class="@GetTabButtonClass(8)" OnClick="@(() => SetActiveTab(8))" Variant="Variant.Text" title="@LanguageService["tab_qr"]">🔳</MudButton>
 	</div>
 	<div class="app-header-row app-header-tabs">
-		<MudButton Class="@GetTabButtonClass(9)" OnClick="@(() => SetActiveTab(9))" Variant="Variant.Text">@LanguageService["tab_rec"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(10)" OnClick="@(() => SetActiveTab(10))" Variant="Variant.Text">@LanguageService["tab_file"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(11)" OnClick="@(() => SetActiveTab(11))" Variant="Variant.Text">@LanguageService["tab_dialer"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(12)" OnClick="@(() => SetActiveTab(12))" Variant="Variant.Text">@LanguageService["tab_camera"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(13)" OnClick="@(() => SetActiveTab(13))" Variant="Variant.Text">@LanguageService["tab_mail"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(9)" OnClick="@(() => SetActiveTab(9))" Variant="Variant.Text" title="@LanguageService["tab_rec"]">🎙️</MudButton>
+		<MudButton Class="@GetTabButtonClass(10)" OnClick="@(() => SetActiveTab(10))" Variant="Variant.Text" title="@LanguageService["tab_file"]">📁</MudButton>
+		<MudButton Class="@GetTabButtonClass(11)" OnClick="@(() => SetActiveTab(11))" Variant="Variant.Text" title="@LanguageService["tab_dialer"]">📞</MudButton>
+		<MudButton Class="@GetTabButtonClass(12)" OnClick="@(() => SetActiveTab(12))" Variant="Variant.Text" title="@LanguageService["tab_camera"]">📷</MudButton>
+		<MudButton Class="@GetTabButtonClass(13)" OnClick="@(() => SetActiveTab(13))" Variant="Variant.Text" title="@LanguageService["tab_mail"]">✉️</MudButton>
 	</div>
 	<div class="app-header-row app-header-tabs">
-		<MudButton Class="@GetTabButtonClass(14)" OnClick="@(() => SetActiveTab(14))" Variant="Variant.Text">@LanguageService["tab_player"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(15)" OnClick="@(() => SetActiveTab(15))" Variant="Variant.Text">@LanguageService["tab_reader"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(16)" OnClick="@(() => SetActiveTab(16))" Variant="Variant.Text">@LanguageService["tab_password"]</MudButton>
-		<MudButton Class="@GetTabButtonClass(17)" OnClick="@(() => SetActiveTab(17))" Variant="Variant.Text">@LanguageService["tab_tg"]</MudButton>
+		<MudButton Class="@GetTabButtonClass(14)" OnClick="@(() => SetActiveTab(14))" Variant="Variant.Text" title="@LanguageService["tab_player"]">▶️</MudButton>
+		<MudButton Class="@GetTabButtonClass(15)" OnClick="@(() => SetActiveTab(15))" Variant="Variant.Text" title="@LanguageService["tab_reader"]">📖</MudButton>
+		<MudButton Class="@GetTabButtonClass(16)" OnClick="@(() => SetActiveTab(16))" Variant="Variant.Text" title="@LanguageService["tab_password"]">🔑</MudButton>
+		<MudButton Class="@GetTabButtonClass(17)" OnClick="@(() => SetActiveTab(17))" Variant="Variant.Text" title="@LanguageService["tab_tg"]">✈</MudButton>
+		<MudButton Class="@GetTabButtonClass(AbroViewModel.TabIndex)" OnClick="@(() => SetActiveTab(AbroViewModel.TabIndex))" Variant="Variant.Text" title="@LanguageService["tab_abro"]">🌐</MudButton>
 	</div>
 </div>
 
@@ -588,10 +592,15 @@
 		@* Password vault (Bitwarden-like, separate encrypted file) *@
 		<PasswordTab ViewModel="_passwordViewModel" />
 	}
-	else
+	else if (_activeTab == 17)
 	{
 		@* Telegram messenger client *@
 		<TgTab ViewModel="_telegramViewModel" />
+	}
+	else if (_activeTab == AbroViewModel.TabIndex)
+	{
+		@* Light Abro web browser *@
+		<AbroTab ViewModel="_abroViewModel" />
 	}
 </MudMainContent>
 
@@ -652,6 +661,7 @@
 	private ReaderViewModel _readerViewModel;
 	private PasswordViewModel _passwordViewModel;
 	private TelegramViewModel _telegramViewModel;
+	private AbroViewModel _abroViewModel;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="NoteRepositoryPage"/> class.
@@ -771,11 +781,13 @@
 		_playerViewModel = new PlayerViewModel(
 			MediaPlayerService,
 			LanguageService,
-			FeedbackService);
+			FeedbackService,
+			SettingsService);
 		_readerViewModel = new ReaderViewModel(
 			DocumentReaderService,
 			LanguageService,
-			FeedbackService);
+			FeedbackService,
+			SettingsService);
 		_passwordViewModel = new PasswordViewModel(
 			PasswordVaultService,
 			LanguageService,
@@ -793,6 +805,7 @@
 			QrService,
 			ClipboardService,
 			WebdavQuickSaveService);
+		_abroViewModel = new AbroViewModel(AbroBrowserService);
 
 		// When the app was started by a calendar intent, the calendar tab is opened and shows it.
 		CalendarIntentRequest pendingCalendarIntent = CalendarIntentRequest.Pending;
@@ -835,7 +848,7 @@
 		if (pendingTabIntent != null)
 		{
 			TabIntentRequest.Pending = null;
-			SetActiveTab(Math.Clamp(pendingTabIntent.TabIndex, 0, RssViewModel.TabIndex));
+			SetActiveTab(Math.Clamp(pendingTabIntent.TabIndex, 0, AbroViewModel.TabIndex));
 		}
 
 		// When the app was started by a media VIEW/SEND intent, open the Player tab.
@@ -1050,7 +1063,7 @@
 				return;
 
 			TabIntentRequest.Pending = null;
-			SetActiveTab(Math.Clamp(request.TabIndex, 0, RssViewModel.TabIndex));
+			SetActiveTab(Math.Clamp(request.TabIndex, 0, AbroViewModel.TabIndex));
 			StateHasChanged();
 		});
 	}

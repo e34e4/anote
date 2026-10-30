@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -23,20 +24,25 @@ namespace SilentNotes.ViewModels
         private readonly IDocumentReaderService _readerService;
         private readonly ILanguageService _languageService;
         private readonly IFeedbackService _feedbackService;
+        private readonly ISettingsService _settingsService;
 
         private string _filter;
         private string _kindFilter = "all"; // all | text | office | pdf | ebook
         private List<DocumentItemViewModel> _items = new List<DocumentItemViewModel>();
         private bool _isBusy;
+        private int _activePathTabIndex;
+        private List<PathTabSessionModel> _pathTabs = new List<PathTabSessionModel>();
 
         public ReaderViewModel(
             IDocumentReaderService readerService,
             ILanguageService languageService,
-            IFeedbackService feedbackService)
+            IFeedbackService feedbackService,
+            ISettingsService settingsService = null)
         {
             _readerService = readerService;
             _languageService = languageService;
             _feedbackService = feedbackService;
+            _settingsService = settingsService;
 
             _readerService.StateChanged += OnReaderStateChanged;
 
@@ -51,7 +57,11 @@ namespace SilentNotes.ViewModels
             PrevPdfPageCommand = new AsyncRelayCommand(PrevPdfPageAsync, () => CanGoPrevPdfPage);
             NextPdfPageCommand = new AsyncRelayCommand(NextPdfPageAsync, () => CanGoNextPdfPage);
             OpenExternallyCommand = new AsyncRelayCommand(OpenExternallyAsync);
+            AddPathTabCommand = new RelayCommand(AddPathTab);
+            ClosePathTabCommand = new RelayCommand<int>(ClosePathTab);
+            SelectPathTabCommand = new RelayCommand<int>(SelectPathTab);
 
+            LoadPathTabsFromSettings();
             Reload();
         }
 
@@ -69,6 +79,15 @@ namespace SilentNotes.ViewModels
         public ICommand PrevPdfPageCommand { get; }
         public ICommand NextPdfPageCommand { get; }
         public ICommand OpenExternallyCommand { get; }
+        public ICommand AddPathTabCommand { get; }
+        public ICommand ClosePathTabCommand { get; }
+        public ICommand SelectPathTabCommand { get; }
+
+        /// <summary>Gets path sessions for the Reader browser.</summary>
+        public IReadOnlyList<PathTabSessionModel> PathTabs => _pathTabs;
+
+        /// <summary>Gets the active path session index.</summary>
+        public int ActivePathTabIndex => _activePathTabIndex;
 
         public bool IsSupported => _readerService.IsSupported;
 
@@ -255,6 +274,8 @@ namespace SilentNotes.ViewModels
             }
 
             _readerService.NavigateUp();
+            SaveCurrentPathToActiveTab();
+            PersistPathTabs();
             Reload();
         }
 
@@ -265,7 +286,132 @@ namespace SilentNotes.ViewModels
             if (HasOpenDocument)
                 CloseDocument();
             _readerService.GoToRoot(key);
+            SaveCurrentPathToActiveTab();
+            PersistPathTabs();
             Reload();
+        }
+
+        private void AddPathTab()
+        {
+            _pathTabs.Add(new PathTabSessionModel
+            {
+                Path = _readerService.CurrentDirectory ?? string.Empty,
+                Label = MakePathLabel(_readerService.CurrentDirectory),
+            });
+            _activePathTabIndex = _pathTabs.Count - 1;
+            PersistPathTabs();
+            OnPropertyChanged(nameof(PathTabs), nameof(ActivePathTabIndex));
+            RaiseStateChanged();
+        }
+
+        private void ClosePathTab(int index)
+        {
+            if (_pathTabs.Count <= 1 || index < 0 || index >= _pathTabs.Count)
+                return;
+
+            _pathTabs.RemoveAt(index);
+            if (_activePathTabIndex >= _pathTabs.Count)
+                _activePathTabIndex = _pathTabs.Count - 1;
+            else if (_activePathTabIndex > index)
+                _activePathTabIndex--;
+
+            PersistPathTabs();
+            ApplyActivePathTab();
+        }
+
+        private void SelectPathTab(int index)
+        {
+            if (index < 0 || index >= _pathTabs.Count || index == _activePathTabIndex)
+                return;
+
+            SaveCurrentPathToActiveTab();
+            _activePathTabIndex = index;
+            PersistPathTabs();
+            ApplyActivePathTab();
+        }
+
+        private void LoadPathTabsFromSettings()
+        {
+            if (_settingsService == null)
+            {
+                _pathTabs = new List<PathTabSessionModel>
+                {
+                    new PathTabSessionModel
+                    {
+                        Path = _readerService.CurrentDirectory ?? string.Empty,
+                        Label = MakePathLabel(_readerService.CurrentDirectory),
+                    },
+                };
+                _activePathTabIndex = 0;
+                return;
+            }
+
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            _pathTabs = settings.ReaderPathTabs != null && settings.ReaderPathTabs.Count > 0
+                ? new List<PathTabSessionModel>(settings.ReaderPathTabs)
+                : new List<PathTabSessionModel>
+                {
+                    new PathTabSessionModel
+                    {
+                        Path = _readerService.CurrentDirectory ?? string.Empty,
+                        Label = MakePathLabel(_readerService.CurrentDirectory),
+                    },
+                };
+            _activePathTabIndex = Math.Clamp(settings.ReaderPathTabIndex, 0, _pathTabs.Count - 1);
+            string path = _pathTabs[_activePathTabIndex].Path;
+            if (!string.IsNullOrEmpty(path))
+                _readerService.EnterDirectory(path);
+        }
+
+        private void PersistPathTabs()
+        {
+            if (_settingsService == null)
+                return;
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            settings.ReaderPathTabs = _pathTabs.Select(t => new PathTabSessionModel
+            {
+                Path = t.Path ?? string.Empty,
+                Label = t.Label ?? string.Empty,
+            }).ToList();
+            settings.ReaderPathTabIndex = _activePathTabIndex;
+            _settingsService.TrySaveSettingsToLocalDevice(settings);
+        }
+
+        private void SaveCurrentPathToActiveTab()
+        {
+            if (_activePathTabIndex < 0 || _activePathTabIndex >= _pathTabs.Count)
+                return;
+            _pathTabs[_activePathTabIndex].Path = _readerService.CurrentDirectory ?? string.Empty;
+            _pathTabs[_activePathTabIndex].Label = MakePathLabel(_readerService.CurrentDirectory);
+            OnPropertyChanged(nameof(PathTabs));
+        }
+
+        private void ApplyActivePathTab()
+        {
+            if (_activePathTabIndex < 0 || _activePathTabIndex >= _pathTabs.Count)
+                _activePathTabIndex = 0;
+            if (HasOpenDocument)
+                CloseDocument();
+            string path = _pathTabs[_activePathTabIndex].Path;
+            if (!string.IsNullOrEmpty(path))
+                _readerService.EnterDirectory(path);
+            OnPropertyChanged(nameof(PathTabs), nameof(ActivePathTabIndex));
+            Reload();
+        }
+
+        private static string MakePathLabel(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return "/";
+            try
+            {
+                string name = Path.GetFileName(path.TrimEnd('/', '\\'));
+                return string.IsNullOrEmpty(name) ? "/" : name;
+            }
+            catch (Exception)
+            {
+                return "/";
+            }
         }
 
         private void SetKindFilter(string kind)
@@ -284,6 +430,8 @@ namespace SilentNotes.ViewModels
                 if (item.Kind == DocumentKind.Folder)
                 {
                     _readerService.EnterDirectory(item.Path);
+                    SaveCurrentPathToActiveTab();
+                    PersistPathTabs();
                     Reload();
                     return;
                 }

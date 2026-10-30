@@ -193,6 +193,7 @@ public static class MauiProgram
             serviceProvider.GetService<IDataProtectionService>(),
             serviceProvider.GetService<ICloudStorageClientFactory>()));
         services.AddSingleton<IMediaPlayerService>((serviceProvider) => new MediaPlayerService());
+        services.AddSingleton<IAbroBrowserService>((serviceProvider) => new AbroBrowserService());
         services.AddSingleton<IDocumentReaderService>((serviceProvider) => new DocumentReaderService());
         services.AddSingleton<ITelegramService>((serviceProvider) => new TelegramService(
             serviceProvider.GetService<IXmlFileService>(),
@@ -278,6 +279,7 @@ public static class MauiProgram
         services.AddSingleton<IMediaPlayerService>((serviceProvider) => new MediaPlayerService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IActivityResultAwaiter>()));
+        services.AddSingleton<IAbroBrowserService>((serviceProvider) => new AbroBrowserService());
         services.AddSingleton<IDocumentReaderService>((serviceProvider) => new DocumentReaderService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IActivityResultAwaiter>()));

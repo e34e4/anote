@@ -195,6 +195,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Workers\BookyUrlUtils.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\TextFragmentBuilder.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\ContactModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\PathTabSessionModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\ContactListModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\ContactsViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\RssFeedModel.cs" />
@@ -267,7 +268,9 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\MediaItemModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\MediaIntentRequest.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IMediaPlayerService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroBrowserService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\PlayerViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\AbroViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\DocumentItemModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\DocumentIntentRequest.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IDocumentReaderService.cs" />

@@ -690,7 +690,7 @@
 			<MudIconButton Icon="@Icons.Material.Filled.AttachFile" Color="Color.Inherit" OnClick="AttachFileAsync" title="@LanguageService["tg_attach_file"]" />
 			<MudIconButton Icon="@Icons.Material.Filled.Image" Color="Color.Inherit" OnClick="AttachPhotoAsync" title="@LanguageService["tg_attach_photo"]" />
 			<MudTextField T="string" @bind-Value="ViewModel.ComposerText" Placeholder="@(ViewModel.IsEditingMessage ? LanguageService["tg_edit_placeholder"] : LanguageService["tg_type_message"])"
-				Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" Class="flex-grow-1" Immediate="true" />
+				Variant="Variant.Outlined" Margin="Margin.Dense" Lines="4" Class="flex-grow-1" Immediate="true" />
 			<MudIconButton Icon="@(ViewModel.IsEditingMessage ? Icons.Material.Filled.Check : Icons.Material.Filled.Send)" Color="Color.Primary" Disabled="@(!ViewModel.CanSend)" OnClick="SendAsync" title="@(ViewModel.IsEditingMessage ? LanguageService["tg_edit"] : LanguageService["tg_send"])" />
 		</div>
 	}

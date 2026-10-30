@@ -290,31 +290,33 @@ namespace SilentNotes.Platforms.Services
             if (string.IsNullOrEmpty(uriOrPath))
                 return Task.CompletedTask;
 
-            MediaKind kind = DetectKind(uriOrPath, mimeType);
-            string title = displayName ?? GuessDisplayName(uriOrPath);
+            string normalized = NormalizeMediaUrl(uriOrPath);
+            MediaKind kind = DetectKind(normalized, mimeType);
+            string title = displayName ?? GuessDisplayName(normalized);
 
             if (kind == MediaKind.Image)
             {
-                OpenImagePath(uriOrPath, title);
+                OpenImagePath(normalized, title);
                 return Task.CompletedTask;
             }
 
             if (kind == MediaKind.Video)
             {
                 StopAudioPlayer();
-                _activePath = uriOrPath;
+                _activePath = normalized;
                 _activeTitle = title;
                 _activeKind = MediaKind.Video;
                 _isPlaying = false;
                 _isPaused = false;
                 _duration = TimeSpan.Zero;
                 RaiseStateChanged();
-                SilentNotes.VideoPlayerActivity.Start(GetLaunchContext(), uriOrPath, title);
+                bool useWebView = NeedsWebViewPlayback(normalized);
+                SilentNotes.VideoPlayerActivity.Start(GetLaunchContext(), normalized, title, useWebView);
                 return Task.CompletedTask;
             }
 
             // Default / audio
-            PlayAudio(uriOrPath, title);
+            PlayAudio(normalized, title);
             return Task.CompletedTask;
         }
 
@@ -493,7 +495,9 @@ namespace SilentNotes.Platforms.Services
                 _player.Error += OnPlaybackError;
 
                 if (uriOrPath.StartsWith("content:", StringComparison.OrdinalIgnoreCase) ||
-                    uriOrPath.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+                    uriOrPath.StartsWith("file:", StringComparison.OrdinalIgnoreCase) ||
+                    uriOrPath.StartsWith("http:", StringComparison.OrdinalIgnoreCase) ||
+                    uriOrPath.StartsWith("https:", StringComparison.OrdinalIgnoreCase))
                 {
                     _player.SetDataSource(_appContext.Context, AndroidUri.Parse(uriOrPath));
                 }
@@ -627,6 +631,23 @@ namespace SilentNotes.Platforms.Services
 
         private static MediaKind DetectKindFromPath(string path)
         {
+            if (IsHttpUrl(path))
+            {
+                if (IsYoutubeUrl(path))
+                    return MediaKind.Video;
+
+                string httpExt = GuessExtensionFromUrl(path);
+                if (AudioExtensions.Contains(httpExt))
+                    return MediaKind.Audio;
+                if (VideoExtensions.Contains(httpExt))
+                    return MediaKind.Video;
+                if (ImageExtensions.Contains(httpExt))
+                    return MediaKind.Image;
+
+                // Unknown http(s) media/page: open in the video/WebView player.
+                return MediaKind.Video;
+            }
+
             string ext = Path.GetExtension(path ?? string.Empty);
             if (AudioExtensions.Contains(ext))
                 return MediaKind.Audio;
@@ -635,6 +656,61 @@ namespace SilentNotes.Platforms.Services
             if (ImageExtensions.Contains(ext))
                 return MediaKind.Image;
             return MediaKind.Other;
+        }
+
+        private static string NormalizeMediaUrl(string uriOrPath)
+        {
+            string trimmed = (uriOrPath ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(trimmed))
+                return trimmed;
+            if (trimmed.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+                return "https://" + trimmed;
+            if (!trimmed.Contains("://", StringComparison.Ordinal) &&
+                (trimmed.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) ||
+                 trimmed.Contains("youtu.be", StringComparison.OrdinalIgnoreCase)))
+            {
+                return "https://" + trimmed;
+            }
+            return trimmed;
+        }
+
+        private static bool IsHttpUrl(string path)
+        {
+            return !string.IsNullOrEmpty(path) &&
+                (path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                 path.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsYoutubeUrl(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return false;
+            return path.Contains("youtube.com", StringComparison.OrdinalIgnoreCase)
+                || path.Contains("youtu.be", StringComparison.OrdinalIgnoreCase)
+                || path.Contains("youtube-nocookie.com", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool NeedsWebViewPlayback(string path)
+        {
+            if (IsYoutubeUrl(path))
+                return true;
+            if (!IsHttpUrl(path))
+                return false;
+            string ext = GuessExtensionFromUrl(path);
+            return string.IsNullOrEmpty(ext) || (!VideoExtensions.Contains(ext) && !AudioExtensions.Contains(ext));
+        }
+
+        private static string GuessExtensionFromUrl(string path)
+        {
+            try
+            {
+                var uri = new Uri(path);
+                return Path.GetExtension(uri.AbsolutePath) ?? string.Empty;
+            }
+            catch (Exception)
+            {
+                return Path.GetExtension(path ?? string.Empty) ?? string.Empty;
+            }
         }
 
         private static string GetDefaultRootPath()

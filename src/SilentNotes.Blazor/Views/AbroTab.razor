@@ -1,0 +1,69 @@
+@using CommunityToolkit.Mvvm.Input
+@using MudBlazor
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+
+<style type="text/css">
+	.abro-root {
+		background-color: #000000;
+		min-height: calc(100vh - 208px);
+		padding: 16px;
+		color: #ffffff;
+	}
+	.abro-card {
+		border: 1px solid #2b2b2b;
+		border-radius: 14px;
+		background-color: #0d0d0d;
+		padding: 16px;
+	}
+	.abro-desc {
+		font-size: 0.85rem;
+		color: #9e9e9e;
+		margin: 8px 0 14px 0;
+	}
+</style>
+
+<div class="abro-root">
+	@if (ViewModel == null || !ViewModel.IsSupported)
+	{
+		<MudAlert Severity="Severity.Info" Dense="true">The Abro browser is not available on this platform.</MudAlert>
+	}
+	else
+	{
+		<div class="abro-card">
+			<MudText Typo="Typo.h6">Abro</MudText>
+			<div class="abro-desc">
+				Light multi-tab web browser. History, cookies, cache and downloads are stored in
+				the visible folder /sdcard/abro, open tabs are restored on start.
+			</div>
+			<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Language"
+				OnClick="OpenBrowserAsync">Open browser</MudButton>
+		</div>
+	}
+</div>
+
+@code {
+	[Parameter]
+	public AbroViewModel ViewModel { get; set; }
+
+	private bool _autoOpened;
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (firstRender && !_autoOpened && ViewModel != null && ViewModel.IsSupported)
+		{
+			_autoOpened = true;
+			await OpenBrowserAsync();
+		}
+	}
+
+	private async Task OpenBrowserAsync()
+	{
+		if (ViewModel == null)
+			return;
+		if (ViewModel.OpenBrowserCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.OpenBrowserCommand.Execute(null);
+	}
+}
