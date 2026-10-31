@@ -165,6 +165,8 @@ namespace SilentNotes.Platforms
         {
             try
             {
+                // Resolve first so the sync service can register for ClipboardChangedMessage.
+                _serviceProvider?.GetService<IClipboardWebdavSyncService>();
                 _serviceProvider?.GetService<IMessengerService>()?.Send(new ClipboardChangedMessage());
             }
             catch (Exception ex)

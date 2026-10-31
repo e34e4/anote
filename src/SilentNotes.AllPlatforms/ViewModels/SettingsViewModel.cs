@@ -41,6 +41,7 @@ namespace SilentNotes.ViewModels
         private readonly IMessengerService _messengerService;
         private readonly ICloudStorageClientFactory _cloudStorageClientFactory;
         private readonly IBookySyncService _bookySyncService;
+        private readonly IClipboardWebdavSyncService _clipboardWebdavSyncService;
         private readonly IPasswordVaultSyncService _passwordVaultSyncService;
         private readonly IDeviceSmsService _deviceSmsService;
         private readonly IDevicePhoneService _devicePhoneService;
@@ -67,7 +68,8 @@ namespace SilentNotes.ViewModels
             IDeviceSmsService deviceSmsService,
             IDevicePhoneService devicePhoneService = null,
             INativeBrowserService nativeBrowserService = null,
-            IPasswordVaultSyncService passwordVaultSyncService = null)
+            IPasswordVaultSyncService passwordVaultSyncService = null,
+            IClipboardWebdavSyncService clipboardWebdavSyncService = null)
         {
             Language = languageService;
             _settingsService = settingsService;
@@ -80,6 +82,7 @@ namespace SilentNotes.ViewModels
             _filePickerService = filePickerService;
             _bookySyncService = bookySyncService;
             _passwordVaultSyncService = passwordVaultSyncService;
+            _clipboardWebdavSyncService = clipboardWebdavSyncService;
             _deviceSmsService = deviceSmsService;
             _devicePhoneService = devicePhoneService;
             _nativeBrowserService = nativeBrowserService;
@@ -239,6 +242,7 @@ namespace SilentNotes.ViewModels
                 settings.ClipboardMonitoringEnabled.GetHashCode(),
                 settings.ClipboardHistorySize.GetHashCode(),
                 settings.ClipboardPollIntervalMs.GetHashCode(),
+                settings.ClipboardWebdavSyncEnabled.GetHashCode(),
                 settings.BookyUrlCaptureEnabled.GetHashCode(),
                 settings.BookySyncEnabled.GetHashCode(),
                 string.GetHashCode(settings.BookySyncUrl),
@@ -773,6 +777,20 @@ namespace SilentNotes.ViewModels
         public bool CanMonitorClipboard
         {
             get { return _environmentService.ClipboardMonitor != null; }
+        }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether text clipboard history is uploaded to WebDAV
+        /// for the desktop clipmon reader.
+        /// </summary>
+        public bool ClipboardWebdavSyncEnabled
+        {
+            get { return Model.ClipboardWebdavSyncEnabled; }
+            set
+            {
+                if (SetProperty(Model.ClipboardWebdavSyncEnabled, value, (bool v) => Model.ClipboardWebdavSyncEnabled = v) && value)
+                    _clipboardWebdavSyncService?.ScheduleUpload();
+            }
         }
 
         /// <summary>

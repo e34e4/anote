@@ -19,6 +19,7 @@
 @inject ICloudStorageClientFactory CloudStorageClientFactory
 @inject IBookySyncService BookySyncService
 @inject IPasswordVaultSyncService PasswordVaultSyncService
+@inject IClipboardWebdavSyncService ClipboardWebdavSyncService
 @inject IDeviceSmsService DeviceSmsService
 @inject IDevicePhoneService DevicePhoneService
 @inject INativeBrowserService NativeBrowserService
@@ -377,6 +378,12 @@
 						<MudSlider id="ClipboardHistorySize" @bind-Value="ViewModel.ClipboardHistorySize"
 							Min="50" Max="2000" Step="50" Color="Color.Tertiary"></MudSlider>
 					</div>
+					<div><MudIcon Icon="@Icons.Material.Filled.CloudUpload" Color="Color.Secondary" /></div>
+					<div>
+						<MudSwitch @bind-Value="@ViewModel.ClipboardWebdavSyncEnabled"
+							Label="@LanguageService["gui_clipboard_webdav_sync"]" Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
+						<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["gui_clipboard_webdav_sync_hint"]</MudText>
+					</div>
 				}
 
 				@* Booky browser url capture (Android accessibility service) *@
@@ -604,7 +611,7 @@
 
 	protected override void OnInitialized()
 	{
-		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService, NativeBrowserService, PasswordVaultSyncService);
+		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService, NativeBrowserService, PasswordVaultSyncService, ClipboardWebdavSyncService);
 	}
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)

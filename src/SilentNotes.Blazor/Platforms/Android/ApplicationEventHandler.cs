@@ -586,6 +586,7 @@ namespace SilentNotes.Platforms
                     try
                     {
                         Ioc.Instance.GetService<IClipboardHistoryService>()?.AddText(text.Trim(), limit);
+                        Ioc.Instance.GetService<IClipboardWebdavSyncService>();
                         Ioc.Instance.GetService<IMessengerService>()?.Send(new ClipboardChangedMessage());
                     }
                     catch (Exception ex)

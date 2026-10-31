@@ -29,6 +29,7 @@
 @inject INativeBrowserService NativeBrowserService
 @inject IClipboardService ClipboardService
 @inject IClipboardHistoryService ClipboardHistoryService
+@inject IClipboardWebdavSyncService ClipboardWebdavSyncService
 @inject IBookySyncService BookySyncService
 @inject IDeviceCalendarService DeviceCalendarService
 @inject IClockService ClockService
@@ -696,7 +697,8 @@
 			SettingsService,
 			ImageFileService,
 			FeedbackService,
-			LanguageService);
+			LanguageService,
+			ClipboardWebdavSyncService);
 
 		_bookyViewModel = new BookyViewModel(
 			noteRepositoryModel,

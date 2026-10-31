@@ -190,6 +190,8 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\IClipboardMonitorService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IClipboardSyncService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\ClipboardSyncService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IClipboardWebdavSyncService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\ClipboardWebdavSyncService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\ClipboardViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\BookyViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\BookyUrlUtils.cs" />

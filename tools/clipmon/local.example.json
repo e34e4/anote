@@ -1,0 +1,7 @@
+{
+  "webdav_url": "https://your-host.example/webdav/",
+  "username": "",
+  "password": "",
+  "remote_path": "anote/clipboard_sync.json",
+  "auto_copy": true
+}

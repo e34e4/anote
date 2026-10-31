@@ -301,6 +301,10 @@ paket-files/
 __pycache__/
 *.pyc
 
+# Local-only aNote web / clipmon credentials (never publish)
+tools/anote-web/local.json
+tools/clipmon/local.json
+
 # Cake - Uncomment if you are using it
 # tools/**
 # !tools/packages.config

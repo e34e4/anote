@@ -61,6 +61,7 @@ namespace SilentNotes.Models
             ClipboardMonitoringEnabled = false;
             ClipboardHistorySize = 500;
             ClipboardPollIntervalMs = 2500;
+            ClipboardWebdavSyncEnabled = false;
             BookyUrlCaptureEnabled = false;
             BookySyncEnabled = false;
             BookySyncUrl = string.Empty;
@@ -401,6 +402,14 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("clipboard_poll_interval_ms")]
         public int ClipboardPollIntervalMs { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether text clipboard history should be uploaded to
+        /// WebDAV as <c>anote/clipboard_sync.json</c> for read-only desktop consumers (clipmon).
+        /// Uses the same WebDAV credentials as File / Booky / cloud sync.
+        /// </summary>
+        [XmlElement("clipboard_webdav_sync")]
+        public bool ClipboardWebdavSyncEnabled { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether the url of the page currently open in a browser

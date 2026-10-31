@@ -26,6 +26,7 @@ namespace SilentNotes.ViewModels
         private readonly IImageFileService _imageFileService;
         private readonly IFeedbackService _feedbackService;
         private readonly ILanguageService _languageService;
+        private readonly IClipboardWebdavSyncService _webdavSyncService;
         private List<ClipboardItemViewModel> _items = new List<ClipboardItemViewModel>();
         private string _newItemText;
         private string _filter;
@@ -39,7 +40,8 @@ namespace SilentNotes.ViewModels
             ISettingsService settingsService,
             IImageFileService imageFileService,
             IFeedbackService feedbackService,
-            ILanguageService languageService)
+            ILanguageService languageService,
+            IClipboardWebdavSyncService webdavSyncService = null)
         {
             _historyService = historyService;
             _clipboardService = clipboardService;
@@ -47,6 +49,7 @@ namespace SilentNotes.ViewModels
             _imageFileService = imageFileService;
             _feedbackService = feedbackService;
             _languageService = languageService;
+            _webdavSyncService = webdavSyncService;
 
             CopyCommand = new AsyncRelayCommand<ClipboardItemViewModel>(CopyAsync);
             ToggleFavoriteCommand = new RelayCommand<ClipboardItemViewModel>(ToggleFavorite);
@@ -122,6 +125,7 @@ namespace SilentNotes.ViewModels
             _historyService.AddText(text, limit);
             NewItemText = null;
             Reload();
+            _webdavSyncService?.ScheduleUpload();
         }
 
         /// <summary>
@@ -235,6 +239,7 @@ namespace SilentNotes.ViewModels
                 return;
             _historyService.ToggleFavorite(item.Id);
             Reload();
+            _webdavSyncService?.ScheduleUpload();
         }
 
         /// <summary>
@@ -248,6 +253,7 @@ namespace SilentNotes.ViewModels
                 return;
             _historyService.Delete(item.Id);
             Reload();
+            _webdavSyncService?.ScheduleUpload();
         }
 
         /// <summary>
@@ -259,6 +265,7 @@ namespace SilentNotes.ViewModels
         {
             _historyService.ClearAll();
             Reload();
+            _webdavSyncService?.ScheduleUpload();
         }
 
         /// <summary>
@@ -270,6 +277,7 @@ namespace SilentNotes.ViewModels
         {
             _historyService.ClearNonFavorites();
             Reload();
+            _webdavSyncService?.ScheduleUpload();
         }
     }
 

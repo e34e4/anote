@@ -118,6 +118,11 @@ public static class MauiProgram
         services.AddSingleton<IClipboardService>((serviceProvider) => new ClipboardService());
         services.AddSingleton<IClipboardSyncService>((serviceProvider) => new ClipboardSyncService(
             serviceProvider.GetService<IClipboardHistoryService>()));
+        services.AddSingleton<IClipboardWebdavSyncService>((serviceProvider) => new ClipboardWebdavSyncService(
+            serviceProvider.GetService<IClipboardHistoryService>(),
+            serviceProvider.GetService<IWebdavFileService>(),
+            serviceProvider.GetService<ISettingsService>(),
+            serviceProvider.GetService<IMessengerService>()));
         services.AddSingleton<IBookySyncService>((serviceProvider) => new BookySyncService(
             serviceProvider.GetService<ISettingsService>(),
             serviceProvider.GetService<IRepositoryStorageService>(),
