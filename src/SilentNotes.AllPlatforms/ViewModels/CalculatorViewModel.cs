@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
@@ -32,6 +33,20 @@ namespace SilentNotes.ViewModels
         private bool _isScientific;
         private bool _useDegrees = true;
         private bool _justEvaluated;
+        private bool _isConverterMode;
+        private UnitConverterEngine.ConverterCategory _converterCategory = UnitConverterEngine.ConverterCategory.Physics;
+        private string _physicsGroupId = "length";
+        private string _fromUnitId = "m";
+        private string _toUnitId = "km";
+        private string _converterInput = "1";
+        private string _converterOutput = string.Empty;
+        private string _currencyFrom = "USD";
+        private string _currencyTo = "EUR";
+        private int _numberFromBase = 10;
+        private int _numberToBase = 16;
+        private string _networkInput = "192.168.1.0/24";
+        private string _csTool = "base";
+        private string _hexAsciiInput = string.Empty;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="CalculatorViewModel"/> class.
@@ -51,10 +66,13 @@ namespace SilentNotes.ViewModels
             CalculateCommand = new RelayCommand(Calculate);
             ToggleScientificCommand = new RelayCommand(() => IsScientific = !IsScientific);
             ToggleAngleCommand = new RelayCommand(() => UseDegrees = !UseDegrees);
+            ToggleConverterCommand = new RelayCommand(() => IsConverterMode = !IsConverterMode);
             UseHistoryCommand = new RelayCommand<CalculatorHistoryItem>(UseHistory);
             ClearHistoryCommand = new RelayCommand(ClearHistory);
+            SetConverterCategoryCommand = new RelayCommand<UnitConverterEngine.ConverterCategory>(SetConverterCategory);
 
             LoadHistory();
+            RecalculateConverter();
         }
 
         /// <summary>Gets the command which appends a token to the expression.</summary>
@@ -81,6 +99,12 @@ namespace SilentNotes.ViewModels
         /// <summary>Gets the command which toggles between degrees and radians.</summary>
         public ICommand ToggleAngleCommand { get; }
 
+        /// <summary>Gets the command which toggles the unit converters panel.</summary>
+        public ICommand ToggleConverterCommand { get; }
+
+        /// <summary>Gets the command which selects a converter category.</summary>
+        public ICommand SetConverterCategoryCommand { get; }
+
         /// <summary>Gets the command which loads a history entry into the expression.</summary>
         public ICommand UseHistoryCommand { get; }
 
@@ -106,6 +130,207 @@ namespace SilentNotes.ViewModels
         {
             get { return _isScientific; }
             set { SetProperty(ref _isScientific, value); }
+        }
+
+        /// <summary>Gets or sets a value indicating whether the converters panel is shown.</summary>
+        public bool IsConverterMode
+        {
+            get { return _isConverterMode; }
+            set
+            {
+                if (SetProperty(ref _isConverterMode, value) && value)
+                    RecalculateConverter();
+            }
+        }
+
+        public UnitConverterEngine.ConverterCategory ConverterCategory
+        {
+            get => _converterCategory;
+            set
+            {
+                if (SetProperty(ref _converterCategory, value))
+                    RecalculateConverter();
+            }
+        }
+
+        public bool IsPhysicsConverter => _converterCategory == UnitConverterEngine.ConverterCategory.Physics;
+        public bool IsCsConverter => _converterCategory == UnitConverterEngine.ConverterCategory.ComputerScience;
+        public bool IsNetworkingConverter => _converterCategory == UnitConverterEngine.ConverterCategory.Networking;
+        public bool IsCurrencyConverter => _converterCategory == UnitConverterEngine.ConverterCategory.Currency;
+
+        public IReadOnlyList<UnitConverterEngine.UnitGroup> PhysicsGroups => UnitConverterEngine.PhysicsGroups;
+        public IReadOnlyList<UnitConverterEngine.UnitOption> PhysicsUnits =>
+            UnitConverterEngine.PhysicsGroups.FirstOrDefault(g => g.Id == _physicsGroupId)?.Units
+            ?? Array.Empty<UnitConverterEngine.UnitOption>();
+
+        public string PhysicsGroupId
+        {
+            get => _physicsGroupId;
+            set
+            {
+                if (SetProperty(ref _physicsGroupId, value))
+                {
+                    var units = PhysicsUnits;
+                    if (units.Count > 0)
+                    {
+                        _fromUnitId = units[0].Id;
+                        _toUnitId = units.Count > 1 ? units[1].Id : units[0].Id;
+                        OnPropertyChanged(nameof(FromUnitId), nameof(ToUnitId), nameof(PhysicsUnits));
+                    }
+                    RecalculateConverter();
+                }
+            }
+        }
+
+        public string FromUnitId
+        {
+            get => _fromUnitId;
+            set { if (SetProperty(ref _fromUnitId, value)) RecalculateConverter(); }
+        }
+
+        public string ToUnitId
+        {
+            get => _toUnitId;
+            set { if (SetProperty(ref _toUnitId, value)) RecalculateConverter(); }
+        }
+
+        public string ConverterInput
+        {
+            get => _converterInput;
+            set { if (SetProperty(ref _converterInput, value)) RecalculateConverter(); }
+        }
+
+        public string ConverterOutput
+        {
+            get => _converterOutput;
+            private set => SetProperty(ref _converterOutput, value);
+        }
+
+        public IReadOnlyList<string> CurrencyCodes => UnitConverterEngine.CurrencyCodes;
+
+        public string CurrencyFrom
+        {
+            get => _currencyFrom;
+            set { if (SetProperty(ref _currencyFrom, value)) RecalculateConverter(); }
+        }
+
+        public string CurrencyTo
+        {
+            get => _currencyTo;
+            set { if (SetProperty(ref _currencyTo, value)) RecalculateConverter(); }
+        }
+
+        public int NumberFromBase
+        {
+            get => _numberFromBase;
+            set { if (SetProperty(ref _numberFromBase, value)) RecalculateConverter(); }
+        }
+
+        public int NumberToBase
+        {
+            get => _numberToBase;
+            set { if (SetProperty(ref _numberToBase, value)) RecalculateConverter(); }
+        }
+
+        public string NetworkInput
+        {
+            get => _networkInput;
+            set { if (SetProperty(ref _networkInput, value)) RecalculateConverter(); }
+        }
+
+        public string CsTool
+        {
+            get => _csTool;
+            set { if (SetProperty(ref _csTool, value)) RecalculateConverter(); }
+        }
+
+        public string HexAsciiInput
+        {
+            get => _hexAsciiInput;
+            set { if (SetProperty(ref _hexAsciiInput, value)) RecalculateConverter(); }
+        }
+
+        private void SetConverterCategory(UnitConverterEngine.ConverterCategory category)
+        {
+            ConverterCategory = category;
+            OnPropertyChanged(nameof(IsPhysicsConverter), nameof(IsCsConverter), nameof(IsNetworkingConverter), nameof(IsCurrencyConverter));
+        }
+
+        public void RecalculateConverter()
+        {
+            try
+            {
+                switch (_converterCategory)
+                {
+                    case UnitConverterEngine.ConverterCategory.Physics:
+                        ConverterOutput = ConvertPhysics();
+                        break;
+                    case UnitConverterEngine.ConverterCategory.Currency:
+                        if (!double.TryParse(_converterInput, NumberStyles.Float, CultureInfo.InvariantCulture, out double money)
+                            && !double.TryParse(_converterInput, NumberStyles.Float, CultureInfo.CurrentCulture, out money))
+                        {
+                            ConverterOutput = string.Empty;
+                            break;
+                        }
+                        ConverterOutput = UnitConverterEngine.ConvertCurrency(money, _currencyFrom, _currencyTo);
+                        break;
+                    case UnitConverterEngine.ConverterCategory.ComputerScience:
+                        ConverterOutput = ConvertComputerScience();
+                        break;
+                    case UnitConverterEngine.ConverterCategory.Networking:
+                        ConverterOutput = UnitConverterEngine.AnalyzeCidr(_networkInput);
+                        break;
+                    default:
+                        ConverterOutput = string.Empty;
+                        break;
+                }
+            }
+            catch
+            {
+                ConverterOutput = string.Empty;
+            }
+        }
+
+        private string ConvertPhysics()
+        {
+            var group = UnitConverterEngine.PhysicsGroups.FirstOrDefault(g => g.Id == _physicsGroupId);
+            if (group == null)
+                return string.Empty;
+            if (!double.TryParse(_converterInput, NumberStyles.Float, CultureInfo.InvariantCulture, out double value)
+                && !double.TryParse(_converterInput, NumberStyles.Float, CultureInfo.CurrentCulture, out value))
+            {
+                return string.Empty;
+            }
+
+            if (group.IsTemperature)
+                return UnitConverterEngine.ConvertTemperature(value, _fromUnitId, _toUnitId);
+
+            var from = group.Units.FirstOrDefault(u => u.Id == _fromUnitId);
+            var to = group.Units.FirstOrDefault(u => u.Id == _toUnitId);
+            return UnitConverterEngine.ConvertLinear(value, from, to);
+        }
+
+        private string ConvertComputerScience()
+        {
+            if (_csTool == "datasize")
+            {
+                var group = UnitConverterEngine.ComputerScienceGroups[0];
+                if (!double.TryParse(_converterInput, NumberStyles.Float, CultureInfo.InvariantCulture, out double value)
+                    && !double.TryParse(_converterInput, NumberStyles.Float, CultureInfo.CurrentCulture, out value))
+                {
+                    return string.Empty;
+                }
+                var from = group.Units.FirstOrDefault(u => u.Id == _fromUnitId) ?? group.Units[0];
+                var to = group.Units.FirstOrDefault(u => u.Id == _toUnitId) ?? group.Units[1];
+                return UnitConverterEngine.ConvertLinear(value, from, to);
+            }
+
+            if (_csTool == "asciihex")
+                return UnitConverterEngine.AsciiToHex(_hexAsciiInput);
+            if (_csTool == "hexascii")
+                return UnitConverterEngine.HexToAscii(_hexAsciiInput);
+
+            return UnitConverterEngine.ConvertNumberBase(_converterInput, _numberFromBase, _numberToBase);
         }
 
         /// <summary>Gets or sets a value indicating whether trig functions use degrees.</summary>

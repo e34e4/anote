@@ -18,5 +18,14 @@ namespace SilentNotes.Platforms.Services
 
         /// <inheritdoc/>
         public Task PresentAsync() => Task.CompletedTask;
+
+        /// <inheritdoc/>
+        public Task PresentUrlAsync(string url) => Task.CompletedTask;
+
+        /// <inheritdoc/>
+        public Task PresentHistoryAsync() => Task.CompletedTask;
+
+        /// <inheritdoc/>
+        public Task PresentBookmarksAsync() => Task.CompletedTask;
     }
 }

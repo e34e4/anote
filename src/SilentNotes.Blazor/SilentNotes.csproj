@@ -22,8 +22,8 @@
         <ApplicationIdGuid>11EC9146-7F8B-417D-B616-3CF75D22866E</ApplicationIdGuid>
 
         <!-- Versions -->
-        <ApplicationDisplayVersion>1.3.27</ApplicationDisplayVersion>
-        <ApplicationVersion>133</ApplicationVersion>
+        <ApplicationDisplayVersion>1.3.28</ApplicationDisplayVersion>
+        <ApplicationVersion>134</ApplicationVersion>
 
         <!-- Workaround: for https://github.com/dotnet/maui/issues/12859 -->
         <Version>$(ApplicationDisplayVersion)</Version>

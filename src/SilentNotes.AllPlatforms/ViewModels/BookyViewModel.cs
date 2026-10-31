@@ -28,6 +28,7 @@ namespace SilentNotes.ViewModels
         private readonly ILanguageService _languageService;
         private readonly IRepositoryStorageService _repositoryService;
         private readonly INativeBrowserService _browserService;
+        private readonly IAbroBrowserService _abroBrowserService;
         private readonly IEnvironmentService _environmentService;
         private readonly IBookySyncService _bookySyncService;
         private readonly IFeedbackService _feedbackService;
@@ -54,12 +55,14 @@ namespace SilentNotes.ViewModels
             INativeBrowserService browserService,
             IEnvironmentService environmentService,
             IBookySyncService bookySyncService,
-            IFeedbackService feedbackService)
+            IFeedbackService feedbackService,
+            IAbroBrowserService abroBrowserService = null)
         {
             _model = model;
             _languageService = languageService;
             _repositoryService = repositoryService;
             _browserService = browserService;
+            _abroBrowserService = abroBrowserService;
             _environmentService = environmentService;
             _bookySyncService = bookySyncService;
             _feedbackService = feedbackService;
@@ -290,6 +293,12 @@ namespace SilentNotes.ViewModels
             if (bookmark == null)
                 return;
             string target = TextFragmentBuilder.WithTextFragment(bookmark.Url, bookmark.Quote);
+            if (_abroBrowserService?.IsSupported == true)
+            {
+                _ = _abroBrowserService.PresentUrlAsync(target);
+                return;
+            }
+
             _browserService.OpenWebsiteInNewTab(target);
         }
 

@@ -15,6 +15,27 @@
 		padding: 10px;
 		color: #ffffff;
 	}
+	.rec-sections {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 4px;
+		margin-bottom: 10px;
+	}
+	.rec-section-btn {
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background-color: #000000;
+		color: #cccccc;
+		font-size: 0.9rem;
+		height: 40px;
+		cursor: pointer;
+		touch-action: manipulation;
+	}
+	.rec-section-btn.active {
+		color: #ffffff;
+		border-color: var(--mud-palette-primary);
+		background-color: #101010;
+	}
 	.rec-recorder-card {
 		border: 1px solid #2b2b2b;
 		border-radius: 14px;
@@ -117,9 +138,14 @@
 </style>
 
 <div class="rec-root">
+	<div class="rec-sections">
+		<button class="rec-section-btn @(ViewModel.IsAudioSection ? "active" : null)" @onclick="() => ViewModel.ShowAudioCommand.Execute(null)">@LanguageService["rec_audio"]</button>
+		<button class="rec-section-btn @(ViewModel.IsScreenSection ? "active" : null)" @onclick="() => ViewModel.ShowScreenCommand.Execute(null)">@LanguageService["rec_screen"]</button>
+	</div>
+
 	@if (!ViewModel.IsSupported)
 	{
-		<MudAlert Severity="Severity.Info" Dense="true">@LanguageService["rec_not_supported"]</MudAlert>
+		<MudAlert Severity="Severity.Info" Dense="true">@(ViewModel.IsScreenSection ? LanguageService["rec_screen_not_supported"] : LanguageService["rec_not_supported"])</MudAlert>
 	}
 	else
 	{
@@ -138,7 +164,7 @@
 			<div class="rec-status">
 				@if (!ViewModel.IsRecording)
 				{
-					@LanguageService["rec_ready"]
+					@(ViewModel.IsScreenSection ? LanguageService["rec_screen_ready"] : LanguageService["rec_ready"])
 				}
 				else if (ViewModel.IsRecordingPaused)
 				{
@@ -146,7 +172,7 @@
 				}
 				else
 				{
-					@LanguageService["rec_recording"]
+					@(ViewModel.IsScreenSection ? LanguageService["rec_screen_recording"] : LanguageService["rec_recording"])
 				}
 			</div>
 
@@ -154,16 +180,19 @@
 				@if (!ViewModel.IsRecording)
 				{
 					<button class="rec-btn record" @onclick="StartRecordingAsync">
-						<MudIcon Icon="@Icons.Material.Filled.FiberManualRecord" Size="Size.Small" />
-						<span>@LanguageService["rec_start"]</span>
+						<MudIcon Icon="@(ViewModel.IsScreenSection ? Icons.Material.Filled.FiberManualRecord : Icons.Material.Filled.FiberManualRecord)" Size="Size.Small" />
+						<span>@(ViewModel.IsScreenSection ? LanguageService["rec_screen_start"] : LanguageService["rec_start"])</span>
 					</button>
 				}
 				else
 				{
-					<button class="rec-btn" @onclick="() => ViewModel.PauseResumeRecordingCommand.Execute(null)">
-						<MudIcon Icon="@(ViewModel.IsRecordingPaused ? Icons.Material.Filled.PlayArrow : Icons.Material.Filled.Pause)" Size="Size.Small" />
-						<span>@(ViewModel.IsRecordingPaused ? LanguageService["rec_resume"] : LanguageService["rec_pause"])</span>
-					</button>
+					@if (ViewModel.CanPauseResume)
+					{
+						<button class="rec-btn" @onclick="() => ViewModel.PauseResumeRecordingCommand.Execute(null)">
+							<MudIcon Icon="@(ViewModel.IsRecordingPaused ? Icons.Material.Filled.PlayArrow : Icons.Material.Filled.Pause)" Size="Size.Small" />
+							<span>@(ViewModel.IsRecordingPaused ? LanguageService["rec_resume"] : LanguageService["rec_pause"])</span>
+						</button>
+					}
 					<button class="rec-btn primary" @onclick="StopRecordingAsync">
 						<MudIcon Icon="@Icons.Material.Filled.Stop" Size="Size.Small" />
 						<span>@LanguageService["rec_stop_save"]</span>
@@ -182,7 +211,7 @@
 
 		@if (ViewModel.IsEmpty)
 		{
-			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["rec_empty"]</MudText>
+			<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@(ViewModel.IsScreenSection ? LanguageService["rec_screen_empty"] : LanguageService["rec_empty"])</MudText>
 		}
 		else if (ViewModel.HasNoMatches)
 		{
@@ -204,10 +233,17 @@
 					else
 					{
 						<div class="rec-row-top">
-							<MudIconButton Icon="@(ViewModel.IsItemPlaying(item) ? Icons.Material.Filled.PauseCircleFilled : Icons.Material.Filled.PlayCircleFilled)"
-								Color="Color.Primary" Size="Size.Medium"
-								OnClick="() => ViewModel.TogglePlayCommand.Execute(item)"
-								title="@LanguageService["rec_play"]" />
+							@if (ViewModel.IsAudioSection)
+							{
+								<MudIconButton Icon="@(ViewModel.IsItemPlaying(item) ? Icons.Material.Filled.PauseCircleFilled : Icons.Material.Filled.PlayCircleFilled)"
+									Color="Color.Primary" Size="Size.Medium"
+									OnClick="() => ViewModel.TogglePlayCommand.Execute(item)"
+									title="@LanguageService["rec_play"]" />
+							}
+							else
+							{
+								<MudIcon Icon="@Icons.Material.Filled.Videocam" Color="Color.Primary" Size="Size.Medium" Class="mr-1" />
+							}
 
 							<div class="rec-row-main">
 								<div class="rec-row-title">@item.DisplayTitle</div>
@@ -215,7 +251,7 @@
 							</div>
 
 							<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => ViewModel.StartRenameCommand.Execute(item)" title="@LanguageService["rec_rename"]" />
-							<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="() => SaveToDeviceAsync(item)" title="@LanguageService["rec_save_device"]" />
+							<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="() => SaveToDeviceAsync(item)" title="@(ViewModel.IsScreenSection ? LanguageService["rec_screen_save_device"] : LanguageService["rec_save_device"])" />
 							<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small" OnClick="() => SaveToWebdavAsync(item)" title="@LanguageService["webdav_quick_save"]" />
 							<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" OnClick="() => ShareAsync(item)" title="@LanguageService["share"]" />
 							<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => DeleteAsync(item)" title="@LanguageService["rec_delete"]" />
@@ -297,7 +333,8 @@
 			return;
 		}
 
-		bool ok = await WebdavQuickSaveService.SaveLocalFileAsync("Rec", item.Model.FilePath);
+		string source = ViewModel.IsScreenSection ? "RecScreen" : "Rec";
+		bool ok = await WebdavQuickSaveService.SaveLocalFileAsync(source, item.Model.FilePath);
 		if (ok)
 			FeedbackService.ShowToast(LanguageService.LoadTextFmt("webdav_quick_saved", WebdavQuickSaveService.LastFileName));
 		else

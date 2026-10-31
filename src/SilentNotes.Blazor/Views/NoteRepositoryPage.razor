@@ -33,12 +33,14 @@
 @inject IBookySyncService BookySyncService
 @inject IDeviceCalendarService DeviceCalendarService
 @inject IClockService ClockService
+@inject ICompassService CompassService
 @inject IDeviceSmsService SmsService
 @inject IImageFileService ImageFileService
 @inject IQrService QrService
 @inject IQrHistoryService QrHistoryService
 @inject ISharingService SharingService
 @inject IAudioRecorderService AudioRecorderService
+@inject IScreenRecorderService ScreenRecorderService
 @inject IWebdavFileService WebdavFileService
 @inject IDevicePhoneService DevicePhoneService
 @inject IPhoneSpamService PhoneSpamService
@@ -185,11 +187,18 @@
 		}
 		else if (_activeTab == 4)
 		{
-			<MudIconButton Icon="@Icons.Material.Filled.Functions"
-				Class="@Css.BuildClass(new CssClassIf("btn-toggled", _calculatorViewModel.IsScientific))"
-				OnClick="@(() => _calculatorViewModel.ToggleScientificCommand.Execute(null))"
-				title="@LanguageService["calc_scientific"]" Color="Color.Inherit" />
-			<MudButton Class="header-text-btn" OnClick="@(() => _calculatorViewModel.ToggleAngleCommand.Execute(null))" Variant="Variant.Text" Color="Color.Inherit">@_calculatorViewModel.AngleLabel</MudButton>
+			<MudIconButton Icon="@Icons.Material.Filled.SwapHoriz"
+				Class="@Css.BuildClass(new CssClassIf("btn-toggled", _calculatorViewModel.IsConverterMode))"
+				OnClick="@(() => _calculatorViewModel.ToggleConverterCommand.Execute(null))"
+				title="@LanguageService["calc_converter"]" Color="Color.Inherit" />
+			@if (!_calculatorViewModel.IsConverterMode)
+			{
+				<MudIconButton Icon="@Icons.Material.Filled.Functions"
+					Class="@Css.BuildClass(new CssClassIf("btn-toggled", _calculatorViewModel.IsScientific))"
+					OnClick="@(() => _calculatorViewModel.ToggleScientificCommand.Execute(null))"
+					title="@LanguageService["calc_scientific"]" Color="Color.Inherit" />
+				<MudButton Class="header-text-btn" OnClick="@(() => _calculatorViewModel.ToggleAngleCommand.Execute(null))" Variant="Variant.Text" Color="Color.Inherit">@_calculatorViewModel.AngleLabel</MudButton>
+			}
 		}
 		else if (_activeTab == 5)
 		{
@@ -707,7 +716,8 @@
 			NativeBrowserService,
 			EnvironmentService,
 			BookySyncService,
-			FeedbackService);
+			FeedbackService,
+			AbroBrowserService);
 
 		_contactsViewModel = new ContactsViewModel(
 			noteRepositoryModel,
@@ -732,7 +742,7 @@
 
 		_calculatorViewModel = new CalculatorViewModel(LanguageService, SettingsService);
 		_calendarViewModel = new CalendarViewModel(DeviceCalendarService, LanguageService, FeedbackService);
-		_clockViewModel = new ClockViewModel(ClockService, LanguageService, FeedbackService);
+		_clockViewModel = new ClockViewModel(ClockService, LanguageService, FeedbackService, CompassService, AbroBrowserService);
 		_ = _clockViewModel.RescheduleAsync();
 		_smsViewModel = new SmsViewModel(SmsService, LanguageService, FeedbackService);
 		_qrViewModel = new QrViewModel(
@@ -749,7 +759,8 @@
 		_recViewModel = new RecViewModel(
 			AudioRecorderService,
 			LanguageService,
-			FeedbackService);
+			FeedbackService,
+			ScreenRecorderService);
 		_fileViewModel = new FileViewModel(
 			WebdavFileService,
 			SettingsService,
@@ -880,6 +891,14 @@
 			_ = HandleTelegramLinkAsync(pendingTelegramLink.Link);
 		}
 
+		ScreenRecordIntentRequest pendingScreenRecord = ScreenRecordIntentRequest.Pending;
+		if (pendingScreenRecord != null)
+		{
+			ScreenRecordIntentRequest.Pending = null;
+			SetActiveTab(9);
+			_ = _recViewModel.StartScreenRecordingFromIntentAsync();
+		}
+
 		MessengerService.Register<BringNoteIntoViewMessage>(
 			this, (recipient, message) => _pendingScrollIntoView = message);
 		MessengerService.Register<SynchronizationIsRunningChangedMessage>(
@@ -904,6 +923,8 @@
 			this, (recipient, message) => OnDocumentIntent());
 		MessengerService.Register<TelegramLinkMessage>(
 			this, (recipient, message) => OnTelegramLinkIntent());
+		MessengerService.Register<ScreenRecordIntentMessage>(
+			this, (recipient, message) => OnScreenRecordIntent());
 
 		if (loadResult == RepositoryStorageLoadResult.InvalidRepository)
 			throw new Exception("Invalid repository");
@@ -966,6 +987,7 @@
 		MessengerService.Unregister<MediaIntentMessage>(this);
 		MessengerService.Unregister<DocumentIntentMessage>(this);
 		MessengerService.Unregister<TelegramLinkMessage>(this);
+		MessengerService.Unregister<ScreenRecordIntentMessage>(this);
 	}
 
 	/// <summary>
@@ -1096,6 +1118,22 @@
 			TelegramLinkRequest.Pending = null;
 			SetActiveTab(17);
 			await HandleTelegramLinkAsync(request.Link);
+			StateHasChanged();
+		});
+	}
+
+	private void OnScreenRecordIntent()
+	{
+		InvokeAsync(async () =>
+		{
+			ScreenRecordIntentRequest request = ScreenRecordIntentRequest.Pending;
+			if (request == null)
+				return;
+
+			ScreenRecordIntentRequest.Pending = null;
+			SetActiveTab(9);
+			if (_recViewModel != null)
+				await _recViewModel.StartScreenRecordingFromIntentAsync();
 			StateHasChanged();
 		});
 	}

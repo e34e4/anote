@@ -18,5 +18,14 @@ namespace SilentNotes.Services
 
         /// <summary>Shows the browser full screen.</summary>
         Task PresentAsync();
+
+        /// <summary>Shows the browser and navigates to <paramref name="url"/> in a new or current tab.</summary>
+        Task PresentUrlAsync(string url);
+
+        /// <summary>Shows the browser and opens the history picker.</summary>
+        Task PresentHistoryAsync();
+
+        /// <summary>Shows the browser and opens the bookmarks picker.</summary>
+        Task PresentBookmarksAsync();
     }
 }

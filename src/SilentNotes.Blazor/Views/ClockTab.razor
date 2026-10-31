@@ -14,9 +14,67 @@
 	}
 	.clock-sections {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		grid-template-columns: repeat(5, 1fr);
 		gap: 4px;
 		margin-bottom: 10px;
+	}
+	.clock-compass {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		margin-top: 18px;
+	}
+	.clock-compass-dial {
+		width: 220px;
+		height: 220px;
+		border-radius: 50%;
+		border: 2px solid #3a3a3a;
+		background: radial-gradient(circle at center, #151515 0%, #0a0a0a 70%);
+		position: relative;
+		margin-bottom: 16px;
+	}
+	.clock-compass-needle {
+		position: absolute;
+		left: 50%;
+		top: 18px;
+		width: 4px;
+		height: 92px;
+		margin-left: -2px;
+		transform-origin: 50% 100%;
+		background: linear-gradient(#ff5252 0%, #ff5252 55%, #e0e0e0 55%, #e0e0e0 100%);
+		border-radius: 2px;
+		transition: transform 0.12s linear;
+	}
+	.clock-compass-n {
+		position: absolute;
+		top: 8px;
+		left: 0;
+		right: 0;
+		text-align: center;
+		font-weight: 700;
+		color: #ff5252;
+	}
+	.clock-map-links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		justify-content: center;
+		margin-top: 18px;
+		padding-top: 12px;
+		border-top: 1px solid #202020;
+	}
+	.clock-map-link {
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background-color: #000000;
+		color: #90caf9;
+		height: 36px;
+		padding: 0 12px;
+		font-size: 0.8rem;
+		cursor: pointer;
+	}
+	.clock-map-link:active {
+		background-color: #1f1f1f;
 	}
 	.clock-section-btn {
 		border: 1px solid #2b2b2b;
@@ -155,6 +213,7 @@
 		<button class="clock-section-btn @(ViewModel.IsAlarmSection ? "active" : null)" @onclick="() => ViewModel.ShowAlarmCommand.Execute(null)">@LanguageService["clock_alarm"]</button>
 		<button class="clock-section-btn @(ViewModel.IsTimerSection ? "active" : null)" @onclick="() => ViewModel.ShowTimerCommand.Execute(null)">@LanguageService["clock_timer"]</button>
 		<button class="clock-section-btn @(ViewModel.IsStopwatchSection ? "active" : null)" @onclick="() => ViewModel.ShowStopwatchCommand.Execute(null)">@LanguageService["clock_stopwatch"]</button>
+		<button class="clock-section-btn @(ViewModel.IsCompassSection ? "active" : null)" @onclick="() => ViewModel.ShowCompassCommand.Execute(null)">@LanguageService["clock_compass"]</button>
 	</div>
 
 	@if (ViewModel.IsAlarmSection)
@@ -260,7 +319,7 @@
 			<button class="clock-btn" @onclick="() => ViewModel.ResetTimerCommand.Execute(null)">@LanguageService["clock_reset"]</button>
 		</div>
 	}
-	else
+	else if (ViewModel.IsStopwatchSection)
 	{
 		<div class="clock-big clock-mono mt-6">@ViewModel.StopwatchDisplay</div>
 
@@ -287,6 +346,35 @@
 			</div>
 		}
 	}
+	else if (ViewModel.IsCompassSection)
+	{
+		@if (!ViewModel.IsCompassSupported)
+		{
+			<MudAlert Severity="Severity.Info" Dense="true">@LanguageService["clock_compass_not_supported"]</MudAlert>
+		}
+		else
+		{
+			<div class="clock-compass">
+				<div class="clock-compass-dial">
+					<div class="clock-compass-n">N</div>
+					<div class="clock-compass-needle" style="transform: rotate(@(ViewModel.CompassRotation)deg);"></div>
+				</div>
+				<div class="clock-big">@ViewModel.CompassDegreeText</div>
+				<div class="clock-sub">@ViewModel.CompassHeadingText</div>
+				@if (!string.IsNullOrEmpty(ViewModel.CompassAccuracyText))
+				{
+					<div class="clock-sub mt-2">@ViewModel.CompassAccuracyText</div>
+				}
+			</div>
+		}
+	}
+
+	<div class="clock-map-links">
+		<button class="clock-map-link" @onclick='() => ViewModel.OpenMapLinkCommand.Execute("https://www.google.com/maps")'>Google Maps</button>
+		<button class="clock-map-link" @onclick='() => ViewModel.OpenMapLinkCommand.Execute("https://yandex.ru/maps/")'>Yandex Maps</button>
+		<button class="clock-map-link" @onclick='() => ViewModel.OpenMapLinkCommand.Execute("https://maps.yango.com")'>Yango Maps</button>
+		<button class="clock-map-link" @onclick='() => ViewModel.OpenMapLinkCommand.Execute("https://www.openstreetmap.org")'>OpenStreetMap</button>
+	</div>
 </div>
 
 @if (ViewModel.IsEditorVisible)

@@ -48,6 +48,9 @@ namespace SilentNotes.Platforms
         /// <summary>Intent extra specifying which zero-based tab index to open in MainActivity.</summary>
         public const string ExtraOpenTab = "aNoteOpenTab";
 
+        /// <summary>Intent extra requesting a screen-recording toggle (start or stop).</summary>
+        public const string ExtraToggleScreenRecord = "aNoteToggleScreenRecord";
+
         private const string PreferencesName = "anote_floating_button";
         private const string PreferenceKeyX = "x";
         private const string PreferenceKeyY = "y";
@@ -867,6 +870,16 @@ namespace SilentNotes.Platforms
                     StartScreenshot(partial: true);
                 }, true, null));
 
+                bool screenRecording = ScreenRecordService.IsRecording;
+                string screenRecLabel = language?["floating_menu_screen_record"];
+                if (string.IsNullOrWhiteSpace(screenRecLabel) || screenRecLabel == "floating_menu_screen_record")
+                    screenRecLabel = screenRecording ? "Stop record" : "Screen rec";
+                allButtons.Add((screenRecording ? "⏹️" : "🎥", screenRecLabel, () =>
+                {
+                    HideMenuOverlay();
+                    ToggleScreenRecording();
+                }, true, null));
+
                 allButtons.Add(("➕", "+ App", () => ShowAddAppDialog(), true, null));
                 allButtons.Add(("➕", "+ Folder", () => ShowAddFolderDialog(), true, null));
 
@@ -1669,6 +1682,32 @@ namespace SilentNotes.Platforms
         {
             _screenshotCapture ??= new ScreenshotCapture(this);
             _screenshotCapture.Start(partial);
+        }
+
+        /// <summary>
+        /// Toggles screen recording via MainActivity (MediaProjection consent needs an activity).
+        /// </summary>
+        private void ToggleScreenRecording()
+        {
+            try
+            {
+                if (ScreenRecordService.IsRecording)
+                {
+                    ScreenRecordService.RequestStop(this);
+                    Toast.MakeText(this, "Screen recording stopped", ToastLength.Short)?.Show();
+                    return;
+                }
+
+                Intent intent = new Intent(this, typeof(MainActivity));
+                intent.PutExtra(ExtraOpenTab, 9);
+                intent.PutExtra(ExtraToggleScreenRecord, true);
+                intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop);
+                StartActivity(intent);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Toggle screen recording failed: " + ex);
+            }
         }
 
         /// <summary>

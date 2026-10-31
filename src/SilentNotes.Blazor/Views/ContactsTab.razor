@@ -27,6 +27,16 @@
 	.theme-dark .contact-card {
 		background-color: #000000;
 	}
+	.contact-action-btns {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		margin-left: 4px;
+	}
+	.contact-action-btns .mud-icon-button {
+		margin: 0 !important;
+		padding: 6px !important;
+	}
 </style>
 
 <div class="pa-2">
@@ -73,9 +83,11 @@
 								<div class="d-flex align-center mr-3">
 									<MudButton Variant="Variant.Text" Size="Size.Small" Class="contact-phone"
 										OnClick="@(() => ViewModel.CopyCommand.Execute(phone))" title="@LanguageService["contact_copy"]">@phone</MudButton>
-									<MudIconButton Icon="@Icons.Material.Filled.Phone" Size="Size.Small" OnClick="@(() => ViewModel.CallCommand.Execute(phone))" title="@LanguageService["contact_call"]" />
-									<MudIconButton Icon="@Icons.Material.Filled.Message" Size="Size.Small" OnClick="@(() => ViewModel.SmsCommand.Execute(phone))" title="@LanguageService["contact_sms"]" />
-									<MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" OnClick="@(() => ViewModel.TelegramCommand.Execute(phone))" title="@LanguageService["contact_telegram"]" />
+									<div class="contact-action-btns">
+										<MudIconButton Icon="@Icons.Material.Filled.Phone" Size="Size.Small" OnClick="@(() => ViewModel.CallCommand.Execute(phone))" title="@LanguageService["contact_call"]" />
+										<MudIconButton Icon="@Icons.Material.Filled.Message" Size="Size.Small" OnClick="@(() => ViewModel.SmsCommand.Execute(phone))" title="@LanguageService["contact_sms"]" />
+										<MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" OnClick="@(() => ViewModel.TelegramCommand.Execute(phone))" title="@LanguageService["contact_telegram"]" />
+									</div>
 								</div>
 							}
 						}

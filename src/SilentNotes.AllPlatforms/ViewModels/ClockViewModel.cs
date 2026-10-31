@@ -26,6 +26,7 @@ namespace SilentNotes.ViewModels
         Clock,
         Timer,
         Stopwatch,
+        Compass,
     }
 
     /// <summary>
@@ -37,6 +38,8 @@ namespace SilentNotes.ViewModels
         private readonly IClockService _clockService;
         private readonly ILanguageService _languageService;
         private readonly IFeedbackService _feedbackService;
+        private readonly ICompassService _compassService;
+        private readonly IAbroBrowserService _abroBrowserService;
 
         private ClockDataModel _data;
         private ClockSection _section = ClockSection.Clock;
@@ -68,16 +71,28 @@ namespace SilentNotes.ViewModels
         /// <summary>
         /// Initializes a new instance of the <see cref="ClockViewModel"/> class.
         /// </summary>
-        public ClockViewModel(IClockService clockService, ILanguageService languageService, IFeedbackService feedbackService)
+        public ClockViewModel(
+            IClockService clockService,
+            ILanguageService languageService,
+            IFeedbackService feedbackService,
+            ICompassService compassService = null,
+            IAbroBrowserService abroBrowserService = null)
         {
             _clockService = clockService;
             _languageService = languageService;
             _feedbackService = feedbackService;
+            _compassService = compassService;
+            _abroBrowserService = abroBrowserService;
 
             ShowAlarmCommand = new RelayCommand(() => Show(ClockSection.Alarm));
             ShowClockCommand = new RelayCommand(() => Show(ClockSection.Clock));
             ShowTimerCommand = new RelayCommand(() => Show(ClockSection.Timer));
             ShowStopwatchCommand = new RelayCommand(() => Show(ClockSection.Stopwatch));
+            ShowCompassCommand = new RelayCommand(() => Show(ClockSection.Compass));
+            OpenMapLinkCommand = new RelayCommand<string>(OpenMapLink);
+
+            if (_compassService != null)
+                _compassService.ReadingChanged += () => OnPropertyChanged(nameof(CompassHeadingText), nameof(CompassDegreeText), nameof(CompassAccuracyText), nameof(CompassRotation));
 
             AddAlarmCommand = new RelayCommand(AddAlarm);
             EditAlarmCommand = new RelayCommand<AlarmItemViewModel>(EditAlarm);
@@ -138,7 +153,15 @@ namespace SilentNotes.ViewModels
             private set
             {
                 if (SetProperty(ref _section, value))
-                    OnPropertyChanged(nameof(IsAlarmSection), nameof(IsClockSection), nameof(IsTimerSection), nameof(IsStopwatchSection));
+                {
+                    OnPropertyChanged(
+                        nameof(IsAlarmSection),
+                        nameof(IsClockSection),
+                        nameof(IsTimerSection),
+                        nameof(IsStopwatchSection),
+                        nameof(IsCompassSection));
+                    UpdateCompassListening();
+                }
             }
         }
 
@@ -146,11 +169,50 @@ namespace SilentNotes.ViewModels
         public bool IsClockSection { get { return _section == ClockSection.Clock; } }
         public bool IsTimerSection { get { return _section == ClockSection.Timer; } }
         public bool IsStopwatchSection { get { return _section == ClockSection.Stopwatch; } }
+        public bool IsCompassSection { get { return _section == ClockSection.Compass; } }
 
         public ICommand ShowAlarmCommand { get; }
         public ICommand ShowClockCommand { get; }
         public ICommand ShowTimerCommand { get; }
         public ICommand ShowStopwatchCommand { get; }
+        public ICommand ShowCompassCommand { get; }
+        public ICommand OpenMapLinkCommand { get; }
+
+        public bool IsCompassSupported => _compassService?.IsSupported == true;
+
+        public string CompassDegreeText
+        {
+            get
+            {
+                float? heading = _compassService?.HeadingDegrees;
+                if (heading == null)
+                    return "—";
+                return ((int)Math.Round(heading.Value)).ToString(CultureInfo.InvariantCulture) + "°";
+            }
+        }
+
+        public string CompassHeadingText
+        {
+            get
+            {
+                float? heading = _compassService?.HeadingDegrees;
+                if (heading == null)
+                    return _languageService?["clock_compass_waiting"] ?? "Waiting for sensors…";
+                return CardinalDirection(heading.Value);
+            }
+        }
+
+        public string CompassAccuracyText => _compassService?.AccuracyText ?? string.Empty;
+
+        /// <summary>CSS rotation so the needle points to magnetic north (rotate opposite of heading).</summary>
+        public string CompassRotation
+        {
+            get
+            {
+                float heading = _compassService?.HeadingDegrees ?? 0f;
+                return (-heading).ToString("0.##", CultureInfo.InvariantCulture);
+            }
+        }
 
         /// <summary>Gets the configured alarms.</summary>
         public IReadOnlyList<AlarmItemViewModel> Alarms
@@ -451,6 +513,31 @@ namespace SilentNotes.ViewModels
             Section = section;
             if (section == ClockSection.Clock)
                 RefreshCityTimes();
+        }
+
+        private void UpdateCompassListening()
+        {
+            if (_compassService == null)
+                return;
+            if (_section == ClockSection.Compass)
+                _compassService.Start();
+            else
+                _compassService.Stop();
+        }
+
+        private void OpenMapLink(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return;
+            if (_abroBrowserService?.IsSupported == true)
+                _ = _abroBrowserService.PresentUrlAsync(url);
+        }
+
+        private static string CardinalDirection(float degrees)
+        {
+            string[] dirs = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+            int index = (int)Math.Floor(((degrees % 360) + 22.5) / 45.0) % 8;
+            return dirs[index];
         }
 
         private void Load()

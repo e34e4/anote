@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using System;
+using System.Linq;
 
 namespace SilentNotes.Workers
 {
@@ -18,6 +19,9 @@ namespace SilentNotes.Workers
             public string Username { get; init; }
 
             public string InviteHash { get; init; }
+
+            /// <summary>Phone digits (international, without leading +) from a phone deep link.</summary>
+            public string Phone { get; init; }
 
             /// <summary>Private channel id from <c>t.me/c/&lt;id&gt;</c> (without -100 prefix).</summary>
             public long PrivateChannelId { get; init; }
@@ -79,6 +83,12 @@ namespace SilentNotes.Workers
 
             if (host == "resolve" || host == "user")
             {
+                if (query.TryGetValue("phone", out string phone) && IsPhoneDigits(phone))
+                {
+                    parsed = new ParsedLink { Phone = NormalizePhoneDigits(phone) };
+                    return true;
+                }
+
                 if (!query.TryGetValue("domain", out string domain) || !IsValidUsername(domain))
                     return false;
                 int.TryParse(query.TryGetValue("post", out string post) ? post : null, out int messageId);
@@ -120,12 +130,21 @@ namespace SilentNotes.Workers
 
             string first = parts[0];
 
-            // t.me/+HASH or t.me/joinchat/HASH
+            // t.me/+PHONE (digits only) or t.me/+HASH invite
             if (first.StartsWith('+'))
             {
-                parsed = new ParsedLink { InviteHash = first.TrimStart('+') };
+                string rest = first.TrimStart('+');
+                if (IsPhoneDigits(rest))
+                {
+                    parsed = new ParsedLink { Phone = NormalizePhoneDigits(rest) };
+                    return true;
+                }
+
+                parsed = new ParsedLink { InviteHash = rest };
                 return !string.IsNullOrEmpty(parsed.InviteHash);
             }
+
+            // t.me/phone?… is unsupported; bare international numbers as path are rare.
 
             if (string.Equals(first, "joinchat", StringComparison.OrdinalIgnoreCase) && parts.Length >= 2)
             {
@@ -204,6 +223,25 @@ namespace SilentNotes.Workers
             }
 
             return true;
+        }
+
+        private static bool IsPhoneDigits(string value)
+        {
+            string digits = NormalizePhoneDigits(value);
+            return digits.Length >= 7 && digits.Length <= 15 && digits.All(char.IsDigit);
+        }
+
+        private static string NormalizePhoneDigits(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+            var chars = new System.Text.StringBuilder(value.Length);
+            foreach (char c in value)
+            {
+                if (char.IsDigit(c))
+                    chars.Append(c);
+            }
+            return chars.ToString();
         }
 
         private static System.Collections.Generic.Dictionary<string, string> ParseQuery(string query)

@@ -337,7 +337,11 @@ namespace SilentNotes.ViewModels
             if (string.IsNullOrWhiteSpace(phone))
                 return;
 
-            string link = "https://t.me/" + EncodePhone(phone);
+            // Phone deep link so TG tab resolves the number and opens/creates the chat.
+            string digits = new string((phone ?? string.Empty).Where(char.IsDigit).ToArray());
+            string link = digits.Length > 0
+                ? "tg://resolve?phone=" + digits
+                : "https://t.me/" + EncodePhone(phone);
             TelegramLinkRequest.Pending = new TelegramLinkRequest { Link = link };
             if (_messengerService != null)
             {

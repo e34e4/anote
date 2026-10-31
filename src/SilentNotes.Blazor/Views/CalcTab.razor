@@ -1,4 +1,6 @@
+@using MudBlazor
 @using SilentNotes.ViewModels
+@using SilentNotes.Workers
 
 <style type="text/css">
 	.calc-root {
@@ -77,89 +79,226 @@
 		text-align: right;
 		word-break: break-all;
 	}
+	.calc-conv-cats {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 4px;
+		margin-bottom: 10px;
+	}
+	.calc-conv-cat {
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background: #000;
+		color: #ccc;
+		height: 38px;
+		font-size: 0.75rem;
+		cursor: pointer;
+	}
+	.calc-conv-cat.active {
+		border-color: var(--mud-palette-primary);
+		color: #fff;
+	}
+	.calc-conv-out {
+		margin-top: 12px;
+		padding: 12px;
+		border: 1px solid #2b2b2b;
+		border-radius: 12px;
+		background: #0d0d0d;
+		white-space: pre-wrap;
+		font-family: ui-monospace, "Cascadia Code", monospace;
+		min-height: 48px;
+	}
 </style>
 
 <div class="calc-root">
-	<div class="calc-display">
-		<div class="calc-expression">@(string.IsNullOrEmpty(ViewModel.Expression) ? "0" : ViewModel.Expression)</div>
-		<div class="calc-result">@ViewModel.Result</div>
-	</div>
-
-	@if (ViewModel.IsScientific)
+	@if (ViewModel.IsConverterMode)
 	{
-		<div class="calc-grid">
-			<button class="calc-btn fn" @onclick='() => Press("sin")'>sin</button>
-			<button class="calc-btn fn" @onclick='() => Press("cos")'>cos</button>
-			<button class="calc-btn fn" @onclick='() => Press("tan")'>tan</button>
-			<button class="calc-btn fn" @onclick='() => Press("ln")'>ln</button>
-
-			<button class="calc-btn fn" @onclick='() => Press("asin")'>sin⁻¹</button>
-			<button class="calc-btn fn" @onclick='() => Press("acos")'>cos⁻¹</button>
-			<button class="calc-btn fn" @onclick='() => Press("atan")'>tan⁻¹</button>
-			<button class="calc-btn fn" @onclick='() => Press("log")'>log</button>
-
-			<button class="calc-btn fn" @onclick='() => Press("√")'>√</button>
-			<button class="calc-btn fn" @onclick='() => Press("^")'>xʸ</button>
-			<button class="calc-btn fn" @onclick='() => Press("π")'>π</button>
-			<button class="calc-btn fn" @onclick='() => Press("e")'>e</button>
-
-			<button class="calc-btn fn" @onclick="() => ViewModel.BracketsCommand.Execute(null)">( )</button>
-			<button class="calc-btn fn" @onclick='() => Press("!")'>n!</button>
-			<button class="calc-btn fn" @onclick='() => Press("exp")'>exp</button>
-			<button class="calc-btn fn" @onclick='() => Press("cot")'>cot</button>
+		<div class="calc-conv-cats">
+			<button class="calc-conv-cat @(ViewModel.IsPhysicsConverter ? "active" : null)" @onclick="() => ViewModel.SetConverterCategoryCommand.Execute(UnitConverterEngine.ConverterCategory.Physics)">Physics</button>
+			<button class="calc-conv-cat @(ViewModel.IsCsConverter ? "active" : null)" @onclick="() => ViewModel.SetConverterCategoryCommand.Execute(UnitConverterEngine.ConverterCategory.ComputerScience)">CS</button>
+			<button class="calc-conv-cat @(ViewModel.IsNetworkingConverter ? "active" : null)" @onclick="() => ViewModel.SetConverterCategoryCommand.Execute(UnitConverterEngine.ConverterCategory.Networking)">Net</button>
+			<button class="calc-conv-cat @(ViewModel.IsCurrencyConverter ? "active" : null)" @onclick="() => ViewModel.SetConverterCategoryCommand.Execute(UnitConverterEngine.ConverterCategory.Currency)">Currency</button>
 		</div>
-	}
 
-	<div class="calc-grid">
-		<button class="calc-btn op" @onclick="() => ViewModel.ClearCommand.Execute(null)">AC</button>
-		<button class="calc-btn op" @onclick="() => ViewModel.DeleteCommand.Execute(null)">⌫</button>
-		<button class="calc-btn op" @onclick='() => Press("%")'>%</button>
-		<button class="calc-btn op" @onclick='() => Press("÷")'>÷</button>
-
-		<button class="calc-btn" @onclick='() => Press("7")'>7</button>
-		<button class="calc-btn" @onclick='() => Press("8")'>8</button>
-		<button class="calc-btn" @onclick='() => Press("9")'>9</button>
-		<button class="calc-btn op" @onclick='() => Press("×")'>×</button>
-
-		<button class="calc-btn" @onclick='() => Press("4")'>4</button>
-		<button class="calc-btn" @onclick='() => Press("5")'>5</button>
-		<button class="calc-btn" @onclick='() => Press("6")'>6</button>
-		<button class="calc-btn op" @onclick='() => Press("-")'>−</button>
-
-		<button class="calc-btn" @onclick='() => Press("1")'>1</button>
-		<button class="calc-btn" @onclick='() => Press("2")'>2</button>
-		<button class="calc-btn" @onclick='() => Press("3")'>3</button>
-		<button class="calc-btn op" @onclick='() => Press("+")'>+</button>
-
-		<button class="calc-btn" @onclick="() => ViewModel.SignCommand.Execute(null)">±</button>
-		<button class="calc-btn" @onclick='() => Press("0")'>0</button>
-		<button class="calc-btn" @onclick='() => Press(".")'>.</button>
-		<button class="calc-btn eq" @onclick="() => ViewModel.CalculateCommand.Execute(null)">=</button>
-	</div>
-
-	@if (ViewModel.HasHistory)
-	{
-		<div class="calc-history">
-			@foreach (var item in ViewModel.History)
+		@if (ViewModel.IsPhysicsConverter)
+		{
+			<MudSelect T="string" Value="ViewModel.PhysicsGroupId" ValueChanged="OnPhysicsGroup" Label="Quantity" Variant="Variant.Outlined" Dense="true" Class="mb-2">
+				@foreach (var group in ViewModel.PhysicsGroups)
+				{
+					<MudSelectItem T="string" Value="@group.Id">@group.Label</MudSelectItem>
+				}
+			</MudSelect>
+			<MudTextField T="string" Value="ViewModel.ConverterInput" ValueChanged="OnConverterInput" Label="Value" Variant="Variant.Outlined" Immediate="true" Class="mb-2" />
+			<MudSelect T="string" Value="ViewModel.FromUnitId" ValueChanged="OnFromUnit" Label="From" Variant="Variant.Outlined" Dense="true" Class="mb-2">
+				@foreach (var unit in ViewModel.PhysicsUnits)
+				{
+					<MudSelectItem T="string" Value="@unit.Id">@unit.Label</MudSelectItem>
+				}
+			</MudSelect>
+			<MudSelect T="string" Value="ViewModel.ToUnitId" ValueChanged="OnToUnit" Label="To" Variant="Variant.Outlined" Dense="true">
+				@foreach (var unit in ViewModel.PhysicsUnits)
+				{
+					<MudSelectItem T="string" Value="@unit.Id">@unit.Label</MudSelectItem>
+				}
+			</MudSelect>
+		}
+		else if (ViewModel.IsCurrencyConverter)
+		{
+			<MudTextField T="string" Value="ViewModel.ConverterInput" ValueChanged="OnConverterInput" Label="Amount" Variant="Variant.Outlined" Immediate="true" Class="mb-2" />
+			<MudSelect T="string" Value="ViewModel.CurrencyFrom" ValueChanged="OnCurrencyFrom" Label="From" Variant="Variant.Outlined" Dense="true" Class="mb-2">
+				@foreach (var currencyCode in ViewModel.CurrencyCodes)
+				{
+					<MudSelectItem T="string" Value="@currencyCode">@currencyCode</MudSelectItem>
+				}
+			</MudSelect>
+			<MudSelect T="string" Value="ViewModel.CurrencyTo" ValueChanged="OnCurrencyTo" Label="To" Variant="Variant.Outlined" Dense="true">
+				@foreach (var currencyCode in ViewModel.CurrencyCodes)
+				{
+					<MudSelectItem T="string" Value="@currencyCode">@currencyCode</MudSelectItem>
+				}
+			</MudSelect>
+			<MudText Typo="Typo.caption" Class="mud-text-secondary mt-2">Offline approximate rates</MudText>
+		}
+		else if (ViewModel.IsCsConverter)
+		{
+			<MudSelect T="string" Value="ViewModel.CsTool" ValueChanged="OnCsTool" Label="Tool" Variant="Variant.Outlined" Dense="true" Class="mb-2">
+				<MudSelectItem T="string" Value="@CsToolBase">Number base</MudSelectItem>
+				<MudSelectItem T="string" Value="@CsToolDataSize">Data size</MudSelectItem>
+				<MudSelectItem T="string" Value="@CsToolAsciiHex">Text → hex</MudSelectItem>
+				<MudSelectItem T="string" Value="@CsToolHexAscii">Hex → text</MudSelectItem>
+			</MudSelect>
+			@if (ViewModel.CsTool == "base")
 			{
-				<div class="calc-history-item" @onclick="() => ViewModel.UseHistoryCommand.Execute(item)">
-					<div class="calc-history-expr">@item.Expression</div>
-					<div class="calc-history-res">@item.Result</div>
-				</div>
+				<MudTextField T="string" Value="ViewModel.ConverterInput" ValueChanged="OnConverterInput" Label="Value" Variant="Variant.Outlined" Immediate="true" Class="mb-2" />
+				<MudNumericField T="int" Value="ViewModel.NumberFromBase" ValueChanged="OnFromBase" Label="From base" Min="2" Max="16" Variant="Variant.Outlined" Class="mb-2" />
+				<MudNumericField T="int" Value="ViewModel.NumberToBase" ValueChanged="OnToBase" Label="To base" Min="2" Max="16" Variant="Variant.Outlined" />
 			}
+			else if (ViewModel.CsTool == "datasize")
+			{
+				<MudTextField T="string" Value="ViewModel.ConverterInput" ValueChanged="OnConverterInput" Label="Value" Variant="Variant.Outlined" Immediate="true" Class="mb-2" />
+				<MudSelect T="string" Value="ViewModel.FromUnitId" ValueChanged="OnFromUnit" Label="From" Variant="Variant.Outlined" Dense="true" Class="mb-2">
+					@foreach (var unit in UnitConverterEngine.ComputerScienceGroups[0].Units)
+					{
+						<MudSelectItem T="string" Value="@unit.Id">@unit.Label</MudSelectItem>
+					}
+				</MudSelect>
+				<MudSelect T="string" Value="ViewModel.ToUnitId" ValueChanged="OnToUnit" Label="To" Variant="Variant.Outlined" Dense="true">
+					@foreach (var unit in UnitConverterEngine.ComputerScienceGroups[0].Units)
+					{
+						<MudSelectItem T="string" Value="@unit.Id">@unit.Label</MudSelectItem>
+					}
+				</MudSelect>
+			}
+			else
+			{
+				<MudTextField T="string" Value="ViewModel.HexAsciiInput" ValueChanged="OnHexAscii" Label="Input" Variant="Variant.Outlined" Immediate="true" Lines="3" />
+			}
+		}
+		else if (ViewModel.IsNetworkingConverter)
+		{
+			<MudTextField T="string" Value="ViewModel.NetworkInput" ValueChanged="OnNetworkInput" Label="CIDR (IPv4)" Variant="Variant.Outlined" Immediate="true" Class="mb-2" />
+			<MudText Typo="Typo.caption" Class="mud-text-secondary">Example: 192.168.1.0/24</MudText>
+		}
+
+		<div class="calc-conv-out">@(string.IsNullOrEmpty(ViewModel.ConverterOutput) ? "—" : ViewModel.ConverterOutput)</div>
+	}
+	else
+	{
+		<div class="calc-display">
+			<div class="calc-expression">@(string.IsNullOrEmpty(ViewModel.Expression) ? "0" : ViewModel.Expression)</div>
+			<div class="calc-result">@ViewModel.Result</div>
 		</div>
+
+		@if (ViewModel.IsScientific)
+		{
+			<div class="calc-grid">
+				<button class="calc-btn fn" @onclick='() => Press("sin")'>sin</button>
+				<button class="calc-btn fn" @onclick='() => Press("cos")'>cos</button>
+				<button class="calc-btn fn" @onclick='() => Press("tan")'>tan</button>
+				<button class="calc-btn fn" @onclick='() => Press("ln")'>ln</button>
+
+				<button class="calc-btn fn" @onclick='() => Press("asin")'>sin⁻¹</button>
+				<button class="calc-btn fn" @onclick='() => Press("acos")'>cos⁻¹</button>
+				<button class="calc-btn fn" @onclick='() => Press("atan")'>tan⁻¹</button>
+				<button class="calc-btn fn" @onclick='() => Press("log")'>log</button>
+
+				<button class="calc-btn fn" @onclick='() => Press("√")'>√</button>
+				<button class="calc-btn fn" @onclick='() => Press("^")'>xʸ</button>
+				<button class="calc-btn fn" @onclick='() => Press("π")'>π</button>
+				<button class="calc-btn fn" @onclick='() => Press("e")'>e</button>
+
+				<button class="calc-btn fn" @onclick="() => ViewModel.BracketsCommand.Execute(null)">( )</button>
+				<button class="calc-btn fn" @onclick='() => Press("!")'>n!</button>
+				<button class="calc-btn fn" @onclick='() => Press("exp")'>exp</button>
+				<button class="calc-btn fn" @onclick='() => Press("cot")'>cot</button>
+			</div>
+		}
+
+		<div class="calc-grid">
+			<button class="calc-btn op" @onclick="() => ViewModel.ClearCommand.Execute(null)">AC</button>
+			<button class="calc-btn op" @onclick="() => ViewModel.DeleteCommand.Execute(null)">⌫</button>
+			<button class="calc-btn op" @onclick='() => Press("%")'>%</button>
+			<button class="calc-btn op" @onclick='() => Press("÷")'>÷</button>
+
+			<button class="calc-btn" @onclick='() => Press("7")'>7</button>
+			<button class="calc-btn" @onclick='() => Press("8")'>8</button>
+			<button class="calc-btn" @onclick='() => Press("9")'>9</button>
+			<button class="calc-btn op" @onclick='() => Press("×")'>×</button>
+
+			<button class="calc-btn" @onclick='() => Press("4")'>4</button>
+			<button class="calc-btn" @onclick='() => Press("5")'>5</button>
+			<button class="calc-btn" @onclick='() => Press("6")'>6</button>
+			<button class="calc-btn op" @onclick='() => Press("-")'>−</button>
+
+			<button class="calc-btn" @onclick='() => Press("1")'>1</button>
+			<button class="calc-btn" @onclick='() => Press("2")'>2</button>
+			<button class="calc-btn" @onclick='() => Press("3")'>3</button>
+			<button class="calc-btn op" @onclick='() => Press("+")'>+</button>
+
+			<button class="calc-btn" @onclick="() => ViewModel.SignCommand.Execute(null)">±</button>
+			<button class="calc-btn" @onclick='() => Press("0")'>0</button>
+			<button class="calc-btn" @onclick='() => Press(".")'>.</button>
+			<button class="calc-btn eq" @onclick="() => ViewModel.CalculateCommand.Execute(null)">=</button>
+		</div>
+
+		@if (ViewModel.HasHistory)
+		{
+			<div class="calc-history">
+				@foreach (var item in ViewModel.History)
+				{
+					<div class="calc-history-item" @onclick="() => ViewModel.UseHistoryCommand.Execute(item)">
+						<div class="calc-history-expr">@item.Expression</div>
+						<div class="calc-history-res">@item.Result</div>
+					</div>
+				}
+			</div>
+		}
 	}
 </div>
 
 @code {
-	/// <summary>
-	/// Gets or sets the view model of the calculator tab.
-	/// </summary>
 	[Parameter]
 	public CalculatorViewModel ViewModel { get; set; }
+
+	private static readonly string CsToolBase = "base";
+	private static readonly string CsToolDataSize = "datasize";
+	private static readonly string CsToolAsciiHex = "asciihex";
+	private static readonly string CsToolHexAscii = "hexascii";
 
 	private void Press(string token)
 	{
 		ViewModel.InputCommand.Execute(token);
 	}
+
+	private void OnPhysicsGroup(string value) => ViewModel.PhysicsGroupId = value;
+	private void OnConverterInput(string value) => ViewModel.ConverterInput = value;
+	private void OnFromUnit(string value) => ViewModel.FromUnitId = value;
+	private void OnToUnit(string value) => ViewModel.ToUnitId = value;
+	private void OnCurrencyFrom(string value) => ViewModel.CurrencyFrom = value;
+	private void OnCurrencyTo(string value) => ViewModel.CurrencyTo = value;
+	private void OnCsTool(string value) => ViewModel.CsTool = value;
+	private void OnFromBase(int value) => ViewModel.NumberFromBase = value;
+	private void OnToBase(int value) => ViewModel.NumberToBase = value;
+	private void OnHexAscii(string value) => ViewModel.HexAsciiInput = value;
+	private void OnNetworkInput(string value) => ViewModel.NetworkInput = value;
 }

@@ -282,6 +282,13 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Message to inform the Rec tab that a screen-recording toggle was requested (quick menu).
+    /// </summary>
+    public class ScreenRecordIntentMessage
+    {
+    }
+
+    /// <summary>
     /// Enumeration of possible sources of a sent message.
     /// </summary>
     public enum MessageSender

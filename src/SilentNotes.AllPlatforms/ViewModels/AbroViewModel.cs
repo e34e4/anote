@@ -26,6 +26,8 @@ namespace SilentNotes.ViewModels
         {
             _browserService = browserService;
             OpenBrowserCommand = new AsyncRelayCommand(OpenBrowserAsync);
+            OpenBookmarksCommand = new AsyncRelayCommand(OpenBookmarksAsync);
+            OpenHistoryCommand = new AsyncRelayCommand(OpenHistoryAsync);
         }
 
         /// <summary>Gets a value indicating whether the browser is available on this platform.</summary>
@@ -34,11 +36,31 @@ namespace SilentNotes.ViewModels
         /// <summary>Gets the command which opens the browser.</summary>
         public ICommand OpenBrowserCommand { get; }
 
+        /// <summary>Gets the command which opens Abro bookmarks.</summary>
+        public ICommand OpenBookmarksCommand { get; }
+
+        /// <summary>Gets the command which opens Abro history.</summary>
+        public ICommand OpenHistoryCommand { get; }
+
         private async Task OpenBrowserAsync()
         {
             if (!IsSupported)
                 return;
             await _browserService.PresentAsync();
+        }
+
+        private async Task OpenBookmarksAsync()
+        {
+            if (!IsSupported)
+                return;
+            await _browserService.PresentBookmarksAsync();
+        }
+
+        private async Task OpenHistoryAsync()
+        {
+            if (!IsSupported)
+                return;
+            await _browserService.PresentHistoryAsync();
         }
     }
 }

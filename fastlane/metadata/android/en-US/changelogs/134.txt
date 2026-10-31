@@ -1,0 +1,6 @@
+• Rec: Audio/Screen split with screen recording (H.264 576×1024), share and WebDAV
+• Quick menu: screen record start/stop
+• Calc: unit converters (physics, CS, networking, currency)
+• Clock: Compass mode and map links that open in Abro
+• Contacts: wider action spacing; Telegram opens chat via phone deep link
+• Abro: bookmarks and history shortcuts; Booky links open in Abro

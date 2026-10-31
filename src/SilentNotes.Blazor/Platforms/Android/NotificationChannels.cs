@@ -31,6 +31,9 @@ namespace SilentNotes
         /// <summary>Channel for Telegram incoming messages.</summary>
         public const string TelegramChannelId = "anote_telegram";
 
+        /// <summary>Channel for ongoing screen recording.</summary>
+        public const string ScreenRecordChannelId = "anote_screen_record";
+
         /// <summary>Creates all notification channels, can be called repeatedly.</summary>
         public static void CreateAll(Context context)
         {
@@ -71,6 +74,12 @@ namespace SilentNotes
             telegramChannel.EnableVibration(true);
             telegramChannel.SetSound(RingtoneManager.GetDefaultUri(RingtoneType.Notification), NotificationAudioAttributes());
             manager.CreateNotificationChannel(telegramChannel);
+
+            var screenRecordChannel = new NotificationChannel(ScreenRecordChannelId, "Screen recording", NotificationImportance.Low);
+            screenRecordChannel.Description = "Ongoing screen recording";
+            screenRecordChannel.EnableVibration(false);
+            screenRecordChannel.SetSound(null, null);
+            manager.CreateNotificationChannel(screenRecordChannel);
         }
 
         /// <summary>Gets audio attributes which play on the alarm stream.</summary>

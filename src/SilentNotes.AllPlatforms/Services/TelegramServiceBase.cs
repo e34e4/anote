@@ -1320,6 +1320,23 @@ namespace SilentNotes.Services
                         .ConfigureAwait(false);
                 }
 
+                if (!string.IsNullOrEmpty(parsed.Phone))
+                {
+                    Contacts_ResolvedPeer resolved = await runtime.Client.Contacts_ResolvePhone(parsed.Phone)
+                        .ConfigureAwait(false);
+                    CollectPeers(runtime, resolved.users, resolved.chats);
+                    if (resolved.peer == null)
+                        return TelegramOperationResult.Fail("Could not resolve phone +" + parsed.Phone, runtime.AuthState);
+
+                    string chatKey = BuildChatKey(resolved.peer);
+                    IPeerInfo peerInfo = resolved.UserOrChat
+                        ?? (runtime.PeerByChatKey.TryGetValue(chatKey, out IPeerInfo cachedPhone) ? cachedPhone : null);
+                    EnsureChatInList(runtime, chatKey, peerInfo);
+                    RaiseChatsChanged();
+                    return await OpenChatAsync(chatKey, runtime.AccountId, cancellationToken: cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
                 if (!string.IsNullOrEmpty(parsed.InviteHash))
                 {
                     ChatInviteBase invite = await runtime.Client.Messages_CheckChatInvite(parsed.InviteHash)

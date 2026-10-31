@@ -20,7 +20,29 @@ namespace SilentNotes.Platforms.Services
         /// <inheritdoc/>
         public Task PresentAsync()
         {
-            return MainThread.InvokeOnMainThreadAsync((System.Func<Task>)AbroBrowserPage.Present);
+            return MainThread.InvokeOnMainThreadAsync(
+                () => AbroBrowserPage.Present(null, AbroBrowserPage.AbroStartAction.None));
+        }
+
+        /// <inheritdoc/>
+        public Task PresentUrlAsync(string url)
+        {
+            return MainThread.InvokeOnMainThreadAsync(
+                () => AbroBrowserPage.Present(url, AbroBrowserPage.AbroStartAction.None));
+        }
+
+        /// <inheritdoc/>
+        public Task PresentHistoryAsync()
+        {
+            return MainThread.InvokeOnMainThreadAsync(
+                () => AbroBrowserPage.Present(null, AbroBrowserPage.AbroStartAction.History));
+        }
+
+        /// <inheritdoc/>
+        public Task PresentBookmarksAsync()
+        {
+            return MainThread.InvokeOnMainThreadAsync(
+                () => AbroBrowserPage.Present(null, AbroBrowserPage.AbroStartAction.Bookmarks));
         }
     }
 }

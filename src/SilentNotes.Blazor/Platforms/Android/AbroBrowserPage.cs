@@ -40,6 +40,7 @@ namespace SilentNotes.Platforms
         private readonly List<BrowserTab> _tabs = new List<BrowserTab>();
         private readonly string _rootDir;
         private readonly string _historyDir;
+        private readonly string _bookmarksDir;
         private readonly string _cookiesDir;
         private readonly string _cacheDir;
         private readonly string _filesDir;
@@ -52,13 +53,25 @@ namespace SilentNotes.Platforms
         private BrowserTab _current;
         private bool _restored;
         private bool _closing;
+        private readonly string _initialUrl;
+        private readonly AbroStartAction _startAction;
 
-        public AbroBrowserPage()
+        public enum AbroStartAction
+        {
+            None,
+            History,
+            Bookmarks,
+        }
+
+        public AbroBrowserPage(string initialUrl = null, AbroStartAction startAction = AbroStartAction.None)
         {
             BackgroundColor = Colors.Black;
+            _initialUrl = initialUrl;
+            _startAction = startAction;
 
             _rootDir = ResolveRootDirectory();
             _historyDir = Path.Combine(_rootDir, "history");
+            _bookmarksDir = Path.Combine(_rootDir, "bookmarks");
             _cookiesDir = Path.Combine(_rootDir, "cookies");
             _cacheDir = Path.Combine(_rootDir, "cache");
             _filesDir = Path.Combine(_rootDir, "files");
@@ -257,7 +270,7 @@ namespace SilentNotes.Platforms
 
         private void EnsureDirectories()
         {
-            foreach (string dir in new[] { _rootDir, _historyDir, _cookiesDir, _cacheDir, _filesDir })
+            foreach (string dir in new[] { _rootDir, _historyDir, _bookmarksDir, _cookiesDir, _cacheDir, _filesDir })
             {
                 try
                 {
@@ -681,15 +694,24 @@ namespace SilentNotes.Platforms
         private async Task ShowMenuAsync()
         {
             const string history = "History";
+            const string bookmarks = "Bookmarks";
+            const string addBookmark = "Add bookmark";
             const string clearCookies = "Clear cookies";
             const string clearCache = "Clear cache";
             const string openFiles = "Open files folder";
 
-            string choice = await DisplayActionSheetAsync("Abro", "Cancel", null, history, clearCookies, clearCache, openFiles).ConfigureAwait(true);
+            string choice = await DisplayActionSheetAsync(
+                "Abro", "Cancel", null, history, bookmarks, addBookmark, clearCookies, clearCache, openFiles).ConfigureAwait(true);
             switch (choice)
             {
                 case history:
                     await ShowHistoryAsync().ConfigureAwait(true);
+                    break;
+                case bookmarks:
+                    await ShowBookmarksAsync().ConfigureAwait(true);
+                    break;
+                case addBookmark:
+                    AddCurrentBookmark();
                     break;
                 case clearCookies:
                     ClearCookies();
@@ -705,59 +727,145 @@ namespace SilentNotes.Platforms
 
         private async Task ShowHistoryAsync()
         {
-            var entries = new List<(string Url, string Label)>();
-            try
-            {
-                string file = Path.Combine(_historyDir, "history.txt");
-                if (File.Exists(file))
-                {
-                    string[] lines;
-                    lock (HistoryLock)
-                    {
-                        lines = File.ReadAllLines(file, Encoding.UTF8);
-                    }
-
-                    var seen = new HashSet<string>(StringComparer.Ordinal);
-                    foreach (string line in lines.Skip(Math.Max(0, lines.Length - MaxHistoryLinesRead)).Reverse())
-                    {
-                        string[] parts = line.Split('\t');
-                        if (parts.Length < 2 || !seen.Add(parts[1]))
-                            continue;
-
-                        string title = parts.Length > 2 ? parts[2] : string.Empty;
-                        string label = string.IsNullOrWhiteSpace(title) ? parts[1] : title + " — " + parts[1];
-                        if (label.Length > 90)
-                            label = label.Substring(0, 89) + "…";
-                        entries.Add((parts[1], label));
-                        if (entries.Count >= MaxHistoryMenuEntries)
-                            break;
-                    }
-                }
-            }
-            catch
-            {
-            }
-
+            var entries = ReadHistoryEntries();
             if (entries.Count == 0)
             {
                 ShowToast("History is empty");
                 return;
             }
 
+            await PickAndOpenUrlAsync("History", entries).ConfigureAwait(true);
+        }
+
+        private async Task ShowBookmarksAsync()
+        {
+            var entries = ReadBookmarkEntries();
+            if (entries.Count == 0)
+            {
+                ShowToast("No bookmarks yet");
+                return;
+            }
+
+            await PickAndOpenUrlAsync("Bookmarks", entries).ConfigureAwait(true);
+        }
+
+        private List<(string Url, string Label)> ReadHistoryEntries()
+        {
+            var entries = new List<(string Url, string Label)>();
+            try
+            {
+                string file = Path.Combine(_historyDir, "history.txt");
+                if (!File.Exists(file))
+                    return entries;
+
+                string[] lines;
+                lock (HistoryLock)
+                {
+                    lines = File.ReadAllLines(file, Encoding.UTF8);
+                }
+
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                foreach (string line in lines.Skip(Math.Max(0, lines.Length - MaxHistoryLinesRead)).Reverse())
+                {
+                    string[] parts = line.Split('\t');
+                    if (parts.Length < 2 || !seen.Add(parts[1]))
+                        continue;
+
+                    string title = parts.Length > 2 ? parts[2] : string.Empty;
+                    string label = string.IsNullOrWhiteSpace(title) ? parts[1] : title + " — " + parts[1];
+                    if (label.Length > 90)
+                        label = label.Substring(0, 89) + "…";
+                    entries.Add((parts[1], label));
+                    if (entries.Count >= MaxHistoryMenuEntries)
+                        break;
+                }
+            }
+            catch
+            {
+            }
+
+            return entries;
+        }
+
+        private List<(string Url, string Label)> ReadBookmarkEntries()
+        {
+            var entries = new List<(string Url, string Label)>();
+            try
+            {
+                string file = Path.Combine(_bookmarksDir, "bookmarks.txt");
+                if (!File.Exists(file))
+                    return entries;
+
+                string[] lines = File.ReadAllLines(file, Encoding.UTF8);
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                foreach (string line in lines.Reverse())
+                {
+                    string[] parts = line.Split('\t');
+                    if (parts.Length < 1 || string.IsNullOrWhiteSpace(parts[0]) || !seen.Add(parts[0]))
+                        continue;
+                    string title = parts.Length > 1 ? parts[1] : string.Empty;
+                    string label = string.IsNullOrWhiteSpace(title) ? parts[0] : title + " — " + parts[0];
+                    if (label.Length > 90)
+                        label = label.Substring(0, 89) + "…";
+                    entries.Add((parts[0], label));
+                    if (entries.Count >= MaxHistoryMenuEntries)
+                        break;
+                }
+            }
+            catch
+            {
+            }
+
+            return entries;
+        }
+
+        private void AddCurrentBookmark()
+        {
+            string url = _current?.Url;
+            if (string.IsNullOrWhiteSpace(url) || url.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
+            {
+                ShowToast("Nothing to bookmark");
+                return;
+            }
+
+            try
+            {
+                Directory.CreateDirectory(_bookmarksDir);
+                string title = _current.Title ?? string.Empty;
+                string line = url + "\t" + title.Replace('\t', ' ') + Environment.NewLine;
+                File.AppendAllText(Path.Combine(_bookmarksDir, "bookmarks.txt"), line, Encoding.UTF8);
+                ShowToast("Bookmark added");
+            }
+            catch
+            {
+                ShowToast("Could not save bookmark");
+            }
+        }
+
+        private async Task PickAndOpenUrlAsync(string title, List<(string Url, string Label)> entries)
+        {
             string[] buttons = entries.Select((e, i) => (i + 1) + ". " + e.Label).ToArray();
-            string choice = await DisplayActionSheetAsync("History", "Cancel", null, buttons).ConfigureAwait(true);
+            string choice = await DisplayActionSheetAsync(title, "Cancel", null, buttons).ConfigureAwait(true);
             int index = Array.IndexOf(buttons, choice);
             if (index < 0)
                 return;
 
+            OpenOrNavigate(entries[index].Url);
+        }
+
+        private void OpenOrNavigate(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return;
+
             if (_current == null)
             {
-                AddTab(entries[index].Url, select: true);
+                AddTab(url, select: true);
                 return;
             }
 
-            _current.PendingUrl = entries[index].Url;
-            _current.Url = entries[index].Url;
+            _current.PendingUrl = url;
+            _current.Url = url;
             _current.Loaded = false;
             LoadPendingUrl(_current);
             _addressEntry.Text = _current.Url;
@@ -954,7 +1062,12 @@ namespace SilentNotes.Platforms
         /// <summary>
         /// Shows the browser as a modal page on top of the current page. Must run on the UI thread.
         /// </summary>
-        public static async Task Present()
+        public static Task Present() => Present(null, AbroStartAction.None);
+
+        /// <summary>
+        /// Shows the browser, optionally opening a URL and/or a history/bookmarks sheet.
+        /// </summary>
+        public static async Task Present(string url, AbroStartAction startAction)
         {
             if (MauiApplication.Current?.Windows == null || MauiApplication.Current.Windows.Count == 0)
                 return;
@@ -964,10 +1077,39 @@ namespace SilentNotes.Platforms
                 Page host = MauiApplication.Current.Windows[0].Page;
                 if (host == null)
                     return;
-                if (host.Navigation.ModalStack.Any(p => p is AbroBrowserPage))
-                    return;
 
-                await host.Navigation.PushModalAsync(new AbroBrowserPage(), false).ConfigureAwait(true);
+                AbroBrowserPage existing = host.Navigation.ModalStack.OfType<AbroBrowserPage>().LastOrDefault();
+                if (existing != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(url))
+                        existing.OpenOrNavigate(NormalizeAddress(url) ?? url);
+                    if (startAction == AbroStartAction.History)
+                        await existing.ShowHistoryAsync().ConfigureAwait(true);
+                    else if (startAction == AbroStartAction.Bookmarks)
+                        await existing.ShowBookmarksAsync().ConfigureAwait(true);
+                    return;
+                }
+
+                var page = new AbroBrowserPage(url, startAction);
+                await host.Navigation.PushModalAsync(page, false).ConfigureAwait(true);
+                await page.ApplyStartActionAsync().ConfigureAwait(true);
+            }
+            catch
+            {
+            }
+        }
+
+        private async Task ApplyStartActionAsync()
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(_initialUrl))
+                    OpenOrNavigate(NormalizeAddress(_initialUrl) ?? _initialUrl);
+
+                if (_startAction == AbroStartAction.History)
+                    await ShowHistoryAsync().ConfigureAwait(true);
+                else if (_startAction == AbroStartAction.Bookmarks)
+                    await ShowBookmarksAsync().ConfigureAwait(true);
             }
             catch
             {

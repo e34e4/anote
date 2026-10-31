@@ -345,6 +345,13 @@ namespace SilentNotes.Platforms
 
             TabIntentRequest.Pending = new TabIntentRequest { TabIndex = tabIndex };
             Ioc.Instance.GetService<IMessengerService>()?.Send(new TabIntentMessage());
+
+            if (intent.GetBooleanExtra(FloatingButtonAccessibilityService.ExtraToggleScreenRecord, false))
+            {
+                intent.RemoveExtra(FloatingButtonAccessibilityService.ExtraToggleScreenRecord);
+                ScreenRecordIntentRequest.Pending = new ScreenRecordIntentRequest { Stop = false };
+                Ioc.Instance.GetService<IMessengerService>()?.Send(new ScreenRecordIntentMessage());
+            }
         }
 
         private void ConsumePhoneIntent(Intent intent)
