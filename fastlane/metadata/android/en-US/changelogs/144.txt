@@ -1,0 +1,2 @@
+• Quick menu: Apps button lists installed apps to launch from the same dialog
+• Apps list: optional floating/freeform window launch (tap or 🪟 toggle)

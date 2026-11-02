@@ -132,6 +132,8 @@ namespace SilentNotes.Platforms
         private global::Android.Views.View _menuOverlayView;
         private WindowManagerLayoutParams _menuLayoutParams;
         private bool _captureEnabled;
+        private bool _menuShowingApps;
+        private bool _menuLaunchAsFloating;
 
         private IServiceProvider _serviceProvider;
         private ClipboardCapture _clipboardCapture;
@@ -754,22 +756,59 @@ namespace SilentNotes.Platforms
                 cardBg.SetStroke((int)(1.5f * density), Color.ParseColor("#38BDF8"));
                 card.Background = cardBg;
 
-                // Header row (draggable): Title + Reset Size (½H) + Close button
+                // Header row (draggable): Title + optional Apps/Float controls + Reset Size + Close
                 var headerRow = new LinearLayout(this)
                 {
                     Orientation = Orientation.Horizontal,
                 };
                 headerRow.SetGravity(GravityFlags.CenterVertical);
                 headerRow.SetPadding((int)(4 * density), (int)(2 * density), (int)(4 * density), (int)(6 * density));
+                int btnPad = (int)(6 * density);
+
+                if (_menuShowingApps)
+                {
+                    var backBtn = new TextView(this)
+                    {
+                        Text = "←",
+                        TextSize = 16f,
+                        Gravity = GravityFlags.Center,
+                    };
+                    backBtn.SetTextColor(Color.ParseColor("#38BDF8"));
+                    backBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
+                    backBtn.Click += (s, e) =>
+                    {
+                        _menuShowingApps = false;
+                        RebuildMenuOverlay();
+                    };
+                    headerRow.AddView(backBtn);
+                }
 
                 var titleView = new TextView(this)
                 {
-                    Text = "⠿ aNote Quick Menu",
+                    Text = _menuShowingApps ? "Apps" : "⠿ aNote Quick Menu",
                     TextSize = 13.5f,
                 };
                 titleView.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
                 titleView.SetTextColor(Color.White);
                 headerRow.AddView(titleView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+                if (_menuShowingApps)
+                {
+                    var floatBtn = new TextView(this)
+                    {
+                        Text = _menuLaunchAsFloating ? "🪟 On" : "🪟",
+                        TextSize = 12f,
+                        Gravity = GravityFlags.Center,
+                    };
+                    floatBtn.SetTextColor(Color.ParseColor(_menuLaunchAsFloating ? "#38BDF8" : "#BDBDBD"));
+                    floatBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
+                    floatBtn.Click += (s, e) =>
+                    {
+                        _menuLaunchAsFloating = !_menuLaunchAsFloating;
+                        RebuildMenuOverlay();
+                    };
+                    headerRow.AddView(floatBtn);
+                }
 
                 var halfBtn = new TextView(this)
                 {
@@ -778,7 +817,6 @@ namespace SilentNotes.Platforms
                     Gravity = GravityFlags.Center,
                 };
                 halfBtn.SetTextColor(Color.ParseColor("#38BDF8"));
-                int btnPad = (int)(6 * density);
                 halfBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
                 halfBtn.Click += (s, e) => ResetMenuToHalfScreen(defaultWidth, defaultHeight, screenW, screenH);
                 headerRow.AddView(halfBtn);
@@ -797,119 +835,20 @@ namespace SilentNotes.Platforms
                 headerRow.SetOnTouchListener(new MenuDragTouchListener(this));
                 card.AddView(headerRow);
 
-                // Scrollable grid of 14 tab buttons + 1 Keyboard Switcher button (4 columns)
                 var scrollView = new global::Android.Widget.ScrollView(this)
                 {
                     FillViewport = true,
                 };
-                var gridContainer = new LinearLayout(this)
-                {
-                    Orientation = Orientation.Vertical,
-                };
 
-                const int columns = 4;
-                var allButtons = new List<(string Icon, string Label, System.Action OnClick, bool IsAccent, System.Action OnLongClick)>();
-
-                foreach (var tab in TabDefinitions)
+                if (_menuShowingApps)
                 {
-                    int tabIdx = tab.Index;
-                    string label = language?[tab.Key];
-                    if (string.IsNullOrWhiteSpace(label) || label == tab.Key)
-                        label = tab.Fallback;
-                    allButtons.Add((tab.Icon, label, () =>
-                    {
-                        HideMenuOverlay();
-                        if (tabIdx == AbroViewModel.TabIndex)
-                            OpenAbroBrowser();
-                        else
-                            OpenApplicationAtTab(tabIdx);
-                    }, false, null));
+                    PopulateAppsList(scrollView, density);
+                }
+                else
+                {
+                    PopulateMainMenuGrid(scrollView, language, density);
                 }
 
-                // Custom shortcuts (apps and folders) added by the user, long-press removes them
-                foreach (MenuShortcut shortcut in LoadShortcuts())
-                {
-                    MenuShortcut entry = shortcut;
-                    bool isFolder = entry.Type == ShortcutTypeFolder;
-                    allButtons.Add((isFolder ? "📂" : "📱", entry.Label, () =>
-                    {
-                        HideMenuOverlay();
-                        if (isFolder)
-                            LaunchFolder(entry.Value);
-                        else
-                            LaunchInstalledApp(entry.Value);
-                    }, false, () =>
-                    {
-                        RemoveShortcut(entry);
-                        Toast.MakeText(this, "Removed", ToastLength.Short)?.Show();
-                        RebuildMenuOverlay();
-                    }));
-                }
-
-                // Keyboard Switcher button (Kunzisoft KeyboardSwitcher functionality)
-                string kbLabel = language?["floating_menu_keyboard"];
-                if (string.IsNullOrWhiteSpace(kbLabel) || kbLabel == "floating_menu_keyboard")
-                    kbLabel = "Keyboard";
-                allButtons.Add(("⌨️", kbLabel, () =>
-                {
-                    HideMenuOverlay();
-                    ShowKeyboardSwitcher();
-                }, true, null));
-
-                string shotFullLabel = language?["floating_menu_screenshot_full"];
-                if (string.IsNullOrWhiteSpace(shotFullLabel) || shotFullLabel == "floating_menu_screenshot_full")
-                    shotFullLabel = "Full screen";
-                allButtons.Add(("📷", shotFullLabel, () =>
-                {
-                    HideMenuOverlay();
-                    StartScreenshot(partial: false);
-                }, true, null));
-
-                bool screenRecording = ScreenRecordService.IsRecording;
-                string screenRecLabel = language?["floating_menu_screen_record"];
-                if (string.IsNullOrWhiteSpace(screenRecLabel) || screenRecLabel == "floating_menu_screen_record")
-                    screenRecLabel = screenRecording ? "Stop record" : "Screen rec";
-                allButtons.Add((screenRecording ? "⏹️" : "🎥", screenRecLabel, () =>
-                {
-                    HideMenuOverlay();
-                    ToggleScreenRecording();
-                }, true, null));
-
-                allButtons.Add(("➕", "+ App", () => ShowAddAppDialog(), true, null));
-                allButtons.Add(("➕", "+ Folder", () => ShowAddFolderDialog(), true, null));
-
-                for (int i = 0; i < allButtons.Count; i += columns)
-                {
-                    var row = new LinearLayout(this)
-                    {
-                        Orientation = Orientation.Horizontal,
-                    };
-
-                    for (int col = 0; col < columns; col++)
-                    {
-                        int idx = i + col;
-                        var cellParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
-                        int margin = (int)(3 * density);
-                        cellParams.SetMargins(margin, margin, margin, margin);
-
-                        if (idx < allButtons.Count)
-                        {
-                            var item = allButtons[idx];
-                            global::Android.Views.View btnView = CreateMenuGridButton(item.Icon, item.Label, item.IsAccent, item.OnClick, density, item.OnLongClick);
-                            row.AddView(btnView, cellParams);
-                        }
-                        else
-                        {
-                            row.AddView(new global::Android.Views.View(this), cellParams);
-                        }
-                    }
-
-                    gridContainer.AddView(row, new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
-                }
-
-                scrollView.AddView(gridContainer, new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
                 card.AddView(scrollView, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MatchParent, 0, 1f));
 
@@ -1022,6 +961,7 @@ namespace SilentNotes.Platforms
             }
             _menuOverlayView = null;
             _menuLayoutParams = null;
+            _menuShowingApps = false;
         }
 
         private class MenuDragTouchListener : Java.Lang.Object, global::Android.Views.View.IOnTouchListener
@@ -1147,6 +1087,280 @@ namespace SilentNotes.Platforms
                 }
                 return false;
             }
+        }
+
+        private void PopulateMainMenuGrid(global::Android.Widget.ScrollView scrollView, ILanguageService language, float density)
+        {
+            var gridContainer = new LinearLayout(this)
+            {
+                Orientation = Orientation.Vertical,
+            };
+
+            const int columns = 4;
+            var allButtons = new List<(string Icon, string Label, System.Action OnClick, bool IsAccent, System.Action OnLongClick)>();
+
+            foreach (var tab in TabDefinitions)
+            {
+                int tabIdx = tab.Index;
+                string label = language?[tab.Key];
+                if (string.IsNullOrWhiteSpace(label) || label == tab.Key)
+                    label = tab.Fallback;
+                allButtons.Add((tab.Icon, label, () =>
+                {
+                    HideMenuOverlay();
+                    if (tabIdx == AbroViewModel.TabIndex)
+                        OpenAbroBrowser();
+                    else
+                        OpenApplicationAtTab(tabIdx);
+                }, false, null));
+            }
+
+            // Custom shortcuts (apps and folders) added by the user, long-press removes them
+            foreach (MenuShortcut shortcut in LoadShortcuts())
+            {
+                MenuShortcut entry = shortcut;
+                bool isFolder = entry.Type == ShortcutTypeFolder;
+                allButtons.Add((isFolder ? "📂" : "📱", entry.Label, () =>
+                {
+                    HideMenuOverlay();
+                    if (isFolder)
+                        LaunchFolder(entry.Value);
+                    else
+                        LaunchInstalledApp(entry.Value);
+                }, false, () =>
+                {
+                    RemoveShortcut(entry);
+                    Toast.MakeText(this, "Removed", ToastLength.Short)?.Show();
+                    RebuildMenuOverlay();
+                }));
+            }
+
+            string kbLabel = language?["floating_menu_keyboard"];
+            if (string.IsNullOrWhiteSpace(kbLabel) || kbLabel == "floating_menu_keyboard")
+                kbLabel = "Keyboard";
+            allButtons.Add(("⌨️", kbLabel, () =>
+            {
+                HideMenuOverlay();
+                ShowKeyboardSwitcher();
+            }, true, null));
+
+            string shotFullLabel = language?["floating_menu_screenshot_full"];
+            if (string.IsNullOrWhiteSpace(shotFullLabel) || shotFullLabel == "floating_menu_screenshot_full")
+                shotFullLabel = "Full screen";
+            allButtons.Add(("📷", shotFullLabel, () =>
+            {
+                HideMenuOverlay();
+                StartScreenshot(partial: false);
+            }, true, null));
+
+            bool screenRecording = ScreenRecordService.IsRecording;
+            string screenRecLabel = language?["floating_menu_screen_record"];
+            if (string.IsNullOrWhiteSpace(screenRecLabel) || screenRecLabel == "floating_menu_screen_record")
+                screenRecLabel = screenRecording ? "Stop record" : "Screen rec";
+            allButtons.Add((screenRecording ? "⏹️" : "🎥", screenRecLabel, () =>
+            {
+                HideMenuOverlay();
+                ToggleScreenRecording();
+            }, true, null));
+
+            allButtons.Add(("📦", "Apps", () =>
+            {
+                _menuShowingApps = true;
+                RebuildMenuOverlay();
+            }, true, null));
+            allButtons.Add(("➕", "+ App", () => ShowAddAppDialog(), true, null));
+            allButtons.Add(("➕", "+ Folder", () => ShowAddFolderDialog(), true, null));
+
+            for (int i = 0; i < allButtons.Count; i += columns)
+            {
+                var row = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Horizontal,
+                };
+
+                for (int col = 0; col < columns; col++)
+                {
+                    int idx = i + col;
+                    var cellParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+                    int margin = (int)(3 * density);
+                    cellParams.SetMargins(margin, margin, margin, margin);
+
+                    if (idx < allButtons.Count)
+                    {
+                        var item = allButtons[idx];
+                        global::Android.Views.View btnView = CreateMenuGridButton(item.Icon, item.Label, item.IsAccent, item.OnClick, density, item.OnLongClick);
+                        row.AddView(btnView, cellParams);
+                    }
+                    else
+                    {
+                        row.AddView(new global::Android.Views.View(this), cellParams);
+                    }
+                }
+
+                gridContainer.AddView(row, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+            }
+
+            scrollView.AddView(gridContainer, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+        }
+
+        private void PopulateAppsList(global::Android.Widget.ScrollView scrollView, float density)
+        {
+            var listContainer = new LinearLayout(this)
+            {
+                Orientation = Orientation.Vertical,
+            };
+
+            if (_menuLaunchAsFloating)
+            {
+                var hint = new TextView(this)
+                {
+                    Text = "Floating on — tap to open as a window (needs freeform/desktop mode)",
+                    TextSize = 11f,
+                };
+                hint.SetTextColor(Color.ParseColor("#94A3B8"));
+                hint.SetPadding(0, 0, 0, (int)(6 * density));
+                listContainer.AddView(hint);
+            }
+            else
+            {
+                var hint = new TextView(this)
+                {
+                    Text = "Tap to open · long-press for floating window",
+                    TextSize = 11f,
+                };
+                hint.SetTextColor(Color.ParseColor("#94A3B8"));
+                hint.SetPadding(0, 0, 0, (int)(6 * density));
+                listContainer.AddView(hint);
+            }
+
+            List<(string Package, string Label)> apps = QueryLauncherApps();
+            if (apps.Count == 0)
+            {
+                var empty = new TextView(this)
+                {
+                    Text = "No apps found",
+                    TextSize = 13f,
+                    Gravity = GravityFlags.Center,
+                };
+                empty.SetTextColor(Color.ParseColor("#BDBDBD"));
+                empty.SetPadding(0, (int)(16 * density), 0, (int)(16 * density));
+                listContainer.AddView(empty);
+            }
+            else
+            {
+                foreach ((string Package, string Label) app in apps)
+                {
+                    string packageName = app.Package;
+                    string appLabel = app.Label;
+
+                    var row = new LinearLayout(this)
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Clickable = true,
+                    };
+                    row.SetGravity(GravityFlags.CenterVertical);
+                    int rowPad = (int)(8 * density);
+                    row.SetPadding(rowPad, rowPad, rowPad, rowPad);
+
+                    var bg = new GradientDrawable();
+                    bg.SetCornerRadius(8 * density);
+                    bg.SetColor(Color.ParseColor("#1C1C1C"));
+                    bg.SetStroke((int)(1 * density), Color.ParseColor("#2E2E2E"));
+                    row.Background = bg;
+
+                    var iconTv = new TextView(this)
+                    {
+                        Text = "📱",
+                        TextSize = 16f,
+                        Gravity = GravityFlags.Center,
+                    };
+                    row.AddView(iconTv, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
+
+                    var labelTv = new TextView(this)
+                    {
+                        Text = appLabel,
+                        TextSize = 13f,
+                    };
+                    labelTv.SetSingleLine(true);
+                    labelTv.SetTextColor(Color.White);
+                    labelTv.SetPadding((int)(10 * density), 0, 0, 0);
+                    row.AddView(labelTv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+                    row.Click += (s, e) =>
+                    {
+                        HideMenuOverlay();
+                        LaunchInstalledApp(packageName, asFloating: _menuLaunchAsFloating);
+                    };
+                    row.LongClick += (s, e) =>
+                    {
+                        e.Handled = true;
+                        HideMenuOverlay();
+                        LaunchInstalledApp(packageName, asFloating: !_menuLaunchAsFloating);
+                    };
+
+                    var rowParams = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
+                    rowParams.SetMargins(0, 0, 0, (int)(4 * density));
+                    listContainer.AddView(row, rowParams);
+                }
+            }
+
+            scrollView.AddView(listContainer, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+        }
+
+        private List<(string Package, string Label)> QueryLauncherApps()
+        {
+            var entries = new List<(string Package, string Label)>();
+            try
+            {
+                PackageManager pm = PackageManager;
+                if (pm == null)
+                    return entries;
+
+                var mainIntent = new Intent(Intent.ActionMain, null);
+                mainIntent.AddCategory(Intent.CategoryLauncher);
+
+                IList<ResolveInfo> apps;
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
+                {
+                    apps = pm.QueryIntentActivities(
+                        mainIntent,
+                        PackageManager.ResolveInfoFlags.Of((long)PackageInfoFlags.MatchAll));
+                }
+                else
+                {
+                    #pragma warning disable CS0618
+                    apps = pm.QueryIntentActivities(mainIntent, PackageInfoFlags.MatchAll);
+                    #pragma warning restore CS0618
+                }
+
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (apps != null)
+                {
+                    foreach (ResolveInfo info in apps)
+                    {
+                        string pkg = info?.ActivityInfo?.PackageName;
+                        if (string.IsNullOrEmpty(pkg) || !seen.Add(pkg))
+                            continue;
+
+                        string label = info.LoadLabel(pm)?.ToString();
+                        if (string.IsNullOrWhiteSpace(label))
+                            label = pkg;
+                        entries.Add((pkg, label));
+                    }
+                }
+
+                entries = entries.OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not query launcher apps: " + ex);
+            }
+            return entries;
         }
 
         private global::Android.Views.View CreateMenuGridButton(
@@ -1293,7 +1507,7 @@ namespace SilentNotes.Platforms
             }
         }
 
-        private bool LaunchInstalledApp(string packageName)
+        private bool LaunchInstalledApp(string packageName, bool asFloating = false)
         {
             try
             {
@@ -1326,12 +1540,78 @@ namespace SilentNotes.Platforms
                 }
 
                 launchIntent.AddFlags(ActivityFlags.NewTask);
+
+                if (asFloating)
+                {
+                    if (TryStartAsFloatingWindow(launchIntent))
+                        return true;
+
+                    // Softer multi-window fallback when freeform is unavailable.
+                    try
+                    {
+                        Intent adjacent = new Intent(launchIntent);
+                        adjacent.AddFlags(ActivityFlags.LaunchAdjacent | ActivityFlags.MultipleTask);
+                        StartActivity(adjacent);
+                        return true;
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+
                 StartActivity(launchIntent);
                 return true;
             }
             catch (Exception ex)
             {
                 global::Android.Util.Log.Error(LogTag, "Failed to launch app " + packageName + ": " + ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Tries to start an activity in freeform / floating window mode with launch bounds.
+        /// Works on devices that support freeform (desktop mode, some OEMs, Chrome OS).
+        /// </summary>
+        private bool TryStartAsFloatingWindow(Intent launchIntent)
+        {
+            if (Build.VERSION.SdkInt < BuildVersionCodes.N)
+                return false;
+
+            try
+            {
+                ActivityOptions options = ActivityOptions.MakeBasic();
+
+                // Hidden API: setLaunchWindowingMode(WINDOWING_MODE_FREEFORM = 5)
+                try
+                {
+                    Java.Lang.Reflect.Method method = options.Class.GetMethod(
+                        "setLaunchWindowingMode",
+                        Java.Lang.Integer.Type);
+                    method.Invoke(options, new Java.Lang.Object[] { new Java.Lang.Integer(5) });
+                }
+                catch (Exception ex)
+                {
+                    global::Android.Util.Log.Warn(LogTag, "setLaunchWindowingMode unavailable: " + ex.Message);
+                }
+
+                // OEM extras used by Samsung / some freeform launchers
+                launchIntent.PutExtra("android.activity.windowingMode", 5);
+
+                int w = Resources.DisplayMetrics.WidthPixels;
+                int h = Resources.DisplayMetrics.HeightPixels;
+                int left = w / 10;
+                int top = h / 10;
+                int right = w - left;
+                int bottom = Math.Max(top + h / 3, (int)(h * 0.62f));
+                options.SetLaunchBounds(new global::Android.Graphics.Rect(left, top, right, bottom));
+
+                StartActivity(launchIntent, options.ToBundle());
+                return true;
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Warn(LogTag, "Floating launch failed: " + ex.Message);
                 return false;
             }
         }
@@ -1439,7 +1719,11 @@ namespace SilentNotes.Platforms
 
         private void RebuildMenuOverlay()
         {
+            bool showingApps = _menuShowingApps;
+            bool launchFloating = _menuLaunchAsFloating;
             HideMenuOverlay();
+            _menuShowingApps = showingApps;
+            _menuLaunchAsFloating = launchFloating;
             ShowMenuOverlay();
         }
 
@@ -1538,44 +1822,7 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                PackageManager pm = PackageManager;
-                if (pm == null)
-                    return;
-
-                var mainIntent = new Intent(Intent.ActionMain, null);
-                mainIntent.AddCategory(Intent.CategoryLauncher);
-
-                IList<ResolveInfo> apps;
-                if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
-                {
-                    apps = pm.QueryIntentActivities(
-                        mainIntent,
-                        PackageManager.ResolveInfoFlags.Of((long)PackageInfoFlags.MatchAll));
-                }
-                else
-                {
-                    #pragma warning disable CS0618
-                    apps = pm.QueryIntentActivities(mainIntent, PackageInfoFlags.MatchAll);
-                    #pragma warning restore CS0618
-                }
-
-                var entries = new List<(string Package, string Label)>();
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                if (apps != null)
-                {
-                    foreach (ResolveInfo info in apps)
-                    {
-                        string pkg = info?.ActivityInfo?.PackageName;
-                        if (string.IsNullOrEmpty(pkg) || !seen.Add(pkg))
-                            continue;
-
-                        string label = info.LoadLabel(pm)?.ToString();
-                        if (string.IsNullOrWhiteSpace(label))
-                            label = pkg;
-                        entries.Add((pkg, label));
-                    }
-                }
-                entries = entries.OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
+                List<(string Package, string Label)> entries = QueryLauncherApps();
                 if (entries.Count == 0)
                     return;
 
