@@ -1,0 +1,2 @@
+• Abro: Downloads menu — location, 1–5 threads, download history
+• Abro: downloads go to /sdcard/abro/down by default with multi-thread HTTP when supported

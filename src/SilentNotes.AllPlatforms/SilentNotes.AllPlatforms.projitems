@@ -297,6 +297,11 @@
     <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroBrowserSettingsFormat.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroBrowserSettingsService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\AbroBrowserSettingsService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\AbroDownloadHistoryItemModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\AbroDownloadStoreModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroDownloadStoreFormat.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroDownloadService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\AbroDownloadService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\PlayerViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\AbroViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\DocumentItemModel.cs" />

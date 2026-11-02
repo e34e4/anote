@@ -105,6 +105,14 @@ namespace SilentNotes.Platforms
             {
             }
 
+            try
+            {
+                Ioc.Instance.GetService<IAbroDownloadService>()?.GetDownloadDirectory();
+            }
+            catch
+            {
+            }
+
             _tabStrip = new HorizontalStackLayout { Spacing = 4, VerticalOptions = LayoutOptions.Center };
             var tabScroll = new ScrollView
             {
@@ -936,6 +944,7 @@ namespace SilentNotes.Platforms
         {
             const string ai = "AI";
             const string settings = "Settings";
+            const string downloads = "Downloads";
             const string history = "History";
             const string bookmarks = "Bookmarks";
             const string addBookmark = "Add bookmark";
@@ -949,6 +958,7 @@ namespace SilentNotes.Platforms
                 null,
                 ai,
                 settings,
+                downloads,
                 history,
                 bookmarks,
                 addBookmark,
@@ -962,6 +972,9 @@ namespace SilentNotes.Platforms
                     break;
                 case settings:
                     await ShowSettingsMenuAsync().ConfigureAwait(true);
+                    break;
+                case downloads:
+                    await OpenSettingsPageAsync(() => new AbroDownloadsPage(), "Downloads").ConfigureAwait(true);
                     break;
                 case history:
                     await ShowHistoryAsync().ConfigureAwait(true);
@@ -1724,7 +1737,7 @@ namespace SilentNotes.Platforms
 
             awv.SetWebViewClient(new AbroWebViewClient(this, tab));
             awv.SetWebChromeClient(new AbroWebChromeClient(this, tab));
-            awv.SetDownloadListener(new AbroDownloadListener(_filesDir));
+            awv.SetDownloadListener(new AbroDownloadListener(this));
             awv.LongClickable = true;
             awv.SetOnLongClickListener(new AbroLinkLongClickListener(this, awv));
 
@@ -2048,32 +2061,39 @@ namespace SilentNotes.Platforms
 
         private sealed class AbroDownloadListener : Java.Lang.Object, IDownloadListener
         {
-            private readonly string _targetDir;
-
-            public AbroDownloadListener(string targetDir)
+            public AbroDownloadListener(AbroBrowserPage page)
             {
-                _targetDir = targetDir;
             }
 
             public void OnDownloadStart(string url, string userAgent, string contentDisposition, string mimetype, long contentLength)
             {
                 try
                 {
-                    Directory.CreateDirectory(_targetDir);
-                    string name = URLUtil.GuessFileName(url, contentDisposition, mimetype);
-                    var request = new global::Android.App.DownloadManager.Request(AUri.Parse(url));
-                    request.SetMimeType(mimetype);
-                    string cookies = CookieManager.Instance?.GetCookie(url);
-                    if (!string.IsNullOrEmpty(cookies))
-                        request.AddRequestHeader("Cookie", cookies);
-                    if (!string.IsNullOrEmpty(userAgent))
-                        request.AddRequestHeader("User-Agent", userAgent);
-                    request.SetNotificationVisibility(global::Android.App.DownloadVisibility.VisibleNotifyCompleted);
-                    request.SetDestinationUri(AUri.FromFile(new Java.IO.File(Path.Combine(_targetDir, name))));
+                    IAbroDownloadService downloads = Ioc.Instance.GetService<IAbroDownloadService>();
+                    if (downloads == null)
+                    {
+                        ShowToast("Downloads unavailable");
+                        return;
+                    }
 
-                    var manager = (global::Android.App.DownloadManager)Platform.AppContext.GetSystemService(Context.DownloadService);
-                    manager?.Enqueue(request);
-                    ShowToast("Downloading " + name);
+                    string name = URLUtil.GuessFileName(url, contentDisposition, mimetype);
+                    string cookies = null;
+                    try
+                    {
+                        cookies = CookieManager.Instance?.GetCookie(url);
+                    }
+                    catch
+                    {
+                    }
+
+                    long? lengthHint = contentLength > 0 ? contentLength : null;
+                    AbroDownloadHistoryItemModel item = downloads.StartDownload(
+                        url,
+                        name,
+                        userAgent,
+                        cookies,
+                        lengthHint);
+                    ShowToast("Downloading " + (item?.FileName ?? name));
                 }
                 catch
                 {
