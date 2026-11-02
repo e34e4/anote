@@ -11,8 +11,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Android.Content;
-using Android.Runtime;
-using Android.Views;
 using Android.Webkit;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
@@ -754,6 +752,7 @@ namespace SilentNotes.Platforms
         private async Task ShowAiMenuAsync()
         {
             const string newChat = "New chat";
+            const string withSelection = "Chat with selection";
             IAbroAiStoreService storeService = TryGetAiStoreService();
             AbroAiStoreModel store = storeService?.LoadOrDefault() ?? new AbroAiStoreModel();
             List<AbroAiConversationModel> recent = (store.Conversations ?? new List<AbroAiConversationModel>())
@@ -761,7 +760,7 @@ namespace SilentNotes.Platforms
                 .Take(12)
                 .ToList();
 
-            var buttons = new List<string> { newChat };
+            var buttons = new List<string> { newChat, withSelection };
             foreach (AbroAiConversationModel conversation in recent)
             {
                 string title = string.IsNullOrWhiteSpace(conversation.Title) ? "Chat" : conversation.Title;
@@ -780,7 +779,13 @@ namespace SilentNotes.Platforms
                 return;
             }
 
-            int index = buttons.IndexOf(choice) - 1;
+            if (choice == withSelection)
+            {
+                await OpenAiWithSelectionAsync(_current?.Native).ConfigureAwait(true);
+                return;
+            }
+
+            int index = buttons.IndexOf(choice) - 2;
             if (index >= 0 && index < recent.Count)
                 await OpenAiChatAsync(recent[index].Id, null).ConfigureAwait(true);
         }
@@ -1447,14 +1452,6 @@ namespace SilentNotes.Platforms
             awv.SetWebViewClient(new AbroWebViewClient(this, tab));
             awv.SetWebChromeClient(new AbroWebChromeClient(this, tab));
             awv.SetDownloadListener(new AbroDownloadListener(_filesDir));
-            try
-            {
-                // Not exposed on Android.Webkit.WebView in the .NET bindings; call the Java API via JNI.
-                SetCustomSelectionActionModeCallback(awv, new AbroAiSelectionActionModeCallback(this, awv));
-            }
-            catch
-            {
-            }
 
             if (ReferenceEquals(tab, _current))
             {
@@ -1689,28 +1686,6 @@ namespace SilentNotes.Platforms
             }
         }
 
-        private static void SetCustomSelectionActionModeCallback(AWebView webView, ActionMode.ICallback callback)
-        {
-            if (webView == null)
-                return;
-
-            // Direct JNI call: WebView.setCustomSelectionActionModeCallback(ActionMode.Callback)
-            // (the method is not bound on Android.Webkit.WebView in .NET for Android).
-            IntPtr classHandle = JNIEnv.FindClass("android/webkit/WebView");
-            try
-            {
-                IntPtr methodId = JNIEnv.GetMethodID(
-                    classHandle,
-                    "setCustomSelectionActionModeCallback",
-                    "(Landroid/view/ActionMode$Callback;)V");
-                JNIEnv.CallVoidMethod(webView.Handle, methodId, new JValue(callback));
-            }
-            finally
-            {
-                JNIEnv.DeleteLocalRef(classHandle);
-            }
-        }
-
         private sealed class AbroJsResultCallback : Java.Lang.Object, IValueCallback
         {
             private readonly Action<string> _onResult;
@@ -1723,47 +1698,6 @@ namespace SilentNotes.Platforms
             public void OnReceiveValue(Java.Lang.Object value)
             {
                 _onResult?.Invoke(value?.ToString());
-            }
-        }
-
-        private sealed class AbroAiSelectionActionModeCallback : Java.Lang.Object, ActionMode.ICallback
-        {
-            private const int AiMenuId = 0x4e01;
-            private readonly AbroBrowserPage _page;
-            private readonly AWebView _webView;
-
-            public AbroAiSelectionActionModeCallback(AbroBrowserPage page, AWebView webView)
-            {
-                _page = page;
-                _webView = webView;
-            }
-
-            public bool OnCreateActionMode(ActionMode mode, IMenu menu)
-            {
-                menu?.Add(0, AiMenuId, 0, "AI");
-                return true;
-            }
-
-            public bool OnPrepareActionMode(ActionMode mode, IMenu menu)
-            {
-                return false;
-            }
-
-            public bool OnActionItemClicked(ActionMode mode, IMenuItem item)
-            {
-                if (item == null || item.ItemId != AiMenuId)
-                    return false;
-
-                mode?.Finish();
-                MainThread.BeginInvokeOnMainThread(async () =>
-                {
-                    await _page.OpenAiWithSelectionAsync(_webView).ConfigureAwait(true);
-                });
-                return true;
-            }
-
-            public void OnDestroyActionMode(ActionMode mode)
-            {
             }
         }
     }

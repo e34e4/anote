@@ -1,0 +1,2 @@
+• Fix Abro crash on open (JNI ActionMode hook abort)
+• AI: use ⋮ → AI → Chat with selection for selected webpage text
