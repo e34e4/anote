@@ -49,6 +49,7 @@ namespace SilentNotes.Platforms
         private readonly string _cacheDir;
         private readonly string _filesDir;
         private readonly string _aiDir;
+        private readonly string _adblockDir;
         private readonly string _tabsFile;
         private readonly Grid _webHost;
         private readonly HorizontalStackLayout _tabStrip;
@@ -81,8 +82,16 @@ namespace SilentNotes.Platforms
             _cacheDir = Path.Combine(_rootDir, "cache");
             _filesDir = Path.Combine(_rootDir, "files");
             _aiDir = Path.Combine(_rootDir, "ai");
+            _adblockDir = Path.Combine(_rootDir, "adblock");
             _tabsFile = Path.Combine(_rootDir, "tabs.json");
             EnsureDirectories();
+            try
+            {
+                Ioc.Instance.GetService<IAbroAdBlockService>()?.EnsureFilterLoaded();
+            }
+            catch
+            {
+            }
 
             _tabStrip = new HorizontalStackLayout { Spacing = 4, VerticalOptions = LayoutOptions.Center };
             var tabScroll = new ScrollView
@@ -276,7 +285,7 @@ namespace SilentNotes.Platforms
 
         private void EnsureDirectories()
         {
-            foreach (string dir in new[] { _rootDir, _historyDir, _bookmarksDir, _cookiesDir, _cacheDir, _filesDir, _aiDir })
+            foreach (string dir in new[] { _rootDir, _historyDir, _bookmarksDir, _cookiesDir, _cacheDir, _filesDir, _aiDir, _adblockDir })
             {
                 try
                 {
@@ -285,6 +294,22 @@ namespace SilentNotes.Platforms
                 catch
                 {
                 }
+            }
+        }
+
+        private bool IsAdHostBlocked(string host)
+        {
+            if (string.IsNullOrWhiteSpace(host))
+                return false;
+
+            try
+            {
+                IAbroAdBlockService service = Ioc.Instance.GetService<IAbroAdBlockService>();
+                return service != null && service.IsBlocked(host);
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -864,7 +889,14 @@ namespace SilentNotes.Platforms
         {
             const string providers = "AI providers";
             const string sync = "AI sync";
-            string choice = await DisplayActionSheetAsync("Settings", "Cancel", null, providers, sync).ConfigureAwait(true);
+            const string adBlocking = "Ad blocking";
+            string choice = await DisplayActionSheetAsync(
+                "Settings",
+                "Cancel",
+                null,
+                providers,
+                sync,
+                adBlocking).ConfigureAwait(true);
             switch (choice)
             {
                 case providers:
@@ -873,6 +905,22 @@ namespace SilentNotes.Platforms
                 case sync:
                     await ShowAiSyncMenuAsync().ConfigureAwait(true);
                     break;
+                case adBlocking:
+                    await OpenAdBlockSettingsAsync().ConfigureAwait(true);
+                    break;
+            }
+        }
+
+        private async Task OpenAdBlockSettingsAsync()
+        {
+            try
+            {
+                var page = new AbroAdBlockPage();
+                await Navigation.PushModalAsync(page, false).ConfigureAwait(true);
+            }
+            catch (Exception)
+            {
+                ShowToast("Could not open Ad blocking");
             }
         }
 
@@ -1670,11 +1718,32 @@ namespace SilentNotes.Platforms
         {
             private readonly AbroBrowserPage _page;
             private readonly BrowserTab _tab;
+            private static readonly byte[] EmptyBody = Array.Empty<byte>();
 
             public AbroWebViewClient(AbroBrowserPage page, BrowserTab tab)
             {
                 _page = page;
                 _tab = tab;
+            }
+
+            public override WebResourceResponse ShouldInterceptRequest(AWebView view, IWebResourceRequest request)
+            {
+                try
+                {
+                    string host = request?.Url?.Host;
+                    if (_page.IsAdHostBlocked(host))
+                    {
+                        return new WebResourceResponse(
+                            "text/plain",
+                            "utf-8",
+                            new System.IO.MemoryStream(EmptyBody));
+                    }
+                }
+                catch
+                {
+                }
+
+                return base.ShouldInterceptRequest(view, request);
             }
 
             public override bool ShouldOverrideUrlLoading(AWebView view, IWebResourceRequest request)

@@ -1,0 +1,2 @@
+• Abro: Ad blocking settings — enable, subscribe to DNS/hosts lists, update/remove
+• Abro: filter page requests against downloaded domain lists when enabled

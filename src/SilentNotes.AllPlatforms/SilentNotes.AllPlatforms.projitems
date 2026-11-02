@@ -286,6 +286,12 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroAiSyncService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\AbroAiSyncService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\AbroAiChatClient.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAdBlockSubscriptionModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAdBlockStoreModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroAdBlockListParser.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroAdBlockStoreFormat.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroAdBlockService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\AbroAdBlockService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\PlayerViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\AbroViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\DocumentItemModel.cs" />
