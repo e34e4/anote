@@ -280,6 +280,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiConversationModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiStoreModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroAiStoreFormat.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroAiMarkdown.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroAiStoreService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\AbroAiStoreService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroAiSyncService.cs" />

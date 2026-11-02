@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +12,7 @@ using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.Platforms
 {
@@ -207,24 +209,251 @@ namespace SilentNotes.Platforms
         private static View CreateBubble(AbroAiMessageModel message)
         {
             bool isUser = string.Equals(message.Role, "user", StringComparison.OrdinalIgnoreCase);
-            var label = new Label
-            {
-                Text = message.Content ?? string.Empty,
-                TextColor = Colors.White,
-                FontSize = 15,
-                LineBreakMode = LineBreakMode.WordWrap,
-            };
-            var frame = new Border
+            Color bubbleBg = isUser ? Color.FromArgb("#2481cc") : Color.FromArgb("#2c2c2e");
+            Color textColor = Colors.White;
+            View body = isUser
+                ? CreatePlainLabel(message.Content ?? string.Empty, textColor, 15)
+                : CreateMarkdownBody(message.Content ?? string.Empty, textColor, bubbleBg);
+
+            return new Border
             {
                 StrokeThickness = 0,
-                BackgroundColor = isUser ? Color.FromArgb("#2481cc") : Color.FromArgb("#2c2c2e"),
+                BackgroundColor = bubbleBg,
                 Padding = new Thickness(12, 10),
                 StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 12 },
-                Content = label,
+                Content = body,
                 HorizontalOptions = isUser ? LayoutOptions.End : LayoutOptions.Start,
-                MaximumWidthRequest = 340,
+                MaximumWidthRequest = 360,
             };
-            return frame;
+        }
+
+        private static View CreateMarkdownBody(string markdown, Color textColor, Color bubbleBg)
+        {
+            List<AbroAiMarkdown.Block> blocks = AbroAiMarkdown.Parse(markdown);
+            if (blocks.Count == 0)
+                return CreatePlainLabel(string.Empty, textColor, 15);
+
+            // Single plain paragraph → keep a simple label.
+            if (blocks.Count == 1
+                && blocks[0].Kind == AbroAiMarkdown.BlockKind.Paragraph
+                && !LooksLikeInlineMarkdown(blocks[0].Text))
+            {
+                return CreatePlainLabel(blocks[0].Text ?? string.Empty, textColor, 15);
+            }
+
+            var stack = new VerticalStackLayout { Spacing = 8 };
+            int orderedIndex = 0;
+            foreach (AbroAiMarkdown.Block block in blocks)
+            {
+                switch (block.Kind)
+                {
+                    case AbroAiMarkdown.BlockKind.Heading:
+                        orderedIndex = 0;
+                        stack.Children.Add(CreateInlineLabel(
+                            block.Text,
+                            textColor,
+                            FontSizeForHeading(block.Level),
+                            FontAttributes.Bold));
+                        break;
+
+                    case AbroAiMarkdown.BlockKind.Code:
+                        orderedIndex = 0;
+                        stack.Children.Add(CreateCodeBlock(block.Text, block.Language, bubbleBg));
+                        break;
+
+                    case AbroAiMarkdown.BlockKind.Quote:
+                        orderedIndex = 0;
+                        stack.Children.Add(CreateQuoteBlock(block.Text, textColor));
+                        break;
+
+                    case AbroAiMarkdown.BlockKind.ListItem:
+                        bool numbered = block.Level == 1;
+                        if (!block.ContinuesList)
+                            orderedIndex = 0;
+                        if (numbered)
+                            orderedIndex++;
+                        stack.Children.Add(CreateListItem(block.Text, textColor, numbered, orderedIndex));
+                        break;
+
+                    default:
+                        orderedIndex = 0;
+                        stack.Children.Add(CreateInlineLabel(block.Text, textColor, 15, FontAttributes.None));
+                        break;
+                }
+            }
+
+            return stack;
+        }
+
+        private static View CreateCodeBlock(string code, string language, Color bubbleBg)
+        {
+            var header = string.IsNullOrWhiteSpace(language)
+                ? null
+                : new Label
+                {
+                    Text = language.Trim(),
+                    TextColor = Color.FromArgb("#8e8e93"),
+                    FontSize = 11,
+                    Margin = new Thickness(0, 0, 0, 4),
+                };
+
+            var codeLabel = new Label
+            {
+                Text = code ?? string.Empty,
+                TextColor = Color.FromArgb("#e8e8ed"),
+                FontSize = 12.5,
+                FontFamily = "monospace",
+                LineBreakMode = LineBreakMode.WordWrap,
+            };
+
+            var inner = new VerticalStackLayout { Spacing = 0 };
+            if (header != null)
+                inner.Children.Add(header);
+            inner.Children.Add(codeLabel);
+
+            // Slightly darker than the bubble so fences stand out.
+            Color codeBg = Darken(bubbleBg, 0.18);
+            return new Border
+            {
+                StrokeThickness = 0,
+                BackgroundColor = codeBg,
+                Padding = new Thickness(10, 8),
+                StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 8 },
+                Content = inner,
+            };
+        }
+
+        private static View CreateQuoteBlock(string text, Color textColor)
+        {
+            var content = CreateInlineLabel(text, Color.FromArgb("#c7c7cc"), 14, FontAttributes.Italic);
+            var row = new Grid
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition(new GridLength(3)),
+                    new ColumnDefinition(GridLength.Star),
+                },
+                ColumnSpacing = 8,
+            };
+            row.Add(new BoxView { Color = Color.FromArgb("#636366") }, 0, 0);
+            row.Add(content, 1, 0);
+            return row;
+        }
+
+        private static View CreateListItem(string text, Color textColor, bool numbered, int number)
+        {
+            var row = new Grid
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition(GridLength.Auto),
+                    new ColumnDefinition(GridLength.Star),
+                },
+                ColumnSpacing = 8,
+            };
+            row.Add(new Label
+            {
+                Text = numbered ? $"{Math.Max(1, number)}." : "•",
+                TextColor = textColor,
+                FontSize = 15,
+            }, 0, 0);
+            row.Add(CreateInlineLabel(text, textColor, 15, FontAttributes.None), 1, 0);
+            return row;
+        }
+
+        private static Label CreateInlineLabel(string text, Color textColor, double fontSize, FontAttributes baseAttributes)
+        {
+            List<AbroAiMarkdown.Inline> inlines = AbroAiMarkdown.ParseInlines(text ?? string.Empty);
+            if (inlines.Count == 0 || (inlines.Count == 1 && inlines[0].Kind == AbroAiMarkdown.InlineKind.Text))
+            {
+                return new Label
+                {
+                    Text = text ?? string.Empty,
+                    TextColor = textColor,
+                    FontSize = fontSize,
+                    FontAttributes = baseAttributes,
+                    LineBreakMode = LineBreakMode.WordWrap,
+                };
+            }
+
+            var formatted = new FormattedString();
+            foreach (AbroAiMarkdown.Inline span in inlines)
+            {
+                FontAttributes attrs = baseAttributes;
+                Color color = textColor;
+                double size = fontSize;
+                switch (span.Kind)
+                {
+                    case AbroAiMarkdown.InlineKind.Bold:
+                        attrs |= FontAttributes.Bold;
+                        break;
+                    case AbroAiMarkdown.InlineKind.Italic:
+                        attrs |= FontAttributes.Italic;
+                        break;
+                    case AbroAiMarkdown.InlineKind.Code:
+                        color = Color.FromArgb("#ffd60a");
+                        size = fontSize - 1;
+                        break;
+                }
+
+                var run = new Span
+                {
+                    Text = span.Text ?? string.Empty,
+                    TextColor = color,
+                    FontSize = size,
+                    FontAttributes = attrs,
+                };
+                if (span.Kind == AbroAiMarkdown.InlineKind.Code)
+                    run.FontFamily = "monospace";
+                formatted.Spans.Add(run);
+            }
+
+            return new Label
+            {
+                FormattedText = formatted,
+                LineBreakMode = LineBreakMode.WordWrap,
+            };
+        }
+
+        private static Label CreatePlainLabel(string text, Color textColor, double fontSize)
+        {
+            return new Label
+            {
+                Text = text ?? string.Empty,
+                TextColor = textColor,
+                FontSize = fontSize,
+                LineBreakMode = LineBreakMode.WordWrap,
+            };
+        }
+
+        private static double FontSizeForHeading(int level)
+        {
+            return level switch
+            {
+                1 => 22,
+                2 => 19,
+                3 => 17,
+                _ => 16,
+            };
+        }
+
+        private static bool LooksLikeInlineMarkdown(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+            return text.Contains("**", StringComparison.Ordinal)
+                || text.Contains('`')
+                || (text.Contains('*') && text.IndexOf('*') != text.LastIndexOf('*'));
+        }
+
+        private static Color Darken(Color color, double amount)
+        {
+            amount = Math.Clamp(amount, 0, 1);
+            return new Color(
+                (float)(color.Red * (1 - amount)),
+                (float)(color.Green * (1 - amount)),
+                (float)(color.Blue * (1 - amount)),
+                color.Alpha);
         }
 
         private async Task SendAsync()

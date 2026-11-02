@@ -755,23 +755,15 @@ namespace SilentNotes.Platforms
         {
             const string newChat = "New chat";
             const string withSelection = "Chat with selection";
-            IAbroAiStoreService storeService = TryGetAiStoreService();
-            AbroAiStoreModel store = storeService?.LoadOrDefault() ?? new AbroAiStoreModel();
-            List<AbroAiConversationModel> recent = (store.Conversations ?? new List<AbroAiConversationModel>())
-                .OrderByDescending(c => c.ModifiedAt)
-                .Take(12)
-                .ToList();
+            const string previousChats = "Previous chats";
 
-            var buttons = new List<string> { newChat, withSelection };
-            foreach (AbroAiConversationModel conversation in recent)
-            {
-                string title = string.IsNullOrWhiteSpace(conversation.Title) ? "Chat" : conversation.Title;
-                if (title.Length > 60)
-                    title = title.Substring(0, 59) + "…";
-                buttons.Add(title);
-            }
-
-            string choice = await DisplayActionSheetAsync("AI", "Cancel", null, buttons.ToArray()).ConfigureAwait(true);
+            string choice = await DisplayActionSheetAsync(
+                "AI",
+                "Cancel",
+                null,
+                newChat,
+                withSelection,
+                previousChats).ConfigureAwait(true);
             if (string.IsNullOrEmpty(choice) || choice == "Cancel")
                 return;
 
@@ -787,9 +779,21 @@ namespace SilentNotes.Platforms
                 return;
             }
 
-            int index = buttons.IndexOf(choice) - 2;
-            if (index >= 0 && index < recent.Count)
-                await OpenAiChatAsync(recent[index].Id, null).ConfigureAwait(true);
+            if (choice == previousChats)
+                await OpenAiConversationsAsync().ConfigureAwait(true);
+        }
+
+        private async Task OpenAiConversationsAsync()
+        {
+            try
+            {
+                var page = new AbroAiConversationsPage();
+                await Navigation.PushModalAsync(page, false).ConfigureAwait(true);
+            }
+            catch (Exception)
+            {
+                ShowToast("Could not open previous chats");
+            }
         }
 
         private async Task OpenAiChatAsync(Guid? conversationId, string initialText)
