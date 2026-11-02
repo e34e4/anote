@@ -200,6 +200,7 @@ public static class MauiProgram
             serviceProvider.GetService<IXmlFileService>()));
         services.AddSingleton<IAudioRecorderService>((serviceProvider) => new AudioRecorderService());
         services.AddSingleton<IScreenRecorderService>((serviceProvider) => new ScreenRecorderService());
+        services.AddSingleton<IScreenshotGalleryService>((serviceProvider) => new ScreenshotGalleryService());
         services.AddSingleton<ICompassService>((serviceProvider) => new CompassService());
         services.AddSingleton<IWebdavFileService>((serviceProvider) => new WebdavFileService());
         services.AddSingleton<IDevicePhoneService>((serviceProvider) => new DevicePhoneService());
@@ -281,6 +282,8 @@ public static class MauiProgram
         services.AddSingleton<IScreenRecorderService>((serviceProvider) => new ScreenRecorderService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IActivityResultAwaiter>()));
+        services.AddSingleton<IScreenshotGalleryService>((serviceProvider) => new ScreenshotGalleryService(
+            serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<ICompassService>((serviceProvider) => new CompassService(
             serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<IWebdavFileService>((serviceProvider) => new WebdavFileService(

@@ -302,6 +302,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroDownloadStoreFormat.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroDownloadService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\AbroDownloadService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IScreenshotGalleryService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\PlayerViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\AbroViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\DocumentItemModel.cs" />

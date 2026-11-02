@@ -41,6 +41,7 @@
 @inject ISharingService SharingService
 @inject IAudioRecorderService AudioRecorderService
 @inject IScreenRecorderService ScreenRecorderService
+@inject IScreenshotGalleryService ScreenshotGalleryService
 @inject IWebdavFileService WebdavFileService
 @inject IDevicePhoneService DevicePhoneService
 @inject IPhoneSpamService PhoneSpamService
@@ -760,7 +761,8 @@
 			AudioRecorderService,
 			LanguageService,
 			FeedbackService,
-			ScreenRecorderService);
+			ScreenRecorderService,
+			ScreenshotGalleryService);
 		_fileViewModel = new FileViewModel(
 			WebdavFileService,
 			SettingsService,

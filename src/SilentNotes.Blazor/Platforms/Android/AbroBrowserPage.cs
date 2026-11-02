@@ -1442,14 +1442,16 @@ namespace SilentNotes.Platforms
 
         private async Task ShowHistoryAsync()
         {
-            var entries = ReadHistoryEntries();
-            if (entries.Count == 0)
+            try
             {
-                ShowToast("History is empty");
-                return;
+                string historyFile = Path.Combine(_historyDir, "history.txt");
+                var page = new AbroHistoryPage(historyFile, HistoryLock, OpenOrNavigate);
+                await Navigation.PushModalAsync(page, false).ConfigureAwait(true);
             }
-
-            await PickAndOpenUrlAsync("History", entries).ConfigureAwait(true);
+            catch
+            {
+                ShowToast("Could not open history");
+            }
         }
 
         private async Task ShowBookmarksAsync()

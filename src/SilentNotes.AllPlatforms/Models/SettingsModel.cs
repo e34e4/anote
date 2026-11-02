@@ -73,6 +73,7 @@ namespace SilentNotes.Models
             BookySyncPassword = string.Empty;
             ScreenshotFormat = "jpg";
             ScreenshotQuality = 70;
+            ScreenshotEditorPackageName = string.Empty;
             FileWebdavUrl = string.Empty;
             FileWebdavFolder = string.Empty;
             FileWebdavUsername = string.Empty;
@@ -658,6 +659,13 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("screenshot_quality")]
         public int ScreenshotQuality { get; set; }
+
+        /// <summary>
+        /// Gets or sets the package name of the preferred screenshot editor app.
+        /// Empty means show the system chooser after capture.
+        /// </summary>
+        [XmlElement("screenshot_editor_package")]
+        public string ScreenshotEditorPackageName { get; set; }
 
         /// <summary>
         /// Gets or sets WebDAV sub-path sessions for the File tab.

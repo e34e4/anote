@@ -120,7 +120,10 @@ namespace SilentNotes.Platforms
                 return;
             }
 
-            bool saved = SaveBitmap(bitmap);
+            string savedPath = SaveBitmap(bitmap);
+            bool saved = !string.IsNullOrEmpty(savedPath);
+            if (saved)
+                OpenInEditor(savedPath);
             bitmap.Recycle();
             FinishCapture(saved);
         }
@@ -205,8 +208,11 @@ namespace SilentNotes.Platforms
                     return;
                 }
 
-                bool saved = SaveBitmap(cropped);
+                string savedPath = SaveBitmap(cropped);
+                bool saved = !string.IsNullOrEmpty(savedPath);
                 cropped.Recycle();
+                if (saved)
+                    OpenInEditor(savedPath);
                 FinishCapture(saved);
             };
             controls.AddView(okBtn);
@@ -298,10 +304,11 @@ namespace SilentNotes.Platforms
             }
         }
 
-        private bool SaveBitmap(Bitmap bitmap)
+        /// <summary>Saves the bitmap and returns the local file path, or null on failure.</summary>
+        private string SaveBitmap(Bitmap bitmap)
         {
             if (bitmap == null)
-                return false;
+                return null;
 
             try
             {
@@ -347,7 +354,7 @@ namespace SilentNotes.Platforms
                     }
 
                     WriteFileToPublicGallery(fullPath, fileName);
-                    return true;
+                    return fullPath;
                 }
                 finally
                 {
@@ -357,7 +364,57 @@ namespace SilentNotes.Platforms
             catch (Exception ex)
             {
                 global::Android.Util.Log.Error(LogTag, "Could not save screenshot: " + ex);
-                return false;
+                return null;
+            }
+        }
+
+        private void OpenInEditor(string filePath)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                    return;
+
+                SettingsModel settings = _service.LoadSettings();
+                string package = settings?.ScreenshotEditorPackageName?.Trim();
+
+                Context context = _service;
+                var shareDir = new Java.IO.File(context.CacheDir, "shot_share");
+                shareDir.Mkdirs();
+                string fileName = Path.GetFileName(filePath);
+                var shareFile = new Java.IO.File(shareDir, fileName);
+                File.Copy(filePath, shareFile.AbsolutePath, overwrite: true);
+
+                global::Android.Net.Uri uri = AndroidX.Core.Content.FileProvider.GetUriForFile(
+                    context, context.PackageName + ".fileprovider", shareFile);
+
+                string mime = GetMimeTypeForExtension(Path.GetExtension(fileName));
+                var editIntent = new Intent(Intent.ActionEdit);
+                editIntent.SetDataAndType(uri, mime);
+                editIntent.AddFlags(ActivityFlags.GrantReadUriPermission | ActivityFlags.GrantWriteUriPermission | ActivityFlags.NewTask);
+
+                if (!string.IsNullOrWhiteSpace(package))
+                {
+                    editIntent.SetPackage(package);
+                    try
+                    {
+                        context.StartActivity(editIntent);
+                        return;
+                    }
+                    catch (Exception)
+                    {
+                        // Fall through to chooser if the package can't handle ACTION_EDIT.
+                        editIntent.SetPackage(null);
+                    }
+                }
+
+                Intent chooser = Intent.CreateChooser(editIntent, GetLanguageText("screenshot_edit_chooser", "Edit screenshot"));
+                chooser.AddFlags(ActivityFlags.NewTask);
+                context.StartActivity(chooser);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Warn(LogTag, "Open editor failed: " + ex.Message);
             }
         }
 

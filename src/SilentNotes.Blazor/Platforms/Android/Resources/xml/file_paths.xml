@@ -4,4 +4,5 @@
     <!-- Allow sharing browsed storage files with external viewers (Reader / Player). -->
     <external-path name="external" path="." />
     <cache-path name="reader_share" path="reader_share/" />
+    <cache-path name="shot_share" path="shot_share/" />
 </paths>

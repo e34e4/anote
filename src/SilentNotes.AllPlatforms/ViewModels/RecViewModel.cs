@@ -21,15 +21,17 @@ namespace SilentNotes.ViewModels
     {
         Audio,
         Screen,
+        Shots,
     }
 
     /// <summary>
-    /// View model for the Rec tab (audio + screen recording).
+    /// View model for the Rec tab (audio + screen recording + screenshots).
     /// </summary>
     public class RecViewModel : ViewModelBase
     {
         private readonly IAudioRecorderService _recorderService;
         private readonly IScreenRecorderService _screenRecorderService;
+        private readonly IScreenshotGalleryService _screenshotGalleryService;
         private readonly ILanguageService _languageService;
         private readonly IFeedbackService _feedbackService;
 
@@ -46,10 +48,12 @@ namespace SilentNotes.ViewModels
             IAudioRecorderService recorderService,
             ILanguageService languageService,
             IFeedbackService feedbackService,
-            IScreenRecorderService screenRecorderService = null)
+            IScreenRecorderService screenRecorderService = null,
+            IScreenshotGalleryService screenshotGalleryService = null)
         {
             _recorderService = recorderService;
             _screenRecorderService = screenRecorderService;
+            _screenshotGalleryService = screenshotGalleryService;
             _languageService = languageService;
             _feedbackService = feedbackService;
 
@@ -59,6 +63,7 @@ namespace SilentNotes.ViewModels
 
             ShowAudioCommand = new RelayCommand(() => Show(RecSection.Audio));
             ShowScreenCommand = new RelayCommand(() => Show(RecSection.Screen));
+            ShowShotsCommand = new RelayCommand(() => Show(RecSection.Shots));
 
             GrantPermissionCommand = new AsyncRelayCommand(GrantPermissionAsync);
             StartRecordingCommand = new AsyncRelayCommand(StartRecordingAsync);
@@ -83,6 +88,7 @@ namespace SilentNotes.ViewModels
 
         public ICommand ShowAudioCommand { get; }
         public ICommand ShowScreenCommand { get; }
+        public ICommand ShowShotsCommand { get; }
         public ICommand GrantPermissionCommand { get; }
         public ICommand StartRecordingCommand { get; }
         public ICommand PauseResumeRecordingCommand { get; }
@@ -107,6 +113,8 @@ namespace SilentNotes.ViewModels
                     OnPropertyChanged(
                         nameof(IsAudioSection),
                         nameof(IsScreenSection),
+                        nameof(IsShotsSection),
+                        nameof(ShowsRecorder),
                         nameof(IsSupported),
                         nameof(NeedsPermission),
                         nameof(IsRecording),
@@ -124,18 +132,24 @@ namespace SilentNotes.ViewModels
 
         public bool IsAudioSection => _section == RecSection.Audio;
         public bool IsScreenSection => _section == RecSection.Screen;
+        public bool IsShotsSection => _section == RecSection.Shots;
+        public bool ShowsRecorder => IsAudioSection || IsScreenSection;
 
-        public bool IsSupported => IsAudioSection
-            ? _recorderService.IsSupported
-            : (_screenRecorderService?.IsSupported == true);
+        public bool IsSupported => IsShotsSection
+            ? (_screenshotGalleryService?.IsSupported == true)
+            : IsAudioSection
+                ? _recorderService.IsSupported
+                : (_screenRecorderService?.IsSupported == true);
 
         public bool NeedsPermission => IsAudioSection
             && _recorderService.IsSupported
             && !_recorderService.HasPermission;
 
-        public bool IsRecording => IsAudioSection
-            ? _recorderService.IsRecording
-            : (_screenRecorderService?.IsRecording == true);
+        public bool IsRecording => IsShotsSection
+            ? false
+            : IsAudioSection
+                ? _recorderService.IsRecording
+                : (_screenRecorderService?.IsRecording == true);
 
         public bool IsRecordingPaused => IsAudioSection && _recorderService.IsRecordingPaused;
 
@@ -182,7 +196,7 @@ namespace SilentNotes.ViewModels
         public bool HasNoMatches => !IsEmpty && FilteredRecordings.Count == 0;
 
         public string CountText => _languageService.LoadTextFmt(
-            IsScreenSection ? "rec_screen_count" : "rec_count",
+            IsShotsSection ? "rec_shots_count" : IsScreenSection ? "rec_screen_count" : "rec_count",
             _recordings.Count);
 
         public string DraftNewName
@@ -213,7 +227,13 @@ namespace SilentNotes.ViewModels
 
         public void Reload()
         {
-            if (IsScreenSection)
+            if (IsShotsSection)
+            {
+                _recordings = (_screenshotGalleryService?.GetScreenshots() ?? Array.Empty<AudioRecordingModel>())
+                    .Select(m => new AudioRecordingItemViewModel(m))
+                    .ToList();
+            }
+            else if (IsScreenSection)
             {
                 _recordings = (_screenRecorderService?.GetRecordings() ?? Array.Empty<AudioRecordingModel>())
                     .Select(m => new AudioRecordingItemViewModel(m))
@@ -236,7 +256,8 @@ namespace SilentNotes.ViewModels
                 nameof(IsRecording),
                 nameof(IsRecordingPaused),
                 nameof(ElapsedText),
-                nameof(CanPauseResume));
+                nameof(CanPauseResume),
+                nameof(ShowsRecorder));
         }
 
         public async Task GrantPermissionAsync()
@@ -247,6 +268,9 @@ namespace SilentNotes.ViewModels
 
         public async Task StartRecordingAsync()
         {
+            if (IsShotsSection)
+                return;
+
             bool started;
             if (IsScreenSection)
             {
@@ -277,6 +301,9 @@ namespace SilentNotes.ViewModels
 
         public async Task StopRecordingAsync()
         {
+            if (IsShotsSection)
+                return;
+
             AudioRecordingModel saved;
             if (IsScreenSection)
                 saved = await _screenRecorderService.StopRecordingAsync();
@@ -290,6 +317,8 @@ namespace SilentNotes.ViewModels
 
         private void CancelRecording()
         {
+            if (IsShotsSection)
+                return;
             if (IsScreenSection)
                 _screenRecorderService?.CancelRecording();
             else
@@ -330,9 +359,13 @@ namespace SilentNotes.ViewModels
                 return;
             }
 
-            bool ok = IsScreenSection
-                ? (_screenRecorderService?.RenameRecording(_renamingFileName, _draftNewName) == true)
-                : _recorderService.RenameRecording(_renamingFileName, _draftNewName);
+            bool ok;
+            if (IsShotsSection)
+                ok = _screenshotGalleryService?.RenameScreenshot(_renamingFileName, _draftNewName) == true;
+            else if (IsScreenSection)
+                ok = _screenRecorderService?.RenameRecording(_renamingFileName, _draftNewName) == true;
+            else
+                ok = _recorderService.RenameRecording(_renamingFileName, _draftNewName);
             if (!ok)
                 _feedbackService?.ShowToast(_languageService["rec_rename_failed"], FeedbackSeverity.Warning);
             CancelRename();
@@ -343,9 +376,13 @@ namespace SilentNotes.ViewModels
         {
             if (item == null)
                 return;
-            string savedPath = IsScreenSection
-                ? await _screenRecorderService.SaveToPublicStorageAsync(item.FileName)
-                : await _recorderService.SaveToPublicStorageAsync(item.FileName);
+            string savedPath;
+            if (IsShotsSection)
+                savedPath = await _screenshotGalleryService.SaveToPublicStorageAsync(item.FileName);
+            else if (IsScreenSection)
+                savedPath = await _screenRecorderService.SaveToPublicStorageAsync(item.FileName);
+            else
+                savedPath = await _recorderService.SaveToPublicStorageAsync(item.FileName);
             if (!string.IsNullOrEmpty(savedPath))
                 _feedbackService?.ShowToast(_languageService.LoadTextFmt("rec_exported", savedPath));
             else
@@ -356,7 +393,9 @@ namespace SilentNotes.ViewModels
         {
             if (item == null)
                 return;
-            if (IsScreenSection)
+            if (IsShotsSection)
+                await _screenshotGalleryService.ShareScreenshotAsync(item.FileName);
+            else if (IsScreenSection)
                 await _screenRecorderService.ShareRecordingAsync(item.FileName);
             else
                 await _recorderService.ShareRecordingAsync(item.FileName);
@@ -368,14 +407,18 @@ namespace SilentNotes.ViewModels
                 return;
 
             MessageBoxResult answer = await _feedbackService.ShowMessageAsync(
-                _languageService.LoadTextFmt("rec_delete_confirm", item.FileName),
+                _languageService.LoadTextFmt(
+                    IsShotsSection ? "rec_shots_delete_confirm" : "rec_delete_confirm",
+                    item.FileName),
                 _languageService["rec_delete"],
                 MessageBoxButtons.YesNoCancel,
                 false);
             if (answer != MessageBoxResult.Yes)
                 return;
 
-            if (IsScreenSection)
+            if (IsShotsSection)
+                _screenshotGalleryService?.DeleteScreenshot(item.FileName);
+            else if (IsScreenSection)
                 _screenRecorderService?.DeleteRecording(item.FileName);
             else
                 _recorderService.DeleteRecording(item.FileName);

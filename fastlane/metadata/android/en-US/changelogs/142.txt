@@ -1,0 +1,3 @@
+• Abro history: share, remove rows, clear all
+• Screenshots: open in editor after Full screen; settings for editor app; removed Partial
+• Rec: Shots sub-page with screenshot history

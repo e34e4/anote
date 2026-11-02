@@ -102,6 +102,8 @@ namespace SilentNotes.ViewModels
 
             FloatingGestureOptions = new List<DropdownItemViewModel>();
             FillFloatingGestureOptions(FloatingGestureOptions);
+            ScreenshotEditorOptions = new List<DropdownItemViewModel>();
+            FillScreenshotEditorOptions(ScreenshotEditorOptions);
 
             // Initialize commands
             ChangeCloudSettingsCommand = new RelayCommand(ChangeCloudSettings);
@@ -260,6 +262,7 @@ namespace SilentNotes.ViewModels
                 string.GetHashCode(settings.FloatingGestureDoubleClick),
                 string.GetHashCode(settings.ScreenshotFormat),
                 settings.ScreenshotQuality.GetHashCode(),
+                string.GetHashCode(settings.ScreenshotEditorPackageName),
                 (settings.Credentials == null).GetHashCode(),
             });
         }
@@ -922,6 +925,44 @@ namespace SilentNotes.ViewModels
                 int clamped = Math.Clamp(value, 1, 100);
                 if (SetProperty(ScreenshotQuality, clamped, (int v) => Model.ScreenshotQuality = v))
                     _settingsService.TrySaveSettingsToLocalDevice(Model);
+            }
+        }
+
+        /// <summary>
+        /// Gets installed apps that can be chosen as the screenshot editor.
+        /// </summary>
+        public List<DropdownItemViewModel> ScreenshotEditorOptions { get; }
+
+        /// <summary>
+        /// Gets or sets the package name of the preferred screenshot editor (empty = system chooser).
+        /// </summary>
+        public string ScreenshotEditorPackageName
+        {
+            get { return Model.ScreenshotEditorPackageName ?? string.Empty; }
+            set
+            {
+                if (SetProperty(Model.ScreenshotEditorPackageName ?? string.Empty, value ?? string.Empty, (string v) => Model.ScreenshotEditorPackageName = v))
+                    _settingsService.TrySaveSettingsToLocalDevice(Model);
+            }
+        }
+
+        private void FillScreenshotEditorOptions(List<DropdownItemViewModel> options)
+        {
+            options.Add(new DropdownItemViewModel
+            {
+                Value = string.Empty,
+                Description = Language["gui_screenshot_editor_system"],
+            });
+            IReadOnlyList<InstalledAppInfoModel> apps = _environmentService?.FloatingButton?.GetInstalledApps();
+            if (apps == null)
+                return;
+            foreach (InstalledAppInfoModel app in apps)
+            {
+                options.Add(new DropdownItemViewModel
+                {
+                    Value = app.PackageName,
+                    Description = string.Format("{0} ({1})", app.Label, app.PackageName),
+                });
             }
         }
 

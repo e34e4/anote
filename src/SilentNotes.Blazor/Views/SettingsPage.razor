@@ -353,6 +353,12 @@
 								<MudSlider id="ScreenshotQuality" @bind-Value="ViewModel.ScreenshotQuality"
 									Min="1" Max="100" Step="1" Color="Color.Tertiary"></MudSlider>
 							</div>
+							<MudSelect T="string" Label="@LanguageService["gui_screenshot_editor"]" @bind-Value="ViewModel.ScreenshotEditorPackageName" Variant="Variant.Outlined" Margin="Margin.Dense">
+								@foreach (var item in ViewModel.ScreenshotEditorOptions)
+								{
+									<MudSelectItem T="string" Value="@item.Value">@item.Description</MudSelectItem>
+								}
+							</MudSelect>
 						</MudStack>
 					</div>
 				}

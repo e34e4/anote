@@ -861,15 +861,6 @@ namespace SilentNotes.Platforms
                     StartScreenshot(partial: false);
                 }, true, null));
 
-                string shotPartialLabel = language?["floating_menu_screenshot_partial"];
-                if (string.IsNullOrWhiteSpace(shotPartialLabel) || shotPartialLabel == "floating_menu_screenshot_partial")
-                    shotPartialLabel = "Partial";
-                allButtons.Add(("✂️", shotPartialLabel, () =>
-                {
-                    HideMenuOverlay();
-                    StartScreenshot(partial: true);
-                }, true, null));
-
                 bool screenRecording = ScreenRecordService.IsRecording;
                 string screenRecLabel = language?["floating_menu_screen_record"];
                 if (string.IsNullOrWhiteSpace(screenRecLabel) || screenRecLabel == "floating_menu_screen_record")
