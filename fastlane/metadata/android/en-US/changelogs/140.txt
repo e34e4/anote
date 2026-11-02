@@ -1,0 +1,2 @@
+• Abro Settings: Search — engines, default, suggestions
+• Abro Settings: Font — system or custom .ttf/.otf applied to pages

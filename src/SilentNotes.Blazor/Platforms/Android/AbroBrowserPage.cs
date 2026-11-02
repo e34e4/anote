@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Android.Content;
 using Android.Views;
@@ -35,9 +36,14 @@ namespace SilentNotes.Platforms
     internal sealed class AbroBrowserPage : ContentPage
     {
         private const string HomeUrl = "https://duckduckgo.com";
-        private const string SearchUrl = "https://duckduckgo.com/?q=";
         private const int MaxHistoryMenuEntries = 30;
         private const int MaxHistoryLinesRead = 500;
+        private const string CustomFontInjectScript =
+            "(function(){try{if(document.getElementById('abro-custom-font'))return;"
+            + "var s=document.createElement('style');s.id='abro-custom-font';"
+            + "s.textContent=\"@font-face{font-family:'AbroCustom';src:url('https://abro.internal/custom-font') format('truetype');font-display:swap;}"
+            + "html,body{font-family:'AbroCustom',system-ui,sans-serif !important;}\";"
+            + "(document.head||document.documentElement).appendChild(s);}catch(e){}})();";
 
         private static readonly object HistoryLock = new object();
 
@@ -50,17 +56,22 @@ namespace SilentNotes.Platforms
         private readonly string _filesDir;
         private readonly string _aiDir;
         private readonly string _adblockDir;
+        private readonly string _fontsDir;
         private readonly string _tabsFile;
         private readonly Grid _webHost;
         private readonly HorizontalStackLayout _tabStrip;
         private readonly Entry _addressEntry;
         private readonly Button _backButton;
         private readonly Button _forwardButton;
+        private readonly VerticalStackLayout _suggestionsStack;
+        private readonly Border _suggestionsPanel;
         private BrowserTab _current;
         private bool _restored;
         private bool _closing;
         private readonly string _initialUrl;
         private readonly AbroStartAction _startAction;
+        private CancellationTokenSource _suggestCts;
+        private int _suggestSeq;
 
         public enum AbroStartAction
         {
@@ -83,6 +94,7 @@ namespace SilentNotes.Platforms
             _filesDir = Path.Combine(_rootDir, "files");
             _aiDir = Path.Combine(_rootDir, "ai");
             _adblockDir = Path.Combine(_rootDir, "adblock");
+            _fontsDir = Path.Combine(_rootDir, "fonts");
             _tabsFile = Path.Combine(_rootDir, "tabs.json");
             EnsureDirectories();
             try
@@ -157,6 +169,8 @@ namespace SilentNotes.Platforms
                 FontSize = 14,
             };
             _addressEntry.Completed += (s, e) => NavigateFromAddressBar();
+            _addressEntry.TextChanged += (s, e) => OnAddressTextChanged(e.NewTextValue);
+            _addressEntry.Unfocused += (s, e) => HideSuggestions();
 
             var bar = new Grid
             {
@@ -178,12 +192,33 @@ namespace SilentNotes.Platforms
             bar.Add(_addressEntry, 3, 0);
             bar.Add(goButton, 4, 0);
 
+            _suggestionsStack = new VerticalStackLayout { Spacing = 0 };
+            _suggestionsPanel = new Border
+            {
+                StrokeThickness = 0,
+                BackgroundColor = Color.FromArgb("#2c2c2e"),
+                IsVisible = false,
+                Padding = new Thickness(0),
+                Content = new ScrollView
+                {
+                    Content = _suggestionsStack,
+                    MaximumHeightRequest = 220,
+                },
+            };
+
             _webHost = new Grid
             {
                 HorizontalOptions = LayoutOptions.Fill,
                 VerticalOptions = LayoutOptions.Fill,
                 BackgroundColor = Colors.Black,
             };
+
+            var contentHost = new Grid();
+            contentHost.Add(_webHost);
+            contentHost.Add(_suggestionsPanel);
+            Microsoft.Maui.Controls.Grid.SetRow(_suggestionsPanel, 0);
+            _suggestionsPanel.VerticalOptions = LayoutOptions.Start;
+            _suggestionsPanel.HorizontalOptions = LayoutOptions.Fill;
 
             var root = new Grid
             {
@@ -196,7 +231,7 @@ namespace SilentNotes.Platforms
             };
             root.Add(header, 0, 0);
             root.Add(bar, 0, 1);
-            root.Add(_webHost, 0, 2);
+            root.Add(contentHost, 0, 2);
             Content = root;
         }
 
@@ -285,7 +320,7 @@ namespace SilentNotes.Platforms
 
         private void EnsureDirectories()
         {
-            foreach (string dir in new[] { _rootDir, _historyDir, _bookmarksDir, _cookiesDir, _cacheDir, _filesDir, _aiDir, _adblockDir })
+            foreach (string dir in new[] { _rootDir, _historyDir, _bookmarksDir, _cookiesDir, _cacheDir, _filesDir, _aiDir, _adblockDir, _fontsDir })
             {
                 try
                 {
@@ -310,6 +345,29 @@ namespace SilentNotes.Platforms
             catch
             {
                 return false;
+            }
+        }
+
+        private WebResourceResponse TryServeCustomFont()
+        {
+            try
+            {
+                IAbroBrowserSettingsService settings = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+                if (settings == null || !settings.UseCustomFont)
+                    return null;
+                string path = settings.GetCustomFontPath();
+                if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                    return null;
+
+                string mime = path.EndsWith(".otf", StringComparison.OrdinalIgnoreCase)
+                    ? "font/otf"
+                    : "font/ttf";
+                Stream stream = File.OpenRead(path);
+                return new WebResourceResponse(mime, null, stream);
+            }
+            catch
+            {
+                return null;
             }
         }
 
@@ -555,6 +613,7 @@ namespace SilentNotes.Platforms
             if (target == null)
                 return;
 
+            HideSuggestions();
             _addressEntry.Unfocus();
             if (_current == null)
             {
@@ -583,7 +642,140 @@ namespace SilentNotes.Platforms
             }
 
             bool looksLikeHost = !text.Contains(' ') && (text.Contains('.') || text.StartsWith("localhost", StringComparison.OrdinalIgnoreCase));
-            return looksLikeHost ? "https://" + text : SearchUrl + Uri.EscapeDataString(text);
+            return looksLikeHost ? "https://" + text : BuildSearchUrl(text);
+        }
+
+        private static string BuildSearchUrl(string query)
+        {
+            try
+            {
+                IAbroBrowserSettingsService settings = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+                if (settings != null)
+                    return settings.BuildSearchUrl(query);
+            }
+            catch
+            {
+            }
+
+            return "https://duckduckgo.com/?q=" + Uri.EscapeDataString(query ?? string.Empty);
+        }
+
+        private void OnAddressTextChanged(string text)
+        {
+            _ = RefreshSuggestionsAsync(text);
+        }
+
+        private async Task RefreshSuggestionsAsync(string text)
+        {
+            int seq = Interlocked.Increment(ref _suggestSeq);
+            _suggestCts?.Cancel();
+            var cts = new CancellationTokenSource();
+            _suggestCts = cts;
+
+            text = text?.Trim() ?? string.Empty;
+            if (text.Length < 2
+                || text.Contains("://", StringComparison.Ordinal)
+                || LooksLikeHost(text))
+            {
+                HideSuggestions();
+                return;
+            }
+
+            IAbroBrowserSettingsService settings;
+            try
+            {
+                settings = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+            }
+            catch
+            {
+                HideSuggestions();
+                return;
+            }
+
+            if (settings == null || !settings.SearchSuggestionsEnabled)
+            {
+                HideSuggestions();
+                return;
+            }
+
+            try
+            {
+                await Task.Delay(280, cts.Token).ConfigureAwait(true);
+                IReadOnlyList<string> suggestions = await settings.GetSuggestionsAsync(text, cts.Token).ConfigureAwait(true);
+                if (seq != _suggestSeq || cts.IsCancellationRequested)
+                    return;
+
+                ShowSuggestions(suggestions);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+                if (seq == _suggestSeq)
+                    HideSuggestions();
+            }
+        }
+
+        private void ShowSuggestions(IReadOnlyList<string> suggestions)
+        {
+            _suggestionsStack.Children.Clear();
+            if (suggestions == null || suggestions.Count == 0)
+            {
+                HideSuggestions();
+                return;
+            }
+
+            foreach (string suggestion in suggestions)
+            {
+                string captured = suggestion;
+                var label = new Label
+                {
+                    Text = captured,
+                    TextColor = Colors.White,
+                    FontSize = 14,
+                    Padding = new Thickness(14, 12),
+                    LineBreakMode = LineBreakMode.TailTruncation,
+                };
+                var tap = new TapGestureRecognizer();
+                tap.Tapped += (s, e) => ApplySuggestion(captured);
+                label.GestureRecognizers.Add(tap);
+                _suggestionsStack.Children.Add(label);
+                _suggestionsStack.Children.Add(new BoxView { HeightRequest = 1, Color = Color.FromArgb("#3a3a3c") });
+            }
+
+            _suggestionsPanel.IsVisible = true;
+        }
+
+        private void HideSuggestions()
+        {
+            _suggestionsPanel.IsVisible = false;
+            _suggestionsStack.Children.Clear();
+        }
+
+        private void ApplySuggestion(string suggestion)
+        {
+            HideSuggestions();
+            _addressEntry.Text = suggestion;
+            string target = BuildSearchUrl(suggestion);
+            _addressEntry.Unfocus();
+            if (_current == null)
+            {
+                AddTab(target, select: true);
+                return;
+            }
+
+            _current.PendingUrl = target;
+            _current.Url = target;
+            _current.Loaded = false;
+            LoadPendingUrl(_current);
+            SaveTabs();
+        }
+
+        private static bool LooksLikeHost(string text)
+        {
+            return !text.Contains(' ')
+                && (text.Contains('.') || text.StartsWith("localhost", StringComparison.OrdinalIgnoreCase));
         }
 
         private void LoadPendingUrl(BrowserTab tab)
@@ -694,6 +886,24 @@ namespace SilentNotes.Platforms
             }
 
             RebuildTabStrip();
+            InjectCustomFontIfNeeded(tab);
+        }
+
+        private void InjectCustomFontIfNeeded(BrowserTab tab)
+        {
+            try
+            {
+                IAbroBrowserSettingsService settings = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+                if (settings == null || !settings.UseCustomFont)
+                    return;
+                AWebView native = tab?.Native;
+                if (native == null)
+                    return;
+                native.EvaluateJavascript(CustomFontInjectScript, null);
+            }
+            catch
+            {
+            }
         }
 
         private void OnTitleChanged(BrowserTab tab, string title)
@@ -890,13 +1100,17 @@ namespace SilentNotes.Platforms
             const string providers = "AI providers";
             const string sync = "AI sync";
             const string adBlocking = "Ad blocking";
+            const string search = "Search";
+            const string font = "Font";
             string choice = await DisplayActionSheetAsync(
                 "Settings",
                 "Cancel",
                 null,
                 providers,
                 sync,
-                adBlocking).ConfigureAwait(true);
+                adBlocking,
+                search,
+                font).ConfigureAwait(true);
             switch (choice)
             {
                 case providers:
@@ -906,21 +1120,26 @@ namespace SilentNotes.Platforms
                     await ShowAiSyncMenuAsync().ConfigureAwait(true);
                     break;
                 case adBlocking:
-                    await OpenAdBlockSettingsAsync().ConfigureAwait(true);
+                    await OpenSettingsPageAsync(() => new AbroAdBlockPage(), "Ad blocking").ConfigureAwait(true);
+                    break;
+                case search:
+                    await OpenSettingsPageAsync(() => new AbroSearchSettingsPage(), "Search").ConfigureAwait(true);
+                    break;
+                case font:
+                    await OpenSettingsPageAsync(() => new AbroFontSettingsPage(), "Font").ConfigureAwait(true);
                     break;
             }
         }
 
-        private async Task OpenAdBlockSettingsAsync()
+        private async Task OpenSettingsPageAsync(Func<Page> createPage, string label)
         {
             try
             {
-                var page = new AbroAdBlockPage();
-                await Navigation.PushModalAsync(page, false).ConfigureAwait(true);
+                await Navigation.PushModalAsync(createPage(), false).ConfigureAwait(true);
             }
             catch (Exception)
             {
-                ShowToast("Could not open Ad blocking");
+                ShowToast("Could not open " + label);
             }
         }
 
@@ -1730,6 +1949,15 @@ namespace SilentNotes.Platforms
             {
                 try
                 {
+                    string url = request?.Url?.ToString();
+                    if (!string.IsNullOrEmpty(url)
+                        && url.StartsWith(AbroBrowserSettingsModel.CustomFontInterceptUrl, StringComparison.OrdinalIgnoreCase))
+                    {
+                        WebResourceResponse fontResponse = _page.TryServeCustomFont();
+                        if (fontResponse != null)
+                            return fontResponse;
+                    }
+
                     string host = request?.Url?.Host;
                     if (_page.IsAdHostBlocked(host))
                     {
