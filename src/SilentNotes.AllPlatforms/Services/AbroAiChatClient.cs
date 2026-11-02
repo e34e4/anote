@@ -26,12 +26,25 @@ namespace SilentNotes.Services
         };
 
         /// <summary>
+        /// Usage mode sent to Command Code / compatible gateways so Studio meters the call as
+        /// chat rather than an internal feature like title-gen. Matches the CLI <c>mode</c> field.
+        /// </summary>
+        public const string DefaultMode = "chat";
+
+        /// <summary>
         /// Sends the conversation messages to the provider and returns the assistant reply text.
         /// </summary>
+        /// <param name="mode">
+        /// Optional Command Code usage mode (<c>chat</c>, <c>dialog</c>, <c>agent</c>). Defaults to
+        /// <see cref="DefaultMode"/>.
+        /// </param>
+        /// <param name="threadId">Optional conversation id for multi-turn metering/session grouping.</param>
         public async Task<string> CompleteAsync(
             AbroAiProviderModel provider,
             IList<AbroAiMessageModel> messages,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string mode = null,
+            string threadId = null)
         {
             if (provider == null)
                 throw new ArgumentNullException(nameof(provider));
@@ -57,14 +70,21 @@ namespace SilentNotes.Services
                 });
             }
 
-            string body = JsonSerializer.Serialize(new
+            // Include Command Code's usage "mode" so Studio does not label Abro chats as title-gen.
+            var payload = new Dictionary<string, object>
             {
-                model = provider.ModelId,
-                messages = payloadMessages,
-            });
+                ["model"] = provider.ModelId,
+                ["messages"] = payloadMessages,
+                ["mode"] = string.IsNullOrWhiteSpace(mode) ? DefaultMode : mode.Trim(),
+            };
+            if (!string.IsNullOrWhiteSpace(threadId))
+                payload["threadId"] = threadId.Trim();
+
+            string body = JsonSerializer.Serialize(payload);
 
             using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
             request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+            request.Headers.TryAddWithoutValidation("User-Agent", "anote-abro/1.3");
             if (!string.IsNullOrWhiteSpace(provider.ApiKey))
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", provider.ApiKey.Trim());
 

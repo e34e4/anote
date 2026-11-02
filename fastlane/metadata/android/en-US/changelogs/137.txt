@@ -1,0 +1,2 @@
+• Abro AI: send mode=chat so Command Code meters chats correctly
+• Abro: long-press link menu — share, copy, open in new tab

@@ -269,7 +269,12 @@ namespace SilentNotes.Platforms
             try
             {
                 string reply = await _chatClient
-                    .CompleteAsync(_provider, _conversation.Messages, _sendCts.Token)
+                    .CompleteAsync(
+                        _provider,
+                        _conversation.Messages,
+                        _sendCts.Token,
+                        mode: AbroAiChatClient.DefaultMode,
+                        threadId: _conversation.Id.ToString())
                     .ConfigureAwait(true);
                 var assistant = new AbroAiMessageModel
                 {

@@ -11,6 +11,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Android.Content;
+using Android.Views;
 using Android.Webkit;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
@@ -19,6 +20,7 @@ using Microsoft.Maui.Storage;
 using SilentNotes.Models;
 using SilentNotes.Services;
 using AUri = Android.Net.Uri;
+using AView = Android.Views.View;
 using AWebView = Android.Webkit.WebView;
 using MauiApplication = Microsoft.Maui.Controls.Application;
 using MauiWebView = Microsoft.Maui.Controls.WebView;
@@ -1452,12 +1454,105 @@ namespace SilentNotes.Platforms
             awv.SetWebViewClient(new AbroWebViewClient(this, tab));
             awv.SetWebChromeClient(new AbroWebChromeClient(this, tab));
             awv.SetDownloadListener(new AbroDownloadListener(_filesDir));
+            awv.LongClickable = true;
+            awv.SetOnLongClickListener(new AbroLinkLongClickListener(this, awv));
 
             if (ReferenceEquals(tab, _current))
             {
                 LoadPendingUrl(tab);
                 UpdateNavigationButtons();
             }
+        }
+
+        private async Task ShowLinkMenuAsync(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return;
+
+            const string share = "Share link";
+            const string copy = "Copy link";
+            const string newTab = "Open in new tab";
+            string choice = await DisplayActionSheetAsync(TruncateForMenu(url, 80), "Cancel", null, share, copy, newTab)
+                .ConfigureAwait(true);
+            switch (choice)
+            {
+                case share:
+                    ShareLink(url);
+                    break;
+                case copy:
+                    CopyLink(url);
+                    break;
+                case newTab:
+                    AddTab(url, select: true);
+                    ShowToast("Opened in new tab");
+                    break;
+            }
+        }
+
+        private static void ShareLink(string url)
+        {
+            try
+            {
+                var intent = new Intent(Intent.ActionSend);
+                intent.SetType("text/plain");
+                intent.PutExtra(Intent.ExtraText, url);
+                Intent chooser = Intent.CreateChooser(intent, "Share link");
+                chooser.AddFlags(ActivityFlags.NewTask);
+                Platform.AppContext.StartActivity(chooser);
+            }
+            catch
+            {
+                ShowToast("Could not share link");
+            }
+        }
+
+        private static void CopyLink(string url)
+        {
+            try
+            {
+                var clipboard = Platform.AppContext.GetSystemService(Context.ClipboardService)
+                    as global::Android.Content.ClipboardManager;
+                if (clipboard != null)
+                    clipboard.PrimaryClip = global::Android.Content.ClipData.NewPlainText("link", url);
+                ShowToast("Link copied");
+            }
+            catch
+            {
+                ShowToast("Could not copy link");
+            }
+        }
+
+        private static string TruncateForMenu(string value, int max)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length <= max)
+                return value ?? string.Empty;
+            return value.Substring(0, max - 1) + "…";
+        }
+
+        private static string ResolveHitTestLink(AWebView webView)
+        {
+            try
+            {
+                AWebView.HitTestResult hit = webView?.GetHitTestResult();
+                if (hit == null)
+                    return null;
+
+                // SrcAnchor = link, SrcImageAnchor = image that is also a link.
+                // Constants live on Android.Webkit.HitTestResult; Type returns the same enum-like type.
+                HitTestResult type = hit.Type;
+                if (type == HitTestResult.SrcAnchorType
+                    || type == HitTestResult.SrcImageAnchorType
+                    || type == HitTestResult.EmailType
+                    || type == HitTestResult.PhoneType)
+                {
+                    return hit.Extra;
+                }
+            }
+            catch
+            {
+            }
+
+            return null;
         }
 
         private async Task CloseAsync()
@@ -1698,6 +1793,31 @@ namespace SilentNotes.Platforms
             public void OnReceiveValue(Java.Lang.Object value)
             {
                 _onResult?.Invoke(value?.ToString());
+            }
+        }
+
+        private sealed class AbroLinkLongClickListener : Java.Lang.Object, AView.IOnLongClickListener
+        {
+            private readonly AbroBrowserPage _page;
+            private readonly AWebView _webView;
+
+            public AbroLinkLongClickListener(AbroBrowserPage page, AWebView webView)
+            {
+                _page = page;
+                _webView = webView;
+            }
+
+            public bool OnLongClick(AView v)
+            {
+                string url = ResolveHitTestLink(_webView);
+                if (string.IsNullOrWhiteSpace(url))
+                    return false;
+
+                MainThread.BeginInvokeOnMainThread(async () =>
+                {
+                    await _page.ShowLinkMenuAsync(url).ConfigureAwait(true);
+                });
+                return true;
             }
         }
     }
