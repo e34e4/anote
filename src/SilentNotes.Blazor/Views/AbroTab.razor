@@ -82,10 +82,16 @@
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)
 	{
-		if (firstRender && !_autoOpened && ViewModel != null && ViewModel.IsSupported)
+		// Skip auto-open when the user just closed Abro; they can tap "Open browser" again.
+		if (firstRender && !_autoOpened && ViewModel != null && ViewModel.IsSupported
+			&& !AbroLaunchGate.SuppressAutoPresent)
 		{
 			_autoOpened = true;
 			await OpenBrowserAsync();
+		}
+		else if (firstRender)
+		{
+			_autoOpened = true;
 		}
 	}
 
@@ -93,6 +99,7 @@
 	{
 		if (ViewModel == null)
 			return;
+		AbroLaunchGate.SuppressAutoPresent = false;
 		if (ViewModel.OpenBrowserCommand is IAsyncRelayCommand asyncCmd)
 			await asyncCmd.ExecuteAsync(null);
 		else
@@ -103,6 +110,7 @@
 	{
 		if (ViewModel == null)
 			return;
+		AbroLaunchGate.SuppressAutoPresent = false;
 		if (ViewModel.OpenBookmarksCommand is IAsyncRelayCommand asyncCmd)
 			await asyncCmd.ExecuteAsync(null);
 		else
@@ -113,6 +121,7 @@
 	{
 		if (ViewModel == null)
 			return;
+		AbroLaunchGate.SuppressAutoPresent = false;
 		if (ViewModel.OpenHistoryCommand is IAsyncRelayCommand asyncCmd)
 			await asyncCmd.ExecuteAsync(null);
 		else

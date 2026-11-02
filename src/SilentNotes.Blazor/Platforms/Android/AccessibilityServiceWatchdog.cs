@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using System;
+using System.IO;
 using Android.Content;
 using Android.Provider;
 
@@ -15,10 +16,71 @@ namespace SilentNotes.Platforms
     /// </summary>
     internal static class AccessibilityServiceWatchdog
     {
-        internal const string ServiceComponent =
-            "app.anote/crc6416b736807aca2ef0.FloatingButtonAccessibilityService";
+        /// <summary>
+        /// File written for the root watchdog script so CRC class renames do not break heal.
+        /// </summary>
+        internal const string ComponentHintPath = "/data/local/tmp/anote_a11y_component";
 
         private static DateTime _lastHealUtc = DateTime.MinValue;
+        private static string _cachedComponent;
+
+        /// <summary>
+        /// Resolves the current accessibility service component id for this build
+        /// (package + .NET Android CRC class name).
+        /// </summary>
+        internal static string ResolveServiceComponent(Context context)
+        {
+            if (!string.IsNullOrEmpty(_cachedComponent))
+                return _cachedComponent;
+
+            try
+            {
+                Context app = context?.ApplicationContext ?? context;
+                if (app == null)
+                    return null;
+
+                string component = new ComponentName(
+                    app,
+                    Java.Lang.Class.FromType(typeof(FloatingButtonAccessibilityService))).FlattenToString();
+                if (!string.IsNullOrEmpty(component))
+                    _cachedComponent = component;
+                return component;
+            }
+            catch (Exception)
+            {
+                return _cachedComponent;
+            }
+        }
+
+        /// <summary>
+        /// Persists the live component id for the root shell watchdog (best-effort).
+        /// </summary>
+        internal static void PublishComponentHint(Context context)
+        {
+            string component = ResolveServiceComponent(context);
+            if (string.IsNullOrEmpty(component))
+                return;
+
+            try
+            {
+                // World-readable hint for the Magisk/KSU script (same path as install helper).
+                File.WriteAllText(ComponentHintPath, component);
+            }
+            catch (Exception)
+            {
+                try
+                {
+                    string script =
+                        "printf '%s\\n' '" + component.Replace("'", "'\\''") + "' > "
+                        + ComponentHintPath + " && chmod 644 " + ComponentHintPath;
+                    using var process = Java.Lang.Runtime.GetRuntime().Exec(new[] { "su", "-c", script });
+                    process.WaitFor(3L, Java.Util.Concurrent.TimeUnit.Seconds);
+                }
+                catch (Exception)
+                {
+                }
+            }
+        }
 
         /// <summary>
         /// If the floating-button accessibility service is not enabled, try to turn it back on with root.
@@ -31,17 +93,27 @@ namespace SilentNotes.Platforms
 
             try
             {
+                PublishComponentHint(context);
+
                 if (IsServiceEnabled(context))
+                {
+                    // Service is listed as enabled; if Instance is up, make sure the overlay matches settings.
+                    FloatingButtonAccessibilityService.Instance?.EnsureOverlayMatchesSettings();
                     return;
+                }
 
                 if ((DateTime.UtcNow - _lastHealUtc).TotalSeconds < 45)
                     return;
 
-                if (!TryReenableWithRoot())
+                string component = ResolveServiceComponent(context);
+                if (string.IsNullOrEmpty(component))
+                    return;
+
+                if (!TryReenableWithRoot(component))
                     return;
 
                 _lastHealUtc = DateTime.UtcNow;
-                global::Android.Util.Log.Info("aNoteFloating", "Re-enabled accessibility service via root");
+                global::Android.Util.Log.Info("aNoteFloating", "Re-enabled accessibility service via root: " + component);
             }
             catch (Exception ex)
             {
@@ -62,7 +134,11 @@ namespace SilentNotes.Platforms
                 if (string.IsNullOrEmpty(enabled))
                     return false;
 
-                string needle = ":" + ServiceComponent + ":";
+                string component = ResolveServiceComponent(context);
+                if (string.IsNullOrEmpty(component))
+                    return false;
+
+                string needle = ":" + component + ":";
                 return (":" + enabled + ":").IndexOf(needle, StringComparison.Ordinal) >= 0;
             }
             catch (Exception)
@@ -71,14 +147,23 @@ namespace SilentNotes.Platforms
             }
         }
 
-        private static bool TryReenableWithRoot()
+        private static bool TryReenableWithRoot(string serviceComponent)
         {
             // settings get/put need root or WRITE_SECURE_SETTINGS.
+            // Rebuild the list without duplicate copies of our component, then append once.
+            string escaped = serviceComponent.Replace("'", "'\\''");
             string script =
-                "enabled=$(settings get secure enabled_accessibility_services); "
-                + "if [ -z \"$enabled\" ] || [ \"$enabled\" = null ]; then "
-                + "new='" + ServiceComponent + "'; "
-                + "else new=\"${enabled}:" + ServiceComponent + "\"; fi; "
+                "COMPONENT='" + escaped + "'; "
+                + "enabled=$(settings get secure enabled_accessibility_services); "
+                + "new=''; "
+                + "OLD_IFS=$IFS; IFS=':'; "
+                + "for part in $enabled; do "
+                + "[ -z \"$part\" ] && continue; "
+                + "[ \"$part\" = null ] && continue; "
+                + "[ \"$part\" = \"$COMPONENT\" ] && continue; "
+                + "if [ -z \"$new\" ]; then new=\"$part\"; else new=\"${new}:$part\"; fi; "
+                + "done; IFS=$OLD_IFS; "
+                + "if [ -z \"$new\" ]; then new=\"$COMPONENT\"; else new=\"${new}:$COMPONENT\"; fi; "
                 + "settings put secure enabled_accessibility_services \"$new\"; "
                 + "settings put secure accessibility_enabled 1";
 

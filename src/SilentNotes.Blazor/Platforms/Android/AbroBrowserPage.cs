@@ -1683,14 +1683,72 @@ namespace SilentNotes.Platforms
             }
         }
 
+        private const string HasLoginFieldsScript =
+            "(function(){try{"
+            + "if(document.querySelector('input[type=password],input[autocomplete=current-password],"
+            + "input[autocomplete=new-password]'))return true;"
+            + "var forms=document.querySelectorAll('form');"
+            + "for(var i=0;i<forms.length;i++){"
+            + "var f=forms[i];"
+            + "if(f.querySelector('input[type=password]'))return true;}"
+            + "return false;}catch(e){return false;}})();";
+
+        private int _passwordSuggestSeq;
+
         private void RefreshPasswordSuggestions()
         {
             try
             {
                 _passwordStack.Children.Clear();
+                _passwordPanel.IsVisible = false;
+
                 IPasswordVaultService vault = Ioc.Instance.GetService<IPasswordVaultService>();
                 string url = _current?.Url;
+                AWebView native = _current?.Native;
+                if (vault == null || string.IsNullOrWhiteSpace(url) || native == null)
+                    return;
+
+                if (!vault.IsUnlocked && !vault.VaultExists)
+                    return;
+
+                // Only show the strip when the page actually has a login/password field.
+                int seq = Interlocked.Increment(ref _passwordSuggestSeq);
+                native.EvaluateJavascript(HasLoginFieldsScript, new JsFillCallback(hasLogin =>
+                {
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        if (seq != _passwordSuggestSeq)
+                            return;
+                        if (!hasLogin)
+                        {
+                            _passwordStack.Children.Clear();
+                            _passwordPanel.IsVisible = false;
+                            return;
+                        }
+
+                        PopulatePasswordSuggestionButtons(vault, url);
+                    });
+                }));
+            }
+            catch
+            {
+                _passwordPanel.IsVisible = false;
+            }
+        }
+
+        private void PopulatePasswordSuggestionButtons(IPasswordVaultService vault, string url)
+        {
+            try
+            {
+                _passwordStack.Children.Clear();
                 if (vault == null || string.IsNullOrWhiteSpace(url))
+                {
+                    _passwordPanel.IsVisible = false;
+                    return;
+                }
+
+                // Page may have navigated away while the JS probe was in flight.
+                if (!string.Equals(_current?.Url, url, StringComparison.Ordinal))
                 {
                     _passwordPanel.IsVisible = false;
                     return;
@@ -2185,6 +2243,8 @@ namespace SilentNotes.Platforms
                 return;
 
             _closing = true;
+            // Prevent AbroTab from auto-Presenting again when the main task resumes.
+            AbroLaunchGate.SuppressAutoPresent = true;
             SaveTabs();
             DumpCookies(_current?.Url);
             foreach (BrowserTab tab in _tabs)
@@ -2198,13 +2258,29 @@ namespace SilentNotes.Platforms
                 }
             }
 
+            _liveInstance = null;
+
+            // Abro lives in AbroBrowserActivity. Closing only the MAUI Window leaves the activity
+            // alive and MAUI recreates the window via App.CreateWindow — looks like an instant reopen.
+            // Always Finish the host activity; CloseWindow is optional cleanup only.
+            try
+            {
+                global::Android.App.Activity activity = Platform.CurrentActivity;
+                if (activity is AbroBrowserActivity abroActivity)
+                {
+                    abroActivity.Finish();
+                    await Task.CompletedTask.ConfigureAwait(true);
+                    return;
+                }
+            }
+            catch
+            {
+            }
+
             try
             {
                 if (Window != null && MauiApplication.Current != null)
-                {
                     MauiApplication.Current.CloseWindow(Window);
-                    return;
-                }
             }
             catch
             {
@@ -2231,6 +2307,7 @@ namespace SilentNotes.Platforms
         /// </summary>
         public static Task Present(string url, AbroStartAction startAction)
         {
+            AbroLaunchGate.SuppressAutoPresent = false;
             try
             {
                 Context context = Platform.CurrentActivity

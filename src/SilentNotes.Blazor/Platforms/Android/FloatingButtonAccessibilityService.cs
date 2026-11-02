@@ -161,14 +161,55 @@ namespace SilentNotes.Platforms
             BrowserUrlTracker.ServiceEnabled = true;
             BrowserUrlTracker.CaptureEnabled = _captureEnabled;
 
-            if (ShouldShowFloatingButton())
-                ShowOverlay();
+            // Keep root watchdog's component hint in sync (CRC class names change per build).
+            AccessibilityServiceWatchdog.PublishComponentHint(this);
+
+            EnsureOverlayMatchesSettings();
 
             if (_captureEnabled)
                 RefreshFromActiveWindow();
 
             _gestureHandler = new Handler(Looper.MainLooper);
             RefreshClipboardSettings();
+
+            // WindowManager can be briefly unavailable right after bind; retry overlay once.
+            if (ShouldShowFloatingButton() && _overlayView == null && _gestureHandler != null)
+            {
+                _gestureHandler.PostDelayed(() =>
+                {
+                    try
+                    {
+                        if (Instance != this)
+                            return;
+                        if (_windowManager == null)
+                            _windowManager = ResolveWindowManager();
+                        EnsureOverlayMatchesSettings();
+                    }
+                    catch (Exception ex)
+                    {
+                        global::Android.Util.Log.Error(LogTag, "Overlay retry failed: " + ex);
+                    }
+                }, 750);
+            }
+        }
+
+        /// <summary>
+        /// Shows or hides the floating button according to current settings.
+        /// Safe to call when the service is connected after a root heal.
+        /// </summary>
+        internal void EnsureOverlayMatchesSettings()
+        {
+            try
+            {
+                if (ShouldShowFloatingButton())
+                    ShowOverlay();
+                else
+                    HideOverlay();
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "EnsureOverlayMatchesSettings failed: " + ex);
+            }
         }
 
         /// <summary>
@@ -208,6 +249,9 @@ namespace SilentNotes.Platforms
             }
         }
 
+        private long _lastUrlRefreshMs;
+        private string _lastUrlRefreshPackage;
+
         /// <inheritdoc/>
         public override void OnAccessibilityEvent(AccessibilityEvent e)
         {
@@ -222,9 +266,21 @@ namespace SilentNotes.Platforms
                 if (!_captureEnabled)
                     return;
 
+                // Skip noisy content-change floods; window state changes are enough for URL capture.
+                if (e.EventType == EventTypes.ViewTextChanged ||
+                    e.EventType == EventTypes.ViewTextSelectionChanged)
+                    return;
+
                 string packageName = e.PackageName?.ToString();
                 if (string.IsNullOrEmpty(packageName) || !BrowserPackages.Contains(packageName))
                     return;
+
+                // Throttle tree walks — OEMs disable the service when event handling is too heavy.
+                long now = Java.Lang.JavaSystem.CurrentTimeMillis();
+                if (packageName == _lastUrlRefreshPackage && (now - _lastUrlRefreshMs) < 400)
+                    return;
+                _lastUrlRefreshMs = now;
+                _lastUrlRefreshPackage = packageName;
 
                 RefreshFromPackage(packageName);
             }
@@ -642,6 +698,8 @@ namespace SilentNotes.Platforms
         {
             if (_overlayView != null)
                 return;
+            if (_windowManager == null)
+                _windowManager = ResolveWindowManager();
             if (_windowManager == null)
             {
                 global::Android.Util.Log.Error(LogTag, "Cannot show the floating button, the window manager is not available");

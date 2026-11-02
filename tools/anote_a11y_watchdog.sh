@@ -1,13 +1,18 @@
 #!/system/bin/sh
 # Keeps aNote's accessibility service enabled when Android disables it after a crash.
 # Installed to /data/adb/service.d/ (KernelSU / Magisk) — runs as root after boot.
+#
+# Component id is discovered dynamically (CRC class names change between builds).
+# Prefer the hint file written by the app; fall back to dumpsys package.
 
-COMPONENT="app.anote/crc6416b736807aca2ef0.FloatingButtonAccessibilityService"
 TAG="anote_a11y"
 INTERVAL_SEC=25
 # Avoid hammering if the service is crash-looping.
 MIN_REENABLE_GAP_SEC=60
 LAST_REENABLE=0
+COMPONENT=""
+HINT_FILE="/data/local/tmp/anote_a11y_component"
+PACKAGE="app.anote"
 
 until [ "$(getprop sys.boot_completed)" = "1" ]; do
   sleep 2
@@ -18,7 +23,39 @@ if [ "$UPTIME_SEC" -lt 120 ]; then
   sleep 15
 fi
 
+resolve_component() {
+  # 1) Hint written by AccessibilityServiceWatchdog / OnServiceConnected
+  if [ -f "$HINT_FILE" ]; then
+    hint="$(tr -d '\r\n' < "$HINT_FILE" 2>/dev/null)"
+    case "$hint" in
+      ${PACKAGE}/*FloatingButtonAccessibilityService)
+        COMPONENT="$hint"
+        return 0
+        ;;
+    esac
+  fi
+
+  # 2) Discover from package dump (works even before first app launch after install)
+  found="$(dumpsys package "$PACKAGE" 2>/dev/null | grep -oE "${PACKAGE}/crc[0-9a-f]+\.FloatingButtonAccessibilityService" | head -1)"
+  if [ -n "$found" ]; then
+    COMPONENT="$found"
+    return 0
+  fi
+
+  # 3) Already-enabled list may still have the old or current component
+  enabled="$(settings get secure enabled_accessibility_services 2>/dev/null)"
+  case ":${enabled}:" in
+    *":${PACKAGE}/"*"FloatingButtonAccessibilityService:"*)
+      COMPONENT="$(printf '%s' "$enabled" | tr ':' '\n' | grep "FloatingButtonAccessibilityService" | head -1)"
+      [ -n "$COMPONENT" ] && return 0
+      ;;
+  esac
+
+  return 1
+}
+
 is_enabled() {
+  [ -z "$COMPONENT" ] && return 1
   enabled="$(settings get secure enabled_accessibility_services 2>/dev/null)"
   [ -z "$enabled" ] && return 1
   [ "$enabled" = "null" ] && return 1
@@ -29,6 +66,7 @@ is_enabled() {
 }
 
 reenable() {
+  [ -z "$COMPONENT" ] && return 1
   now="$(date +%s)"
   if [ "$LAST_REENABLE" -gt 0 ]; then
     delta=$((now - LAST_REENABLE))
@@ -48,6 +86,10 @@ reenable() {
     [ -z "$part" ] && continue
     [ "$part" = "null" ] && continue
     [ "$part" = "$COMPONENT" ] && continue
+    # Drop stale CRC variants of the same service so only the current one remains.
+    case "$part" in
+      ${PACKAGE}/*FloatingButtonAccessibilityService) continue ;;
+    esac
     if [ -z "$new" ]; then
       new="$part"
     else
@@ -68,7 +110,8 @@ reenable() {
 }
 
 while true; do
-  if ! is_enabled; then
+  resolve_component || true
+  if [ -n "$COMPONENT" ] && ! is_enabled; then
     reenable
   fi
   sleep "$INTERVAL_SEC"

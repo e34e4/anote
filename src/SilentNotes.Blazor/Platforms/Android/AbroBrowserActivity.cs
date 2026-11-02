@@ -43,5 +43,21 @@ namespace SilentNotes.Platforms
             Intent = intent;
             AbroBrowserPage.HandleIncomingIntent(intent);
         }
+
+        /// <inheritdoc/>
+        protected override void OnDestroy()
+        {
+            // Drop stale launch extras so a recycled activity cannot revive a closed session.
+            try
+            {
+                Intent?.RemoveExtra(ExtraUrl);
+                Intent?.RemoveExtra(ExtraStartAction);
+            }
+            catch
+            {
+            }
+
+            base.OnDestroy();
+        }
     }
 }

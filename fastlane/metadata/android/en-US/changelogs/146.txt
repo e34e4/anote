@@ -1,0 +1,3 @@
+• Fix Abro closing then instantly reopening
+• Show password suggestions only on pages with a login form
+• Harden accessibility heal so the floating button stays available

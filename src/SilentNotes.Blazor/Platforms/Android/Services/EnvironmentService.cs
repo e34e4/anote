@@ -142,10 +142,18 @@ namespace SilentNotes.Platforms.Services
         /// <inheritdoc/>
         void IFloatingButtonService.SetFloatingButtonVisible(bool visible)
         {
+            if (FloatingButtonAccessibilityService.Instance != null)
+            {
+                if (visible)
+                    FloatingButtonAccessibilityService.Instance.ShowOverlay();
+                else
+                    FloatingButtonAccessibilityService.Instance.HideOverlay();
+                return;
+            }
+
+            // Service not bound — try root heal so OnServiceConnected can show the overlay.
             if (visible)
-                FloatingButtonAccessibilityService.Instance?.ShowOverlay();
-            else
-                FloatingButtonAccessibilityService.Instance?.HideOverlay();
+                AccessibilityServiceWatchdog.EnsureEnabled(_appContext.Context);
         }
 
         /// <inheritdoc/>
