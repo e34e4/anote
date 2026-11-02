@@ -275,6 +275,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\MediaIntentRequest.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IMediaPlayerService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroBrowserService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\AbroLaunchGate.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiProviderModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiMessageModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiConversationModel.cs" />
