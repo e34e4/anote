@@ -1,0 +1,4 @@
+• Abro: AI chat via OpenAI-compatible providers (⋮ → AI)
+• Abro Settings: manage providers, default model, and AI WebDAV sync
+• Select webpage text → AI opens chat with the selection
+• Conversations are saved and synced with Booky WebDAV credentials

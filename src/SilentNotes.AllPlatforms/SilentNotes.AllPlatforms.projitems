@@ -275,6 +275,16 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\MediaIntentRequest.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IMediaPlayerService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroBrowserService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiProviderModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiMessageModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiConversationModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiStoreModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroAiStoreFormat.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroAiStoreService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\AbroAiStoreService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroAiSyncService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\AbroAiSyncService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\AbroAiChatClient.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\PlayerViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\AbroViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\DocumentItemModel.cs" />

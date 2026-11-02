@@ -248,6 +248,8 @@ namespace SilentNotes.ViewModels
                 string.GetHashCode(settings.BookySyncUrl),
                 string.GetHashCode(settings.BookySyncRemotePath),
                 string.GetHashCode(settings.PasswordVaultSyncRemotePath),
+                settings.AbroAiSyncEnabled.GetHashCode(),
+                string.GetHashCode(settings.AbroAiSyncRemotePath),
                 string.GetHashCode(settings.BookySyncUsername),
                 string.GetHashCode(settings.BookySyncPassword),
                 string.GetHashCode(settings.FloatingGestureSwipeUp),

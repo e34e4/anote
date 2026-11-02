@@ -128,6 +128,12 @@ public static class MauiProgram
             serviceProvider.GetService<IRepositoryStorageService>(),
             serviceProvider.GetService<ICloudStorageClientFactory>(),
             serviceProvider.GetService<IMessengerService>()));
+        services.AddSingleton<IAbroAiStoreService>((serviceProvider) => new AbroAiStoreService());
+        services.AddSingleton<IAbroAiSyncService>((serviceProvider) => new AbroAiSyncService(
+            serviceProvider.GetService<ISettingsService>(),
+            serviceProvider.GetService<IAbroAiStoreService>(),
+            serviceProvider.GetService<ICloudStorageClientFactory>()));
+        services.AddSingleton<AbroAiChatClient>((serviceProvider) => new AbroAiChatClient());
         services.AddSingleton<IWebdavQuickSaveService>((serviceProvider) => new WebdavQuickSaveService(
             serviceProvider.GetService<IWebdavFileService>(),
             serviceProvider.GetService<ISettingsService>()));

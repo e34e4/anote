@@ -11,11 +11,15 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Android.Content;
+using Android.Runtime;
+using Android.Views;
 using Android.Webkit;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using Microsoft.Maui.Storage;
+using SilentNotes.Models;
+using SilentNotes.Services;
 using AUri = Android.Net.Uri;
 using AWebView = Android.Webkit.WebView;
 using MauiApplication = Microsoft.Maui.Controls.Application;
@@ -44,6 +48,7 @@ namespace SilentNotes.Platforms
         private readonly string _cookiesDir;
         private readonly string _cacheDir;
         private readonly string _filesDir;
+        private readonly string _aiDir;
         private readonly string _tabsFile;
         private readonly Grid _webHost;
         private readonly HorizontalStackLayout _tabStrip;
@@ -75,6 +80,7 @@ namespace SilentNotes.Platforms
             _cookiesDir = Path.Combine(_rootDir, "cookies");
             _cacheDir = Path.Combine(_rootDir, "cache");
             _filesDir = Path.Combine(_rootDir, "files");
+            _aiDir = Path.Combine(_rootDir, "ai");
             _tabsFile = Path.Combine(_rootDir, "tabs.json");
             EnsureDirectories();
 
@@ -270,7 +276,7 @@ namespace SilentNotes.Platforms
 
         private void EnsureDirectories()
         {
-            foreach (string dir in new[] { _rootDir, _historyDir, _bookmarksDir, _cookiesDir, _cacheDir, _filesDir })
+            foreach (string dir in new[] { _rootDir, _historyDir, _bookmarksDir, _cookiesDir, _cacheDir, _filesDir, _aiDir })
             {
                 try
                 {
@@ -693,6 +699,8 @@ namespace SilentNotes.Platforms
 
         private async Task ShowMenuAsync()
         {
+            const string ai = "AI";
+            const string settings = "Settings";
             const string history = "History";
             const string bookmarks = "Bookmarks";
             const string addBookmark = "Add bookmark";
@@ -701,9 +709,25 @@ namespace SilentNotes.Platforms
             const string openFiles = "Open files folder";
 
             string choice = await DisplayActionSheetAsync(
-                "Abro", "Cancel", null, history, bookmarks, addBookmark, clearCookies, clearCache, openFiles).ConfigureAwait(true);
+                "Abro",
+                "Cancel",
+                null,
+                ai,
+                settings,
+                history,
+                bookmarks,
+                addBookmark,
+                clearCookies,
+                clearCache,
+                openFiles).ConfigureAwait(true);
             switch (choice)
             {
+                case ai:
+                    await ShowAiMenuAsync().ConfigureAwait(true);
+                    break;
+                case settings:
+                    await ShowSettingsMenuAsync().ConfigureAwait(true);
+                    break;
                 case history:
                     await ShowHistoryAsync().ConfigureAwait(true);
                     break;
@@ -722,6 +746,406 @@ namespace SilentNotes.Platforms
                 case openFiles:
                     await OpenFilesFolderAsync().ConfigureAwait(true);
                     break;
+            }
+        }
+
+        // ----- AI -----
+
+        private async Task ShowAiMenuAsync()
+        {
+            const string newChat = "New chat";
+            IAbroAiStoreService storeService = TryGetAiStoreService();
+            AbroAiStoreModel store = storeService?.LoadOrDefault() ?? new AbroAiStoreModel();
+            List<AbroAiConversationModel> recent = (store.Conversations ?? new List<AbroAiConversationModel>())
+                .OrderByDescending(c => c.ModifiedAt)
+                .Take(12)
+                .ToList();
+
+            var buttons = new List<string> { newChat };
+            foreach (AbroAiConversationModel conversation in recent)
+            {
+                string title = string.IsNullOrWhiteSpace(conversation.Title) ? "Chat" : conversation.Title;
+                if (title.Length > 60)
+                    title = title.Substring(0, 59) + "…";
+                buttons.Add(title);
+            }
+
+            string choice = await DisplayActionSheetAsync("AI", "Cancel", null, buttons.ToArray()).ConfigureAwait(true);
+            if (string.IsNullOrEmpty(choice) || choice == "Cancel")
+                return;
+
+            if (choice == newChat)
+            {
+                await OpenAiChatAsync(null, null).ConfigureAwait(true);
+                return;
+            }
+
+            int index = buttons.IndexOf(choice) - 1;
+            if (index >= 0 && index < recent.Count)
+                await OpenAiChatAsync(recent[index].Id, null).ConfigureAwait(true);
+        }
+
+        private async Task OpenAiChatAsync(Guid? conversationId, string initialText)
+        {
+            try
+            {
+                var page = new AbroAiChatPage(conversationId, initialText);
+                await Navigation.PushModalAsync(page, false).ConfigureAwait(true);
+            }
+            catch (Exception)
+            {
+                ShowToast("Could not open AI chat");
+            }
+        }
+
+        private async Task OpenAiWithSelectionAsync(AWebView webView)
+        {
+            string selected = await GetSelectedTextAsync(webView).ConfigureAwait(true);
+            if (string.IsNullOrWhiteSpace(selected))
+            {
+                ShowToast("No text selected");
+                return;
+            }
+
+            await OpenAiChatAsync(null, selected.Trim()).ConfigureAwait(true);
+        }
+
+        private static Task<string> GetSelectedTextAsync(AWebView webView)
+        {
+            var tcs = new TaskCompletionSource<string>();
+            if (webView == null)
+            {
+                tcs.TrySetResult(string.Empty);
+                return tcs.Task;
+            }
+
+            try
+            {
+                webView.EvaluateJavascript(
+                    "(function(){try{return window.getSelection().toString();}catch(e){return '';}})()",
+                    new AbroJsResultCallback(value =>
+                    {
+                        string text = value ?? string.Empty;
+                        if (text.Length >= 2 && text[0] == '"' && text[text.Length - 1] == '"')
+                        {
+                            try
+                            {
+                                text = JsonSerializer.Deserialize<string>(text) ?? string.Empty;
+                            }
+                            catch
+                            {
+                                text = text.Substring(1, text.Length - 2);
+                            }
+                        }
+
+                        tcs.TrySetResult(text);
+                    }));
+            }
+            catch
+            {
+                tcs.TrySetResult(string.Empty);
+            }
+
+            return tcs.Task;
+        }
+
+        private async Task ShowSettingsMenuAsync()
+        {
+            const string providers = "AI providers";
+            const string sync = "AI sync";
+            string choice = await DisplayActionSheetAsync("Settings", "Cancel", null, providers, sync).ConfigureAwait(true);
+            switch (choice)
+            {
+                case providers:
+                    await ShowAiProvidersMenuAsync().ConfigureAwait(true);
+                    break;
+                case sync:
+                    await ShowAiSyncMenuAsync().ConfigureAwait(true);
+                    break;
+            }
+        }
+
+        private async Task ShowAiProvidersMenuAsync()
+        {
+            IAbroAiStoreService storeService = TryGetAiStoreService();
+            if (storeService == null)
+            {
+                ShowToast("AI store unavailable");
+                return;
+            }
+
+            while (true)
+            {
+                AbroAiStoreModel store = storeService.LoadOrDefault();
+                var buttons = new List<string> { "Add provider" };
+                foreach (AbroAiProviderModel provider in store.Providers)
+                {
+                    bool isDefault = store.GetDefaultProvider()?.Id == provider.Id;
+                    string label = (isDefault ? "★ " : string.Empty) + (provider.Name ?? "Provider");
+                    buttons.Add(label);
+                }
+
+                string choice = await DisplayActionSheetAsync("AI providers", "Back", null, buttons.ToArray()).ConfigureAwait(true);
+                if (string.IsNullOrEmpty(choice) || choice == "Back")
+                    return;
+
+                if (choice == "Add provider")
+                {
+                    await EditProviderAsync(storeService, null).ConfigureAwait(true);
+                    continue;
+                }
+
+                int index = buttons.IndexOf(choice) - 1;
+                if (index < 0 || index >= store.Providers.Count)
+                    continue;
+
+                await ShowProviderActionsAsync(storeService, store.Providers[index].Id).ConfigureAwait(true);
+            }
+        }
+
+        private async Task ShowProviderActionsAsync(IAbroAiStoreService storeService, Guid providerId)
+        {
+            const string edit = "Edit";
+            const string setDefault = "Set as default";
+            const string delete = "Delete";
+            string choice = await DisplayActionSheetAsync("Provider", "Back", delete, edit, setDefault).ConfigureAwait(true);
+            AbroAiStoreModel store = storeService.LoadOrDefault();
+            AbroAiProviderModel provider = store.Providers.Find(p => p.Id == providerId);
+            if (provider == null)
+                return;
+
+            switch (choice)
+            {
+                case edit:
+                    await EditProviderAsync(storeService, provider).ConfigureAwait(true);
+                    break;
+                case setDefault:
+                    store.DefaultProviderId = provider.Id;
+                    provider.ModifiedAt = DateTime.UtcNow;
+                    storeService.TrySave(store);
+                    ScheduleAiSync();
+                    ShowToast("Default provider set");
+                    break;
+                case delete:
+                    store.Providers.RemoveAll(p => p.Id == providerId);
+                    if (store.DefaultProviderId == providerId)
+                        store.DefaultProviderId = store.Providers.FirstOrDefault()?.Id;
+                    storeService.TrySave(store);
+                    ScheduleAiSync();
+                    ShowToast("Provider deleted");
+                    break;
+            }
+        }
+
+        private async Task EditProviderAsync(IAbroAiStoreService storeService, AbroAiProviderModel existing)
+        {
+            string name = await DisplayPromptAsync(
+                "Provider name",
+                "Display name",
+                "Next",
+                "Cancel",
+                existing?.Name ?? "Command Code",
+                -1,
+                Keyboard.Text,
+                existing?.Name ?? string.Empty).ConfigureAwait(true);
+            if (name == null)
+                return;
+
+            string url = await DisplayPromptAsync(
+                "API URL",
+                "Base URL ending with /v1",
+                "Next",
+                "Cancel",
+                "https://api.commandcode.ai/provider/v1",
+                -1,
+                Keyboard.Url,
+                existing?.Url ?? string.Empty).ConfigureAwait(true);
+            if (url == null)
+                return;
+
+            string modelId = await DisplayPromptAsync(
+                "Model ID",
+                "Model sent to the API",
+                "Next",
+                "Cancel",
+                "deepseek/deepseek-v4.1-flash",
+                -1,
+                Keyboard.Text,
+                existing?.ModelId ?? string.Empty).ConfigureAwait(true);
+            if (modelId == null)
+                return;
+
+            string apiKey = await DisplayPromptAsync(
+                "API key",
+                "Bearer token (stored in AI sync file)",
+                "Save",
+                "Cancel",
+                string.Empty,
+                -1,
+                Keyboard.Text,
+                existing?.ApiKey ?? string.Empty).ConfigureAwait(true);
+            if (apiKey == null)
+                return;
+
+            AbroAiStoreModel store = storeService.LoadOrDefault();
+            AbroAiProviderModel provider = existing == null
+                ? new AbroAiProviderModel()
+                : store.Providers.Find(p => p.Id == existing.Id) ?? existing;
+            provider.Name = name.Trim();
+            provider.Url = url.Trim();
+            provider.ModelId = modelId.Trim();
+            provider.ApiKey = apiKey.Trim();
+            provider.ModifiedAt = DateTime.UtcNow;
+            if (existing == null)
+            {
+                store.Providers.Add(provider);
+                if (!store.DefaultProviderId.HasValue)
+                    store.DefaultProviderId = provider.Id;
+            }
+
+            storeService.TrySave(store);
+            ScheduleAiSync();
+            ShowToast(existing == null ? "Provider added" : "Provider saved");
+        }
+
+        private async Task ShowAiSyncMenuAsync()
+        {
+            ISettingsService settingsService = TryGetSettingsService();
+            if (settingsService == null)
+            {
+                ShowToast("Settings unavailable");
+                return;
+            }
+
+            SettingsModel settings = settingsService.LoadSettingsOrDefault();
+            string enableLabel = settings.AbroAiSyncEnabled ? "Disable sync" : "Enable sync";
+            const string pathLabel = "Remote path";
+            const string syncNow = "Sync now";
+            const string overwrite = "Overwrite remote";
+
+            string choice = await DisplayActionSheetAsync(
+                "AI sync",
+                "Back",
+                null,
+                enableLabel,
+                pathLabel,
+                syncNow,
+                overwrite).ConfigureAwait(true);
+
+            switch (choice)
+            {
+                case var _ when choice == enableLabel:
+                    settings.AbroAiSyncEnabled = !settings.AbroAiSyncEnabled;
+                    if (string.IsNullOrWhiteSpace(settings.AbroAiSyncRemotePath))
+                        settings.AbroAiSyncRemotePath = "abro/ai.json";
+                    settingsService.TrySaveSettingsToLocalDevice(settings);
+                    ShowToast(settings.AbroAiSyncEnabled
+                        ? "AI sync enabled (uses Booky WebDAV)"
+                        : "AI sync disabled");
+                    break;
+                case pathLabel:
+                    {
+                        string path = await DisplayPromptAsync(
+                            "Remote path",
+                            "Relative to Booky WebDAV URL",
+                            "Save",
+                            "Cancel",
+                            "abro/ai.json",
+                            -1,
+                            Keyboard.Text,
+                            settings.AbroAiSyncRemotePath ?? "abro/ai.json").ConfigureAwait(true);
+                        if (path == null)
+                            return;
+                        settings.AbroAiSyncRemotePath = path.Trim().TrimStart('/');
+                        settingsService.TrySaveSettingsToLocalDevice(settings);
+                        ShowToast("Remote path saved");
+                        break;
+                    }
+                case syncNow:
+                    await RunAiSyncAsync(overwrite: false).ConfigureAwait(true);
+                    break;
+                case overwrite:
+                    await RunAiSyncAsync(overwrite: true).ConfigureAwait(true);
+                    break;
+            }
+        }
+
+        private async Task RunAiSyncAsync(bool overwrite)
+        {
+            IAbroAiSyncService syncService = TryGetAiSyncService();
+            if (syncService == null)
+            {
+                ShowToast("AI sync unavailable");
+                return;
+            }
+
+            if (!syncService.IsConfigured)
+            {
+                ShowToast("Enable AI sync and configure Booky WebDAV first");
+                return;
+            }
+
+            ShowToast("Syncing…");
+            AbroAiSyncResult result = overwrite
+                ? await syncService.OverwriteRemoteAsync().ConfigureAwait(true)
+                : await syncService.SyncAsync().ConfigureAwait(true);
+            switch (result)
+            {
+                case AbroAiSyncResult.Success:
+                    ShowToast("AI sync done");
+                    break;
+                case AbroAiSyncResult.Disabled:
+                    ShowToast("AI sync disabled");
+                    break;
+                case AbroAiSyncResult.NotConfigured:
+                    ShowToast("Booky WebDAV URL missing");
+                    break;
+                default:
+                    ShowToast(string.IsNullOrEmpty(syncService.LastError) ? "AI sync failed" : syncService.LastError);
+                    break;
+            }
+        }
+
+        private void ScheduleAiSync()
+        {
+            IAbroAiSyncService syncService = TryGetAiSyncService();
+            if (syncService?.IsConfigured == true)
+                _ = syncService.SyncAsync();
+        }
+
+        private static IAbroAiStoreService TryGetAiStoreService()
+        {
+            try
+            {
+                return Ioc.Instance.GetService<IAbroAiStoreService>();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static IAbroAiSyncService TryGetAiSyncService()
+        {
+            try
+            {
+                return Ioc.Instance.GetService<IAbroAiSyncService>();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static ISettingsService TryGetSettingsService()
+        {
+            try
+            {
+                return Ioc.Instance.GetService<ISettingsService>();
+            }
+            catch
+            {
+                return null;
             }
         }
 
@@ -1023,6 +1447,14 @@ namespace SilentNotes.Platforms
             awv.SetWebViewClient(new AbroWebViewClient(this, tab));
             awv.SetWebChromeClient(new AbroWebChromeClient(this, tab));
             awv.SetDownloadListener(new AbroDownloadListener(_filesDir));
+            try
+            {
+                // Not exposed on Android.Webkit.WebView in the .NET bindings; call the Java API via JNI.
+                SetCustomSelectionActionModeCallback(awv, new AbroAiSelectionActionModeCallback(this, awv));
+            }
+            catch
+            {
+            }
 
             if (ReferenceEquals(tab, _current))
             {
@@ -1254,6 +1686,84 @@ namespace SilentNotes.Platforms
                 {
                     ShowToast("Download failed");
                 }
+            }
+        }
+
+        private static void SetCustomSelectionActionModeCallback(AWebView webView, ActionMode.ICallback callback)
+        {
+            if (webView == null)
+                return;
+
+            // Direct JNI call: WebView.setCustomSelectionActionModeCallback(ActionMode.Callback)
+            // (the method is not bound on Android.Webkit.WebView in .NET for Android).
+            IntPtr classHandle = JNIEnv.FindClass("android/webkit/WebView");
+            try
+            {
+                IntPtr methodId = JNIEnv.GetMethodID(
+                    classHandle,
+                    "setCustomSelectionActionModeCallback",
+                    "(Landroid/view/ActionMode$Callback;)V");
+                JNIEnv.CallVoidMethod(webView.Handle, methodId, new JValue(callback));
+            }
+            finally
+            {
+                JNIEnv.DeleteLocalRef(classHandle);
+            }
+        }
+
+        private sealed class AbroJsResultCallback : Java.Lang.Object, IValueCallback
+        {
+            private readonly Action<string> _onResult;
+
+            public AbroJsResultCallback(Action<string> onResult)
+            {
+                _onResult = onResult;
+            }
+
+            public void OnReceiveValue(Java.Lang.Object value)
+            {
+                _onResult?.Invoke(value?.ToString());
+            }
+        }
+
+        private sealed class AbroAiSelectionActionModeCallback : Java.Lang.Object, ActionMode.ICallback
+        {
+            private const int AiMenuId = 0x4e01;
+            private readonly AbroBrowserPage _page;
+            private readonly AWebView _webView;
+
+            public AbroAiSelectionActionModeCallback(AbroBrowserPage page, AWebView webView)
+            {
+                _page = page;
+                _webView = webView;
+            }
+
+            public bool OnCreateActionMode(ActionMode mode, IMenu menu)
+            {
+                menu?.Add(0, AiMenuId, 0, "AI");
+                return true;
+            }
+
+            public bool OnPrepareActionMode(ActionMode mode, IMenu menu)
+            {
+                return false;
+            }
+
+            public bool OnActionItemClicked(ActionMode mode, IMenuItem item)
+            {
+                if (item == null || item.ItemId != AiMenuId)
+                    return false;
+
+                mode?.Finish();
+                MainThread.BeginInvokeOnMainThread(async () =>
+                {
+                    await _page.OpenAiWithSelectionAsync(_webView).ConfigureAwait(true);
+                });
+                return true;
+            }
+
+            public void OnDestroyActionMode(ActionMode mode)
+            {
             }
         }
     }

@@ -18,6 +18,7 @@
 @inject ISynchronizationState SynchronizationState
 @inject IBookySyncService BookySyncService
 @inject IPasswordVaultSyncService PasswordVaultSyncService
+@inject IAbroAiSyncService AbroAiSyncService
 @inject ISettingsService SettingsService
 @inject IEnvironmentService EnvironmentService
 @inject ILanguageService LanguageService
@@ -140,6 +141,10 @@
 			// Sync the encrypted password vault over the same WebDAV credentials (Password path).
 			if (PasswordVaultSyncService.IsConfigured)
 				await PasswordVaultSyncService.SyncAsync();
+
+			// Sync Abro AI providers and conversations over the same Booky WebDAV credentials.
+			if (AbroAiSyncService.IsConfigured)
+				await AbroAiSyncService.SyncAsync();
 
 			// Pausing the synchronization allows to user to switch to another app, to copy and
 			// paste some content, without an interferring synchronization when switching back.
