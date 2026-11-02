@@ -1207,35 +1207,23 @@ namespace SilentNotes.Platforms
 
         private void PopulateAppsList(global::Android.Widget.ScrollView scrollView, float density)
         {
-            var listContainer = new LinearLayout(this)
+            var gridContainer = new LinearLayout(this)
             {
                 Orientation = Orientation.Vertical,
             };
 
-            if (_menuLaunchAsFloating)
+            var hint = new TextView(this)
             {
-                var hint = new TextView(this)
-                {
-                    Text = "Floating on — tap to open as a window (needs freeform/desktop mode)",
-                    TextSize = 11f,
-                };
-                hint.SetTextColor(Color.ParseColor("#94A3B8"));
-                hint.SetPadding(0, 0, 0, (int)(6 * density));
-                listContainer.AddView(hint);
-            }
-            else
-            {
-                var hint = new TextView(this)
-                {
-                    Text = "Tap to open · long-press for floating window",
-                    TextSize = 11f,
-                };
-                hint.SetTextColor(Color.ParseColor("#94A3B8"));
-                hint.SetPadding(0, 0, 0, (int)(6 * density));
-                listContainer.AddView(hint);
-            }
+                Text = _menuLaunchAsFloating
+                    ? "Floating on — tap to open as a window"
+                    : "Tap to open · long-press for floating",
+                TextSize = 10f,
+            };
+            hint.SetTextColor(Color.ParseColor("#94A3B8"));
+            hint.SetPadding(0, 0, 0, (int)(4 * density));
+            gridContainer.AddView(hint);
 
-            List<(string Package, string Label)> apps = QueryLauncherApps();
+            List<(string Package, string Label, Drawable Icon)> apps = QueryLauncherApps();
             if (apps.Count == 0)
             {
                 var empty = new TextView(this)
@@ -1246,75 +1234,121 @@ namespace SilentNotes.Platforms
                 };
                 empty.SetTextColor(Color.ParseColor("#BDBDBD"));
                 empty.SetPadding(0, (int)(16 * density), 0, (int)(16 * density));
-                listContainer.AddView(empty);
+                gridContainer.AddView(empty);
             }
             else
             {
-                foreach ((string Package, string Label) app in apps)
+                const int columns = 4;
+                for (int i = 0; i < apps.Count; i += columns)
                 {
-                    string packageName = app.Package;
-                    string appLabel = app.Label;
-
                     var row = new LinearLayout(this)
                     {
                         Orientation = Orientation.Horizontal,
-                        Clickable = true,
                     };
-                    row.SetGravity(GravityFlags.CenterVertical);
-                    int rowPad = (int)(8 * density);
-                    row.SetPadding(rowPad, rowPad, rowPad, rowPad);
 
-                    var bg = new GradientDrawable();
-                    bg.SetCornerRadius(8 * density);
-                    bg.SetColor(Color.ParseColor("#1C1C1C"));
-                    bg.SetStroke((int)(1 * density), Color.ParseColor("#2E2E2E"));
-                    row.Background = bg;
-
-                    var iconTv = new TextView(this)
+                    for (int col = 0; col < columns; col++)
                     {
-                        Text = "📱",
-                        TextSize = 16f,
-                        Gravity = GravityFlags.Center,
-                    };
-                    row.AddView(iconTv, new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
+                        int idx = i + col;
+                        var cellParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+                        int margin = (int)(2 * density);
+                        cellParams.SetMargins(margin, margin, margin, margin);
 
-                    var labelTv = new TextView(this)
-                    {
-                        Text = appLabel,
-                        TextSize = 13f,
-                    };
-                    labelTv.SetSingleLine(true);
-                    labelTv.SetTextColor(Color.White);
-                    labelTv.SetPadding((int)(10 * density), 0, 0, 0);
-                    row.AddView(labelTv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+                        if (idx < apps.Count)
+                        {
+                            var app = apps[idx];
+                            string packageName = app.Package;
+                            global::Android.Views.View cell = CreateAppGridButton(
+                                app.Icon,
+                                app.Label,
+                                () =>
+                                {
+                                    HideMenuOverlay();
+                                    LaunchInstalledApp(packageName, asFloating: _menuLaunchAsFloating);
+                                },
+                                () =>
+                                {
+                                    HideMenuOverlay();
+                                    LaunchInstalledApp(packageName, asFloating: !_menuLaunchAsFloating);
+                                },
+                                density);
+                            row.AddView(cell, cellParams);
+                        }
+                        else
+                        {
+                            row.AddView(new global::Android.Views.View(this), cellParams);
+                        }
+                    }
 
-                    row.Click += (s, e) =>
-                    {
-                        HideMenuOverlay();
-                        LaunchInstalledApp(packageName, asFloating: _menuLaunchAsFloating);
-                    };
-                    row.LongClick += (s, e) =>
-                    {
-                        e.Handled = true;
-                        HideMenuOverlay();
-                        LaunchInstalledApp(packageName, asFloating: !_menuLaunchAsFloating);
-                    };
-
-                    var rowParams = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
-                    rowParams.SetMargins(0, 0, 0, (int)(4 * density));
-                    listContainer.AddView(row, rowParams);
+                    gridContainer.AddView(row, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
                 }
             }
 
-            scrollView.AddView(listContainer, new FrameLayout.LayoutParams(
+            scrollView.AddView(gridContainer, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
         }
 
-        private List<(string Package, string Label)> QueryLauncherApps()
+        private global::Android.Views.View CreateAppGridButton(
+            Drawable icon,
+            string label,
+            System.Action onClick,
+            System.Action onLongClick,
+            float density)
         {
-            var entries = new List<(string Package, string Label)>();
+            var box = new LinearLayout(this)
+            {
+                Orientation = Orientation.Vertical,
+                Clickable = true,
+            };
+            box.SetGravity(GravityFlags.CenterHorizontal);
+            int padV = (int)(6 * density);
+            int padH = (int)(2 * density);
+            box.SetPadding(padH, padV, padH, padV);
+
+            var bg = new GradientDrawable();
+            bg.SetCornerRadius(10 * density);
+            bg.SetColor(Color.ParseColor("#1C1C1C"));
+            bg.SetStroke((int)(1 * density), Color.ParseColor("#2E2E2E"));
+            box.Background = bg;
+
+            int iconSize = (int)(36 * density);
+            var iconView = new ImageView(this);
+            iconView.SetScaleType(ImageView.ScaleType.FitCenter);
+            if (icon != null)
+                iconView.SetImageDrawable(icon);
+            else
+                iconView.SetImageResource(global::Android.Resource.Drawable.SymDefAppIcon);
+            box.AddView(iconView, new LinearLayout.LayoutParams(iconSize, iconSize));
+
+            var labelTv = new TextView(this)
+            {
+                Text = label ?? string.Empty,
+                TextSize = 8f,
+                Gravity = GravityFlags.CenterHorizontal,
+            };
+            labelTv.SetTextColor(Color.White);
+            labelTv.SetMaxLines(2);
+            labelTv.SetLines(2);
+            labelTv.Ellipsize = global::Android.Text.TextUtils.TruncateAt.End;
+            labelTv.SetPadding(0, (int)(4 * density), 0, 0);
+            box.AddView(labelTv, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+
+            box.Click += (s, e) => onClick?.Invoke();
+            if (onLongClick != null)
+            {
+                box.LongClick += (s, e) =>
+                {
+                    e.Handled = true;
+                    onLongClick();
+                };
+            }
+            return box;
+        }
+
+        private List<(string Package, string Label, Drawable Icon)> QueryLauncherApps()
+        {
+            var entries = new List<(string Package, string Label, Drawable Icon)>();
             try
             {
                 PackageManager pm = PackageManager;
@@ -1350,7 +1384,17 @@ namespace SilentNotes.Platforms
                         string label = info.LoadLabel(pm)?.ToString();
                         if (string.IsNullOrWhiteSpace(label))
                             label = pkg;
-                        entries.Add((pkg, label));
+
+                        Drawable icon = null;
+                        try
+                        {
+                            icon = info.LoadIcon(pm);
+                        }
+                        catch (Exception)
+                        {
+                        }
+
+                        entries.Add((pkg, label, icon));
                     }
                 }
 
@@ -1822,7 +1866,7 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                List<(string Package, string Label)> entries = QueryLauncherApps();
+                var entries = QueryLauncherApps();
                 if (entries.Count == 0)
                     return;
 
