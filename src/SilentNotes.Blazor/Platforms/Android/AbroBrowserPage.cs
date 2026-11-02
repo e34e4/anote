@@ -20,6 +20,7 @@ using Microsoft.Maui.Graphics;
 using Microsoft.Maui.Storage;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 using AUri = Android.Net.Uri;
 using AView = Android.Views.View;
 using AWebView = Android.Webkit.WebView;
@@ -65,6 +66,8 @@ namespace SilentNotes.Platforms
         private readonly Button _forwardButton;
         private readonly VerticalStackLayout _suggestionsStack;
         private readonly Border _suggestionsPanel;
+        private readonly HorizontalStackLayout _passwordStack;
+        private readonly Border _passwordPanel;
         private BrowserTab _current;
         private bool _restored;
         private bool _closing;
@@ -72,6 +75,7 @@ namespace SilentNotes.Platforms
         private readonly AbroStartAction _startAction;
         private CancellationTokenSource _suggestCts;
         private int _suggestSeq;
+        private static WeakReference<AbroBrowserPage> _liveInstance;
 
         public enum AbroStartAction
         {
@@ -214,6 +218,21 @@ namespace SilentNotes.Platforms
                 },
             };
 
+            _passwordStack = new HorizontalStackLayout { Spacing = 6, Padding = new Thickness(8, 4) };
+            _passwordPanel = new Border
+            {
+                StrokeThickness = 0,
+                BackgroundColor = Color.FromArgb("#243447"),
+                IsVisible = false,
+                Padding = new Thickness(0),
+                Content = new ScrollView
+                {
+                    Orientation = ScrollOrientation.Horizontal,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
+                    Content = _passwordStack,
+                },
+            };
+
             _webHost = new Grid
             {
                 HorizontalOptions = LayoutOptions.Fill,
@@ -234,24 +253,29 @@ namespace SilentNotes.Platforms
                 {
                     new RowDefinition(GridLength.Auto),
                     new RowDefinition(GridLength.Auto),
+                    new RowDefinition(GridLength.Auto),
                     new RowDefinition(GridLength.Star),
                 },
             };
             root.Add(header, 0, 0);
             root.Add(bar, 0, 1);
-            root.Add(contentHost, 0, 2);
+            root.Add(_passwordPanel, 0, 2);
+            root.Add(contentHost, 0, 3);
             Content = root;
+            _liveInstance = new WeakReference<AbroBrowserPage>(this);
         }
 
         /// <inheritdoc/>
         protected override void OnAppearing()
         {
             base.OnAppearing();
-            if (_restored)
-                return;
+            if (!_restored)
+            {
+                _restored = true;
+                RestoreTabs();
+            }
 
-            _restored = true;
-            RestoreTabs();
+            RefreshPasswordSuggestions();
         }
 
         /// <inheritdoc/>
@@ -891,6 +915,7 @@ namespace SilentNotes.Platforms
             {
                 _addressEntry.Text = tab.Url;
                 UpdateNavigationButtons();
+                RefreshPasswordSuggestions();
             }
 
             RebuildTabStrip();
@@ -948,6 +973,9 @@ namespace SilentNotes.Platforms
             const string history = "History";
             const string bookmarks = "Bookmarks";
             const string addBookmark = "Add bookmark";
+            const string bookyOpen = "Open from Booky";
+            const string bookyAdd = "Add to Booky";
+            const string passwords = "Passwords";
             const string clearCookies = "Clear cookies";
             const string clearCache = "Clear cache";
             const string openFiles = "Open files folder";
@@ -962,6 +990,9 @@ namespace SilentNotes.Platforms
                 history,
                 bookmarks,
                 addBookmark,
+                bookyOpen,
+                bookyAdd,
+                passwords,
                 clearCookies,
                 clearCache,
                 openFiles).ConfigureAwait(true);
@@ -984,6 +1015,15 @@ namespace SilentNotes.Platforms
                     break;
                 case addBookmark:
                     AddCurrentBookmark();
+                    break;
+                case bookyOpen:
+                    await ShowBookyAsync().ConfigureAwait(true);
+                    break;
+                case bookyAdd:
+                    AddCurrentToBooky();
+                    break;
+                case passwords:
+                    await ShowPasswordPickerAsync().ConfigureAwait(true);
                     break;
                 case clearCookies:
                     ClearCookies();
@@ -1559,6 +1599,304 @@ namespace SilentNotes.Platforms
             }
         }
 
+        private void AddCurrentToBooky()
+        {
+            string url = _current?.Url;
+            if (string.IsNullOrWhiteSpace(url) || !BookyUrlUtils.LooksLikeUrl(url))
+            {
+                ShowToast("Nothing to add to Booky");
+                return;
+            }
+
+            try
+            {
+                IRepositoryStorageService repo = Ioc.Instance.GetService<IRepositoryStorageService>();
+                if (repo == null)
+                {
+                    ShowToast("Booky storage unavailable");
+                    return;
+                }
+
+                repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
+                string title = string.IsNullOrWhiteSpace(_current?.Title)
+                    ? BookyUrlUtils.HostOf(url)
+                    : _current.Title.Trim();
+                var bookmark = new BookmarkModel
+                {
+                    Url = url.Trim(),
+                    Title = title,
+                    Quote = string.Empty,
+                    Note = string.Empty,
+                };
+                model.Bookmarks.Insert(0, bookmark);
+                repo.TrySaveRepository(model);
+                ShowToast("Added to Booky");
+
+                IBookySyncService sync = Ioc.Instance.GetService<IBookySyncService>();
+                if (sync?.IsConfigured == true)
+                    _ = sync.SyncAsync();
+            }
+            catch
+            {
+                ShowToast("Could not add to Booky");
+            }
+        }
+
+        private async Task ShowBookyAsync()
+        {
+            try
+            {
+                IRepositoryStorageService repo = Ioc.Instance.GetService<IRepositoryStorageService>();
+                if (repo == null)
+                {
+                    ShowToast("Booky storage unavailable");
+                    return;
+                }
+
+                repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
+                var entries = new List<(string Url, string Label)>();
+                foreach (BookmarkModel bookmark in model.Bookmarks)
+                {
+                    if (string.IsNullOrWhiteSpace(bookmark.Url))
+                        continue;
+                    string label = string.IsNullOrWhiteSpace(bookmark.Title)
+                        ? bookmark.Url
+                        : bookmark.Title + " — " + bookmark.Url;
+                    if (label.Length > 90)
+                        label = label.Substring(0, 89) + "…";
+                    entries.Add((TextFragmentBuilder.WithTextFragment(bookmark.Url, bookmark.Quote), label));
+                    if (entries.Count >= MaxHistoryMenuEntries)
+                        break;
+                }
+
+                if (entries.Count == 0)
+                {
+                    ShowToast("No Booky records yet");
+                    return;
+                }
+
+                await PickAndOpenUrlAsync("Booky", entries).ConfigureAwait(true);
+            }
+            catch
+            {
+                ShowToast("Could not open Booky");
+            }
+        }
+
+        private void RefreshPasswordSuggestions()
+        {
+            try
+            {
+                _passwordStack.Children.Clear();
+                IPasswordVaultService vault = Ioc.Instance.GetService<IPasswordVaultService>();
+                string url = _current?.Url;
+                if (vault == null || string.IsNullOrWhiteSpace(url))
+                {
+                    _passwordPanel.IsVisible = false;
+                    return;
+                }
+
+                if (!vault.IsUnlocked)
+                {
+                    if (!vault.VaultExists)
+                    {
+                        _passwordPanel.IsVisible = false;
+                        return;
+                    }
+
+                    var unlock = new Button
+                    {
+                        Text = "Unlock vault…",
+                        FontSize = 12,
+                        TextColor = Colors.White,
+                        BackgroundColor = Color.FromArgb("#3a5f8a"),
+                        Padding = new Thickness(10, 4),
+                        HeightRequest = 32,
+                        CornerRadius = 8,
+                    };
+                    unlock.Clicked += (s, e) => PromptVaultUnlock(url);
+                    _passwordStack.Add(unlock);
+                    _passwordPanel.IsVisible = true;
+                    return;
+                }
+
+                IReadOnlyList<PasswordEntryModel> matches = vault.FindMatches(url);
+                if (matches == null || matches.Count == 0)
+                {
+                    _passwordPanel.IsVisible = false;
+                    return;
+                }
+
+                foreach (PasswordEntryModel entry in matches.Take(8))
+                {
+                    PasswordEntryModel local = entry;
+                    string label = string.IsNullOrWhiteSpace(local.Name)
+                        ? (local.Username ?? "Login")
+                        : local.Name;
+                    if (!string.IsNullOrWhiteSpace(local.Username) &&
+                        !string.Equals(label, local.Username, StringComparison.Ordinal))
+                        label += " · " + local.Username;
+                    if (label.Length > 42)
+                        label = label.Substring(0, 41) + "…";
+
+                    var button = new Button
+                    {
+                        Text = "🔑 " + label,
+                        FontSize = 12,
+                        TextColor = Colors.White,
+                        BackgroundColor = Color.FromArgb("#2f6fed"),
+                        Padding = new Thickness(10, 4),
+                        HeightRequest = 32,
+                        CornerRadius = 8,
+                    };
+                    button.Clicked += (s, e) => FillPasswordEntry(local);
+                    _passwordStack.Add(button);
+                }
+
+                _passwordPanel.IsVisible = true;
+            }
+            catch
+            {
+                _passwordPanel.IsVisible = false;
+            }
+        }
+
+        private async Task ShowPasswordPickerAsync()
+        {
+            try
+            {
+                IPasswordVaultService vault = Ioc.Instance.GetService<IPasswordVaultService>();
+                if (vault == null)
+                {
+                    ShowToast("Password vault unavailable");
+                    return;
+                }
+
+                if (!vault.IsUnlocked)
+                {
+                    PromptVaultUnlock(_current?.Url);
+                    ShowToast(vault.VaultExists ? "Unlock the vault first" : "No vault yet");
+                    return;
+                }
+
+                string url = _current?.Url;
+                IReadOnlyList<PasswordEntryModel> matches = string.IsNullOrWhiteSpace(url)
+                    ? Array.Empty<PasswordEntryModel>()
+                    : vault.FindMatches(url);
+                if (matches.Count == 0 && vault.Vault?.Entries != null)
+                    matches = vault.Vault.Entries.Take(MaxHistoryMenuEntries).ToList();
+
+                if (matches.Count == 0)
+                {
+                    ShowToast("No matching passwords");
+                    return;
+                }
+
+                string[] buttons = matches.Select((e, i) =>
+                {
+                    string name = string.IsNullOrWhiteSpace(e.Name) ? (e.Username ?? "Login") : e.Name;
+                    string user = string.IsNullOrWhiteSpace(e.Username) ? string.Empty : " — " + e.Username;
+                    string label = (i + 1) + ". " + name + user;
+                    return label.Length > 90 ? label.Substring(0, 89) + "…" : label;
+                }).ToArray();
+
+                string choice = await DisplayActionSheetAsync("Passwords", "Cancel", null, buttons)
+                    .ConfigureAwait(true);
+                int index = Array.IndexOf(buttons, choice);
+                if (index < 0)
+                    return;
+
+                FillPasswordEntry(matches[index]);
+            }
+            catch
+            {
+                ShowToast("Could not open passwords");
+            }
+        }
+
+        private void PromptVaultUnlock(string url)
+        {
+            try
+            {
+                global::Android.App.Activity activity = Platform.CurrentActivity;
+                if (activity == null)
+                    return;
+
+                string host = null;
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(url))
+                        host = AUri.Parse(url)?.Host;
+                }
+                catch
+                {
+                }
+
+                var intent = new Intent(activity, typeof(VaultUnlockActivity));
+                if (!string.IsNullOrEmpty(host))
+                    intent.PutExtra(VaultUnlockActivity.ExtraWebDomain, host);
+                activity.StartActivity(intent);
+            }
+            catch
+            {
+                ShowToast("Could not open vault unlock");
+            }
+        }
+
+        private void FillPasswordEntry(PasswordEntryModel entry)
+        {
+            if (entry == null)
+                return;
+
+            AWebView native = _current?.Native;
+            if (native == null)
+            {
+                ShowToast("No page to fill");
+                return;
+            }
+
+            string user = JsonSerializer.Serialize(entry.Username ?? string.Empty);
+            string pass = JsonSerializer.Serialize(entry.Password ?? string.Empty);
+            string script =
+                "(function(u,p){function setVal(el,v){if(!el)return;el.focus();el.value=v;"
+                + "el.dispatchEvent(new Event('input',{bubbles:true}));"
+                + "el.dispatchEvent(new Event('change',{bubbles:true}));}"
+                + "var user=document.querySelector('input[type=email],input[autocomplete=username],"
+                + "input[name*=user i],input[name*=email i],input[id*=user i],input[id*=email i],"
+                + "input[type=text]:not([type=search]):not([type=hidden])');"
+                + "var passEl=document.querySelector('input[type=password]');"
+                + "setVal(user,u);setVal(passEl,p);return !!(user||passEl);})(" + user + "," + pass + ");";
+
+            try
+            {
+                native.EvaluateJavascript(script, new JsFillCallback(filled =>
+                {
+                    MainThread.BeginInvokeOnMainThread(() =>
+                        ShowToast(filled ? "Filled login" : "No login fields found"));
+                }));
+            }
+            catch
+            {
+                ShowToast("Could not fill login");
+            }
+        }
+
+        private sealed class JsFillCallback : Java.Lang.Object, IValueCallback
+        {
+            private readonly Action<bool> _done;
+
+            public JsFillCallback(Action<bool> done)
+            {
+                _done = done;
+            }
+
+            public void OnReceiveValue(Java.Lang.Object value)
+            {
+                string raw = value?.ToString() ?? string.Empty;
+                _done?.Invoke(raw.Contains("true", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
         private async Task PickAndOpenUrlAsync(string title, List<(string Url, string Label)> entries)
         {
             string[] buttons = entries.Select((e, i) => (i + 1) + ". " + e.Label).ToArray();
@@ -1862,47 +2200,125 @@ namespace SilentNotes.Platforms
 
             try
             {
-                await Navigation.PopModalAsync(false).ConfigureAwait(true);
+                if (Window != null && MauiApplication.Current != null)
+                {
+                    MauiApplication.Current.CloseWindow(Window);
+                    return;
+                }
             }
             catch
             {
             }
+
+            try
+            {
+                Platform.CurrentActivity?.Finish();
+            }
+            catch
+            {
+            }
+
+            await Task.CompletedTask.ConfigureAwait(true);
         }
 
         /// <summary>
-        /// Shows the browser as a modal page on top of the current page. Must run on the UI thread.
+        /// Shows the browser in its own Android task/window. Must run on the UI thread.
         /// </summary>
         public static Task Present() => Present(null, AbroStartAction.None);
 
         /// <summary>
         /// Shows the browser, optionally opening a URL and/or a history/bookmarks sheet.
         /// </summary>
-        public static async Task Present(string url, AbroStartAction startAction)
+        public static Task Present(string url, AbroStartAction startAction)
         {
-            if (MauiApplication.Current?.Windows == null || MauiApplication.Current.Windows.Count == 0)
-                return;
-
             try
             {
-                Page host = MauiApplication.Current.Windows[0].Page;
-                if (host == null)
-                    return;
+                Context context = Platform.CurrentActivity
+                    ?? (Context)global::Android.App.Application.Context;
+                if (context == null)
+                    return Task.CompletedTask;
 
-                AbroBrowserPage existing = host.Navigation.ModalStack.OfType<AbroBrowserPage>().LastOrDefault();
-                if (existing != null)
+                var intent = new Intent(context, typeof(AbroBrowserActivity));
+                if (!string.IsNullOrWhiteSpace(url))
+                    intent.PutExtra(AbroBrowserActivity.ExtraUrl, url);
+                intent.PutExtra(AbroBrowserActivity.ExtraStartAction, (int)startAction);
+                intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.ReorderToFront | ActivityFlags.SingleTop);
+                context.StartActivity(intent);
+            }
+            catch
+            {
+            }
+
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Builds a page for a freshly started <see cref="AbroBrowserActivity"/>.
+        /// </summary>
+        public static AbroBrowserPage CreateFromIntent(Intent intent)
+        {
+            string url = intent?.GetStringExtra(AbroBrowserActivity.ExtraUrl);
+            AbroStartAction action = AbroStartAction.None;
+            if (intent != null && intent.HasExtra(AbroBrowserActivity.ExtraStartAction))
+            {
+                int raw = intent.GetIntExtra(AbroBrowserActivity.ExtraStartAction, 0);
+                if (Enum.IsDefined(typeof(AbroStartAction), raw))
+                    action = (AbroStartAction)raw;
+            }
+
+            var page = new AbroBrowserPage(url, action);
+            bool started = false;
+            page.Appearing += async (s, e) =>
+            {
+                if (started)
+                    return;
+                started = true;
+                try
                 {
-                    if (!string.IsNullOrWhiteSpace(url))
-                        existing.OpenOrNavigate(NormalizeAddress(url) ?? url);
-                    if (startAction == AbroStartAction.History)
-                        await existing.ShowHistoryAsync().ConfigureAwait(true);
-                    else if (startAction == AbroStartAction.Bookmarks)
-                        await existing.ShowBookmarksAsync().ConfigureAwait(true);
-                    return;
+                    await page.ApplyStartActionAsync().ConfigureAwait(true);
                 }
+                catch
+                {
+                }
+            };
+            return page;
+        }
 
-                var page = new AbroBrowserPage(url, startAction);
-                await host.Navigation.PushModalAsync(page, false).ConfigureAwait(true);
-                await page.ApplyStartActionAsync().ConfigureAwait(true);
+        /// <summary>
+        /// Applies a new intent while Abro is already running (SingleTask).
+        /// </summary>
+        public static void HandleIncomingIntent(Intent intent)
+        {
+            if (intent == null)
+                return;
+            if (_liveInstance == null || !_liveInstance.TryGetTarget(out AbroBrowserPage page) || page == null)
+                return;
+
+            string url = intent.GetStringExtra(AbroBrowserActivity.ExtraUrl);
+            AbroStartAction action = AbroStartAction.None;
+            if (intent.HasExtra(AbroBrowserActivity.ExtraStartAction))
+            {
+                int raw = intent.GetIntExtra(AbroBrowserActivity.ExtraStartAction, 0);
+                if (Enum.IsDefined(typeof(AbroStartAction), raw))
+                    action = (AbroStartAction)raw;
+            }
+
+            MainThread.BeginInvokeOnMainThread(() => ApplyIncoming(page, url, action));
+        }
+
+        private static void ApplyIncoming(AbroBrowserPage page, string url, AbroStartAction startAction)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(url))
+                    page.OpenOrNavigate(NormalizeAddress(url) ?? url);
+
+                if (startAction == AbroStartAction.History)
+                    _ = page.ShowHistoryAsync();
+                else if (startAction == AbroStartAction.Bookmarks)
+                    _ = page.ShowBookmarksAsync();
+
+                page.RefreshPasswordSuggestions();
             }
             catch
             {
@@ -1920,6 +2336,8 @@ namespace SilentNotes.Platforms
                     await ShowHistoryAsync().ConfigureAwait(true);
                 else if (_startAction == AbroStartAction.Bookmarks)
                     await ShowBookmarksAsync().ConfigureAwait(true);
+
+                RefreshPasswordSuggestions();
             }
             catch
             {

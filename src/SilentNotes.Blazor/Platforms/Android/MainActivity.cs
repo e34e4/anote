@@ -226,6 +226,8 @@ namespace SilentNotes
         protected override void OnNewIntent(Intent intent)
         {
             base.OnNewIntent(intent);
+            // Keep the latest intent as Activity.Intent so resume / re-delivery paths see extras.
+            Intent = intent;
             _applicationEventHandler.OnNewIntent(intent);
         }
 

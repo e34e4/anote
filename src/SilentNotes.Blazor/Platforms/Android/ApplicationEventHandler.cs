@@ -627,6 +627,16 @@ namespace SilentNotes.Platforms
             {
             }
 
+            // Re-check tab extras after SetIntent(OnNewIntent): covers races where Blazor was
+            // not ready yet, or the activity was only resumed without a separate NewIntent delivery.
+            try
+            {
+                ConsumeTabIntent(activity?.Intent);
+            }
+            catch (Exception)
+            {
+            }
+
             var synchronizationService = Ioc.Instance.GetService<ISynchronizationService>();
             synchronizationService.StopAutoSynchronization(Ioc.Instance);
 

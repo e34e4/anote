@@ -100,7 +100,7 @@
 			this, (recipient, message) => InvokeAsync(() =>
 			{
 				if (TabIntentRequest.Pending != null)
-					NavigationService.NavigateTo(RouteNames.NoteRepository);
+					NavigationService.NavigateTo(RouteNames.NoteRepository, reload: false);
 			}));
 
 		SettingsModel settings = SettingsService.LoadSettingsOrDefault();

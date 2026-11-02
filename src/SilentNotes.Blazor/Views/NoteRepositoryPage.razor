@@ -1181,6 +1181,19 @@
 			}
 		}
 
+		// Prefer applying a pending tab intent over a reload wipe when returning from the
+		// floating quick menu / external launcher.
+		TabIntentRequest pendingTab = TabIntentRequest.Pending;
+		if (pendingTab != null)
+		{
+			TabIntentRequest.Pending = null;
+			SetActiveTab(Math.Clamp(pendingTab.TabIndex, 0, AbroViewModel.TabIndex));
+			_passwordViewModel?.EnsureLoaded();
+			_telegramViewModel?.SyncFromService();
+			InvokeAsync(StateHasChanged);
+			return;
+		}
+
 		if (reload)
 		{
 			// Avoid wiping an in-progress Telegram login when leaving/returning to the app.

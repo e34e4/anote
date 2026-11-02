@@ -24,6 +24,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SilentNotes.Models;
 using SilentNotes.Platforms.Services;
 using SilentNotes.Services;
+using SilentNotes.ViewModels;
 using SilentNotes.Workers;
 using Color = Android.Graphics.Color;
 using Orientation = Android.Widget.Orientation;
@@ -818,7 +819,10 @@ namespace SilentNotes.Platforms
                     allButtons.Add((tab.Icon, label, () =>
                     {
                         HideMenuOverlay();
-                        OpenApplicationAtTab(tabIdx);
+                        if (tabIdx == AbroViewModel.TabIndex)
+                            OpenAbroBrowser();
+                        else
+                            OpenApplicationAtTab(tabIdx);
                     }, false, null));
                 }
 
@@ -1272,7 +1276,10 @@ namespace SilentNotes.Platforms
                 {
                     if (int.TryParse(trimmed.Substring(":tab:".Length), out int tabIdx))
                     {
-                        OpenApplicationAtTab(tabIdx);
+                        if (tabIdx == AbroViewModel.TabIndex)
+                            OpenAbroBrowser();
+                        else
+                            OpenApplicationAtTab(tabIdx);
                         return true;
                     }
                 }
@@ -1787,8 +1794,23 @@ namespace SilentNotes.Platforms
         {
             Intent intent = new Intent(this, typeof(MainActivity));
             intent.PutExtra(ExtraOpenTab, tabIndex);
-            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop);
+            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ReorderToFront);
             StartActivity(intent);
+        }
+
+        private void OpenAbroBrowser()
+        {
+            try
+            {
+                var intent = new Intent(this, typeof(AbroBrowserActivity));
+                intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.ReorderToFront | ActivityFlags.SingleTop);
+                StartActivity(intent);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not open Abro: " + ex);
+                OpenApplicationAtTab(AbroViewModel.TabIndex);
+            }
         }
 
         /// <summary>

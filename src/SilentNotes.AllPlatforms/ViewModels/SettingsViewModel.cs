@@ -671,6 +671,7 @@ namespace SilentNotes.ViewModels
                 (8, "tab_qr"), (9, "tab_rec"), (10, "tab_file"), (11, "tab_dialer"),
                 (12, "tab_camera"), (13, "tab_mail"), (14, "tab_player"), (15, "tab_reader"),
                 (16, "tab_password"), (17, "tab_tg"),
+                (AbroViewModel.TabIndex, "tab_abro"),
             };
             foreach (var tab in tabs)
             {
