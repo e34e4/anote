@@ -512,14 +512,15 @@ namespace SilentNotes.Services
             _pendingLogin.PhoneCodeHash = sent.phone_code_hash;
             _pendingLogin.LastSentCode = sent;
             string typeName = sent.type?.GetType().Name?.Replace("Auth_SentCodeType", string.Empty) ?? "unknown";
+            bool hasNextType = sent.flags.HasFlag(Auth_SentCode.Flags.has_next_type);
             Helpers.Log(3, "A verification code has been sent via " + typeName
-                + (sent.next_type != null ? (" next=" + sent.next_type) : " next=none")
+                + (hasNextType ? (" next=" + sent.next_type) : " next=none")
                 + (sent.timeout > 0 ? (" timeout=" + sent.timeout + "s") : string.Empty));
 
             // App codes often never surface on the same phone. If Telegram offers another method,
             // wait the full API timeout then ResendCode → SMS/call/etc.
             bool shouldAutoResend = allowAutoResend
-                && sent.next_type != null
+                && hasNextType
                 && (sent.type is Auth_SentCodeTypeApp
                     || sent.type is Auth_SentCodeTypeFirebaseSms);
 
@@ -570,7 +571,7 @@ namespace SilentNotes.Services
             string phone = _pendingLogin?.Account?.Phone ?? string.Empty;
             string hint = DescribeSentCode(sent);
             hint += " Number: " + phone + ". [SendCode OK: " + typeName + "]";
-            if (sent.next_type != null)
+            if (sent.flags.HasFlag(Auth_SentCode.Flags.has_next_type))
                 hint += " Tap Resend for " + sent.next_type + ".";
             else if (sent.type is Auth_SentCodeTypeApp)
             {
@@ -2350,7 +2351,7 @@ namespace SilentNotes.Services
             else
                 primary = "Code sent via " + type.GetType().Name.Replace("Auth_SentCodeType", string.Empty) + ".";
 
-            if (sent.next_type != null)
+            if (sent.flags.HasFlag(Auth_SentCode.Flags.has_next_type))
                 primary += " Next method available: " + sent.next_type + " (Resend).";
 
             return primary;

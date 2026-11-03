@@ -97,7 +97,7 @@
 		Icon="@Icons.Material.Filled.Redo" Color="Color.Inherit"
 		title="@LanguageService["redo"]" Disabled="ViewModel.ShoppingModeActive" Edge="Edge.End"/>
 
-	<MudIconButton OnClick="@(() => ToggleShoppingMode())"
+	<MudIconButton OnClick="@(async () => await ToggleShoppingMode())"
 		Icon="@IconService.GetSvgLink(IconNames.KeyboardOffOutline)" Color="Color.Inherit"
 		Class="@Css.BuildClass(new CssClassIf(CssClasses.ButtonToggled, ViewModel.ShoppingModeActive))"
 		title="@LanguageService["note_shopping_mode"]" Edge="Edge.End" />

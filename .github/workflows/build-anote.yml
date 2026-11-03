@@ -37,29 +37,34 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
-    # Read version from csproj
+    # Read version from csproj (PowerShell — avoids Node-based XML actions)
     - name: Read version from csproj
-      id: formatted_version
-      uses: mavrosxristoforos/get-xml-info@1.2.1
-      with:
-        xml-file: "${{ env.Project_Path }}"
-        xpath: //PropertyGroup/ApplicationDisplayVersion
-    - id: output_formatted_version
-      run: echo "version=${{ steps.formatted_version.outputs.info }}" >> $Env:GITHUB_OUTPUT
+      id: output_formatted_version
+      shell: pwsh
+      run: |
+        [xml]$csproj = Get-Content -LiteralPath $env:Project_Path
+        $node = Select-Xml -Xml $csproj -XPath '//PropertyGroup/ApplicationDisplayVersion' |
+          Select-Object -First 1
+        if ($null -eq $node) { throw "ApplicationDisplayVersion not found in $env:Project_Path" }
+        $version = $node.Node.InnerText.Trim()
+        Write-Host "ApplicationDisplayVersion=$version"
+        "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-    # Read increasing android version
     - name: Read version for android
-      id: integer_version
-      uses: mavrosxristoforos/get-xml-info@1.2.1
-      with:
-        xml-file: "${{ env.Project_Path }}"
-        xpath: //PropertyGroup/ApplicationVersion
-    - id: output_integer_version
-      run: echo "version=${{ steps.integer_version.outputs.info }}" >> $Env:GITHUB_OUTPUT
+      id: output_integer_version
+      shell: pwsh
+      run: |
+        [xml]$csproj = Get-Content -LiteralPath $env:Project_Path
+        $node = Select-Xml -Xml $csproj -XPath '//PropertyGroup/ApplicationVersion' |
+          Select-Object -First 1
+        if ($null -eq $node) { throw "ApplicationVersion not found in $env:Project_Path" }
+        $version = $node.Node.InnerText.Trim()
+        Write-Host "ApplicationVersion=$version"
+        "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
   ##############################################################################
   # Android apk builds (android-arm;android-arm64;android-x64)
@@ -75,13 +80,13 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
     # Install the .NET Core workload
     - name: Install .NET Core
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.Dotnet_Version }}
 
@@ -126,7 +131,7 @@ jobs:
 
     # Upload artifacts
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: anote_android
         path: .\artifacts
@@ -145,7 +150,7 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
@@ -162,7 +167,7 @@ jobs:
     # Install the .NET Core workload
     - name: Install .NET
       id: id_setup_dotnet
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.Dotnet_Version }}
 
@@ -216,7 +221,7 @@ jobs:
 
     # Upload artifacts
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: anote_windows_${{ matrix.platform }}
         path: .\windows
@@ -232,12 +237,12 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
     - name: Download msix files
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v7
       with:
         path: downloaddirectory
         pattern: anote_windows_*
@@ -258,14 +263,14 @@ jobs:
       
     # Upload artifacts
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: anote_windows
         path: .\**\*.msixbundle
 
     # Cleanup temporary artifacts
     - name: Cleanup temporary build artifacts
-      uses: geekyeggo/delete-artifact@v5
+      uses: geekyeggo/delete-artifact@v6
       with:
           name: anote_windows_*
 
@@ -285,12 +290,12 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
     - name: Download files for publishing
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v7
       with:
         path: downloaddirectory
         pattern: anote_android*
@@ -302,7 +307,7 @@ jobs:
         Move-Item -Path .\downloaddirectory\*.apk -Destination .\publish
 
     - name: release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       id: create_release
       with:
         draft: false

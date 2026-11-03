@@ -1,0 +1,1 @@
+• Silence CI warnings: Node 24 Actions, await shopping mode, Telegram next_type flags
