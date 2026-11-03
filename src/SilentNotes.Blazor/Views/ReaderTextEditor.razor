@@ -373,7 +373,8 @@
 		__builder.AddAttribute(3, "Size", Size.Medium);
 		__builder.AddAttribute(4, "Color", flash ? Color.Success : Color.Inherit);
 		__builder.AddAttribute(5, "title", title);
-		__builder.AddAttribute(6, "OnClick", EventCallback.Factory.Create(this, async () =>
+		// MudIconButton.OnClick is EventCallback<MouseEventArgs>; a non-generic EventCallback throws InvalidCastException.
+		__builder.AddAttribute(6, "OnClick", EventCallback.Factory.Create<MouseEventArgs>(this, async (MouseEventArgs _) =>
 		{
 			FlashButton(id);
 			await action();
