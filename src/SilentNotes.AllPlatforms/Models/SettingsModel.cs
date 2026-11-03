@@ -107,6 +107,9 @@ namespace SilentNotes.Models
             FilePathTabIndex = 0;
             PlayerPathTabIndex = 0;
             ReaderPathTabIndex = 0;
+            ReaderEditorWordWrap = true;
+            ReaderEditorFontFileName = string.Empty;
+            ReaderEditorFontDisplayName = string.Empty;
         }
 
         /// <summary>
@@ -737,6 +740,25 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("reader_path_tab_index")]
         public int ReaderPathTabIndex { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether the Reader text editor wraps long lines. Default true.
+        /// </summary>
+        [XmlElement("reader_editor_word_wrap")]
+        public bool ReaderEditorWordWrap { get; set; }
+
+        /// <summary>
+        /// Gets or sets the installed custom font file name for the Reader text editor
+        /// (empty = system monospace).
+        /// </summary>
+        [XmlElement("reader_editor_font_file")]
+        public string ReaderEditorFontFileName { get; set; }
+
+        /// <summary>
+        /// Gets or sets the display name of the Reader text editor font (e.g. family name).
+        /// </summary>
+        [XmlElement("reader_editor_font_name")]
+        public string ReaderEditorFontDisplayName { get; set; }
 
         /// <summary>
         /// Gets a value indicating whether a cloud storage is set.

@@ -26,6 +26,19 @@ namespace SilentNotes.Services
         }
 
         /// <inheritdoc/>
+        public async Task<string> GetTextAsync()
+        {
+            try
+            {
+                return await Clipboard.GetTextAsync();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <inheritdoc/>
         public async Task SetImageAsync(byte[] png)
         {
 #if ANDROID

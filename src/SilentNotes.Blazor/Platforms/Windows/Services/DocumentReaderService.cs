@@ -87,5 +87,8 @@ namespace SilentNotes.Platforms.Services
         /// <inheritdoc/>
         public Task OpenExternallyAsync(string uriOrPath = null, string mimeType = null) =>
             Task.CompletedTask;
+
+        /// <inheritdoc/>
+        public Task<bool> SaveActiveTextAsync(string text) => Task.FromResult(false);
     }
 }

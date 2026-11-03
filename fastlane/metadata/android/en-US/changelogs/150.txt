@@ -1,0 +1,3 @@
+• Reader text editor: line numbers, EOL marks, space dots, syntax colors
+• Editor menu: word wrap, custom font from storage, CSV/HTML/Markdown preview
+• Bottom toolbar: copy/paste/cut, select all, jump, copy/cut row

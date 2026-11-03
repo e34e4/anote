@@ -149,8 +149,32 @@
 	{
 		<div class="reader-toolbar">
 			<MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" Color="Color.Inherit"
-				OnClick="() => ViewModel.CloseDocumentCommand.Execute(null)" title="@LanguageService["reader_close"]" />
+				OnClick="CloseDocumentAsync" title="@LanguageService["reader_close"]" />
 			<div class="reader-path" title="@ViewModel.ActiveTitle">@ViewModel.ActiveTitle</div>
+			@if (ViewModel.ActiveDocument.RenderMode == DocumentRenderMode.Text)
+			{
+				<MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" @bind-Open="_editorMenuOpen">
+					<ActivatorContent>
+						<MudIconButton OnClick="@context.ToggleAsync" Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Color="Color.Inherit"
+							title="@LanguageService["reader_editor_menu"]" />
+					</ActivatorContent>
+					<ChildContent>
+						<MudMenuItem OnClick="ToggleWordWrapAsync"
+							Icon="@(_textEditor?.WordWrap == true ? Icons.Material.Filled.Check : Icons.Material.Filled.WrapText)">
+							@LanguageService["reader_editor_word_wrap"]
+						</MudMenuItem>
+						<MudMenuItem OnClick="ChooseFontAsync" Icon="@Icons.Material.Filled.FontDownload">
+							@(_textEditor?.FontMenuLabel ?? LanguageService.LoadTextFmt("reader_editor_font_label", "System"))
+						</MudMenuItem>
+						@if (_textEditor?.CanPreview == true)
+						{
+							<MudMenuItem OnClick="OpenPreview" Icon="@Icons.Material.Filled.Visibility">
+								@LanguageService["reader_editor_preview"]
+							</MudMenuItem>
+						}
+					</ChildContent>
+				</MudMenu>
+			}
 			<MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Color="Color.Inherit"
 				OnClick="OpenExternallyAsync" title="@LanguageService["reader_open_external"]" />
 		</div>
@@ -188,7 +212,7 @@
 			}
 			else
 			{
-				<div class="reader-doc-text">@(ViewModel.ActiveDocument.Text ?? string.Empty)</div>
+				<ReaderTextEditor @ref="_textEditor" Document="ViewModel.ActiveDocument" SettingsChanged="OnEditorSettingsChanged" />
 			}
 		</div>
 	}
@@ -300,6 +324,9 @@
 	[Parameter]
 	public ReaderViewModel ViewModel { get; set; }
 
+	private ReaderTextEditor _textEditor;
+	private bool _editorMenuOpen;
+
 	protected override void OnInitialized()
 	{
 		if (ViewModel != null)
@@ -314,6 +341,41 @@
 	private void OnViewModelStateChanged()
 	{
 		InvokeAsync(StateHasChanged);
+	}
+
+	private async Task CloseDocumentAsync()
+	{
+		if (_textEditor != null)
+			await _textEditor.FlushSaveAsync();
+		ViewModel.CloseDocumentCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task ToggleWordWrapAsync()
+	{
+		_editorMenuOpen = false;
+		if (_textEditor != null)
+			await _textEditor.ToggleWordWrapAsync();
+		StateHasChanged();
+	}
+
+	private async Task ChooseFontAsync()
+	{
+		_editorMenuOpen = false;
+		if (_textEditor != null)
+			await _textEditor.ChooseFontAsync();
+		StateHasChanged();
+	}
+
+	private void OpenPreview()
+	{
+		_editorMenuOpen = false;
+		_textEditor?.OpenPreview();
+	}
+
+	private void OnEditorSettingsChanged()
+	{
+		StateHasChanged();
 	}
 
 	private async Task GrantPermissionAsync()

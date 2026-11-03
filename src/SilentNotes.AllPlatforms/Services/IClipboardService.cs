@@ -21,6 +21,12 @@ namespace SilentNotes.Services
         Task SetTextAsync(string text);
 
         /// <summary>
+        /// Reads plain text from the clipboard, or null when empty / unavailable.
+        /// </summary>
+        /// <returns>Clipboard text or null.</returns>
+        Task<string> GetTextAsync();
+
+        /// <summary>
         /// Copies an image to the clipboard. Not all platforms support copying images, on
         /// unsupported platforms this is a no-op.
         /// </summary>

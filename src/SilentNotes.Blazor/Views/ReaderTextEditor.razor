@@ -1,0 +1,780 @@
+@using System.IO
+@using System.Text
+@using MudBlazor
+@using SilentNotes.Models
+@using SilentNotes.Services
+@using SilentNotes.Workers
+@implements IAsyncDisposable
+@inject IJSRuntime JSRuntime
+@inject ISettingsService SettingsService
+@inject IFilePickerService FilePickerService
+@inject IClipboardService ClipboardService
+@inject IDocumentReaderService DocumentReaderService
+@inject ILanguageService LanguageService
+@inject IFeedbackService FeedbackService
+
+<style type="text/css">
+	.rte-root {
+		display: flex;
+		flex-direction: column;
+		min-height: calc(100vh - 260px);
+	}
+	.rte-body {
+		display: flex;
+		flex: 1 1 auto;
+		min-height: 240px;
+		border: 1px solid #202020;
+		border-radius: 6px;
+		overflow: hidden;
+		background: #050505;
+		position: relative;
+	}
+	.rte-gutter {
+		flex: 0 0 auto;
+		min-width: 2.6rem;
+		padding: 8px 6px 8px 8px;
+		text-align: right;
+		font-family: var(--rte-font, ui-monospace, "Cascadia Code", "Noto Sans Mono", monospace);
+		font-size: 0.9rem;
+		line-height: 1.45;
+		color: #666;
+		background: #0a0a0a;
+		border-right: 1px solid #1a1a1a;
+		overflow: hidden;
+		user-select: none;
+		white-space: pre;
+	}
+	.rte-surface {
+		flex: 1 1 auto;
+		position: relative;
+		overflow: hidden;
+		min-width: 0;
+	}
+	.rte-highlight,
+	.rte-textarea {
+		position: absolute;
+		inset: 0;
+		margin: 0;
+		padding: 8px;
+		border: 0;
+		outline: none;
+		resize: none;
+		font-family: var(--rte-font, ui-monospace, "Cascadia Code", "Noto Sans Mono", monospace);
+		font-size: 0.9rem;
+		line-height: 1.45;
+		tab-size: 4;
+		white-space: pre;
+		overflow: auto;
+		box-sizing: border-box;
+		background: transparent;
+	}
+	.rte-highlight.wrap,
+	.rte-textarea.wrap {
+		white-space: pre-wrap;
+		word-break: break-word;
+		overflow-wrap: anywhere;
+	}
+	.rte-highlight {
+		color: #e8e8e8;
+		pointer-events: none;
+		z-index: 1;
+	}
+	.rte-textarea {
+		z-index: 2;
+		color: transparent;
+		caret-color: #ffffff;
+		-webkit-text-fill-color: transparent;
+	}
+	.rte-space {
+		position: relative;
+	}
+	.rte-space::after {
+		content: "·";
+		position: absolute;
+		left: 0;
+		top: 0;
+		opacity: 0.28;
+		color: #9e9e9e;
+		pointer-events: none;
+	}
+	.rte-tab {
+		position: relative;
+	}
+	.rte-tab::after {
+		content: "→";
+		position: absolute;
+		left: 0;
+		top: 0;
+		opacity: 0.22;
+		color: #9e9e9e;
+		pointer-events: none;
+	}
+	.rte-eol {
+		display: inline-block;
+		width: 0;
+		overflow: visible;
+		color: #5a5a5a;
+		opacity: 0.7;
+		font-size: 0.78em;
+		vertical-align: baseline;
+		pointer-events: none;
+	}
+	.rte-keyword { color: #c792ea; }
+	.rte-string { color: #c3e88d; }
+	.rte-comment { color: #697098; font-style: italic; }
+	.rte-number { color: #f78c6c; }
+	.rte-tag { color: #82aaff; }
+	.rte-toolbar {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		padding: 6px 2px 0 2px;
+		flex-wrap: wrap;
+		border-top: 1px solid #202020;
+		margin-top: 8px;
+	}
+	.rte-preview-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 1200;
+		background: rgba(0,0,0,0.72);
+		display: flex;
+		flex-direction: column;
+		padding: 12px;
+	}
+	.rte-preview-panel {
+		flex: 1 1 auto;
+		background: #111;
+		border: 1px solid #333;
+		border-radius: 8px;
+		overflow: auto;
+		padding: 12px;
+		color: #e8e8e8;
+	}
+	.rte-preview-table {
+		border-collapse: collapse;
+		width: 100%;
+		font-size: 0.85rem;
+	}
+	.rte-preview-table th,
+	.rte-preview-table td {
+		border: 1px solid #333;
+		padding: 4px 8px;
+		text-align: left;
+	}
+	.rte-preview-table th {
+		background: #1a1a1a;
+		color: var(--mud-palette-primary);
+	}
+	.rte-preview-code {
+		background: #1a1a1a;
+		padding: 8px;
+		border-radius: 4px;
+		overflow: auto;
+	}
+	.rte-preview-panel img { max-width: 100%; height: auto; }
+	.rte-preview-panel a { color: #82aaff; }
+</style>
+
+@if (!string.IsNullOrEmpty(_fontFaceCss))
+{
+	<style type="text/css">@((MarkupString)_fontFaceCss)</style>
+}
+
+<div class="rte-root" style="@_rootStyle">
+	<div class="rte-body">
+		<pre @ref="_gutterRef" class="rte-gutter"></pre>
+		<div class="rte-surface">
+			<pre @ref="_highlightRef" class="rte-highlight @(_wordWrap ? "wrap" : null)"></pre>
+			<textarea @ref="_textareaRef"
+				class="rte-textarea @(_wordWrap ? "wrap" : null)"
+				spellcheck="false"
+				autocapitalize="off"
+				autocomplete="off"
+				autocorrect="off"
+				@oninput="OnInput"
+				@onscroll="OnScrollAsync"
+				@onblur="OnBlurAsync"></textarea>
+		</div>
+	</div>
+
+	<div class="rte-toolbar">
+		<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Inherit"
+			OnClick="CopyAsync" title="@LanguageService["reader_editor_copy"]" />
+		<MudIconButton Icon="@Icons.Material.Filled.ContentPaste" Size="Size.Small" Color="Color.Inherit"
+			OnClick="PasteAsync" title="@LanguageService["reader_editor_paste"]" />
+		<MudIconButton Icon="@Icons.Material.Filled.ContentCut" Size="Size.Small" Color="Color.Inherit"
+			OnClick="CutAsync" title="@LanguageService["reader_editor_cut"]" />
+		<MudIconButton Icon="@Icons.Material.Filled.SelectAll" Size="Size.Small" Color="Color.Inherit"
+			OnClick="SelectAllAsync" title="@LanguageService["reader_editor_select_all"]" />
+		<MudIconButton Icon="@Icons.Material.Filled.VerticalAlignBottom" Size="Size.Small" Color="Color.Inherit"
+			OnClick="GoToEndAsync" title="@LanguageService["reader_editor_goto_end"]" />
+		<MudIconButton Icon="@Icons.Material.Filled.VerticalAlignTop" Size="Size.Small" Color="Color.Inherit"
+			OnClick="GoToStartAsync" title="@LanguageService["reader_editor_goto_start"]" />
+		<MudIconButton Icon="@Icons.Material.Filled.CopyAll" Size="Size.Small" Color="Color.Inherit"
+			OnClick="CopyRowAsync" title="@LanguageService["reader_editor_copy_row"]" />
+		<MudIconButton Icon="@Icons.Material.Filled.PlaylistRemove" Size="Size.Small" Color="Color.Inherit"
+			OnClick="CutRowAsync" title="@LanguageService["reader_editor_cut_row"]" />
+	</div>
+</div>
+
+@if (_previewOpen)
+{
+	<div class="rte-preview-overlay">
+		<div class="d-flex align-center mb-2" style="gap:8px;">
+			<MudText Typo="Typo.subtitle1">@LanguageService["reader_editor_preview"]</MudText>
+			<span style="flex:1"></span>
+			<MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Inherit" OnClick="ClosePreview" />
+		</div>
+		<div class="rte-preview-panel">@((MarkupString)_previewHtml)</div>
+	</div>
+}
+
+@code {
+	private ElementReference _textareaRef;
+	private ElementReference _highlightRef;
+	private ElementReference _gutterRef;
+	private IJSObjectReference _module;
+	private string _text = string.Empty;
+	private string _loadedPath;
+	private string _highlightHtml = string.Empty;
+	private string _lineNumbers = "1";
+	private string _language;
+	private bool _wordWrap = true;
+	private bool _dirty;
+	private bool _canSave;
+	private bool _previewOpen;
+	private string _previewHtml = string.Empty;
+	private string _fontFaceCss = string.Empty;
+	private string _fontFamilyCss = string.Empty;
+	private string _fontDisplayName = "System";
+	private string _rootStyle = string.Empty;
+	private CancellationTokenSource _highlightCts;
+	private ReaderPreviewRenderer.PreviewKind _previewKind;
+
+	[Parameter]
+	public DocumentContentModel Document { get; set; }
+
+	[Parameter]
+	public EventCallback SettingsChanged { get; set; }
+
+	public string FontMenuLabel => LanguageService.LoadTextFmt("reader_editor_font_label", _fontDisplayName);
+
+	public bool WordWrap => _wordWrap;
+
+	public bool CanPreview => _previewKind != ReaderPreviewRenderer.PreviewKind.None;
+
+	protected override async Task OnParametersSetAsync()
+	{
+		string path = Document?.Path;
+		string incoming = Document?.Text ?? string.Empty;
+		if (!string.Equals(path, _loadedPath, StringComparison.Ordinal) ||
+			(!_dirty && !string.Equals(incoming, _text, StringComparison.Ordinal)))
+		{
+			if (_dirty && !string.IsNullOrEmpty(_loadedPath))
+				await FlushSaveAsync();
+
+			_loadedPath = path;
+			_text = incoming;
+			_dirty = false;
+			_language = ReaderSyntaxHighlighter.DetectLanguage(Document?.Title ?? path);
+			_previewKind = ReaderPreviewRenderer.Detect(Document?.Title ?? path);
+			_canSave = Document != null &&
+				Document.Kind == DocumentKind.Text &&
+				!string.IsNullOrEmpty(path) &&
+				!Document.WasTruncated;
+			RefreshHighlightImmediate();
+			_needsTextareaSync = true;
+		}
+	}
+
+	private bool _needsTextareaSync;
+
+	protected override async Task OnInitializedAsync()
+	{
+		LoadEditorSettings();
+		await EnsureFontCssAsync();
+	}
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (firstRender)
+		{
+			try
+			{
+				_module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./reader-text-editor.js");
+			}
+			catch
+			{
+			}
+			await PushOverlayAsync();
+		}
+		else if (_needsTextareaSync)
+		{
+			_needsTextareaSync = false;
+			await SetTextareaValueAsync(_text);
+			await PushOverlayAsync();
+		}
+	}
+
+	public async Task FlushSaveAsync()
+	{
+		if (!_dirty || !_canSave)
+			return;
+		bool ok = await DocumentReaderService.SaveActiveTextAsync(_text);
+		if (ok)
+		{
+			_dirty = false;
+			if (Document != null)
+				Document.Text = _text;
+		}
+		else
+		{
+			FeedbackService.ShowToast(LanguageService["reader_editor_save_failed"], FeedbackSeverity.Warning);
+		}
+	}
+
+	public async Task ToggleWordWrapAsync()
+	{
+		_wordWrap = !_wordWrap;
+		PersistEditorSettings();
+		await SettingsChanged.InvokeAsync();
+		StateHasChanged();
+	}
+
+	public async Task ChooseFontAsync()
+	{
+		bool picked = await FilePickerService.PickFile(new[] { ".ttf", ".otf" }, "font/*");
+		if (!picked)
+		{
+			// Offer reset when a custom font is already active.
+			if (!string.IsNullOrEmpty(GetSavedFontFileName()))
+			{
+				var answer = await FeedbackService.ShowMessageAsync(
+					LanguageService["reader_editor_font_reset_q"],
+					LanguageService["reader_editor_font"],
+					MessageBoxButtons.YesNoCancel,
+					false);
+				if (answer == MessageBoxResult.Yes)
+				{
+					ClearCustomFont();
+					await EnsureFontCssAsync();
+					PersistEditorSettings();
+					await SettingsChanged.InvokeAsync();
+					StateHasChanged();
+				}
+			}
+			return;
+		}
+
+		try
+		{
+			byte[] bytes = await FilePickerService.ReadPickedFile();
+			string name = FilePickerService.GetPickedFileName() ?? "custom.ttf";
+			if (!await InstallCustomFontAsync(bytes, name))
+			{
+				FeedbackService.ShowToast(LanguageService["reader_editor_font_failed"], FeedbackSeverity.Warning);
+				return;
+			}
+			await EnsureFontCssAsync();
+			await SettingsChanged.InvokeAsync();
+			StateHasChanged();
+		}
+		catch (Exception)
+		{
+			FeedbackService.ShowToast(LanguageService["reader_editor_font_failed"], FeedbackSeverity.Warning);
+		}
+	}
+
+	public void OpenPreview()
+	{
+		if (!CanPreview)
+			return;
+		_previewHtml = ReaderPreviewRenderer.Render(_previewKind, _text, Document?.Title ?? Document?.Path);
+		_previewOpen = true;
+		StateHasChanged();
+	}
+
+	private void ClosePreview()
+	{
+		_previewOpen = false;
+		StateHasChanged();
+	}
+
+	private async Task OnScrollAsync()
+	{
+		if (_module == null)
+			return;
+		try
+		{
+			await _module.InvokeVoidAsync("syncScroll", _textareaRef, _highlightRef, _gutterRef);
+		}
+		catch
+		{
+		}
+	}
+
+	private async Task OnBlurAsync()
+	{
+		await FlushSaveAsync();
+	}
+
+	private void OnInput(ChangeEventArgs args)
+	{
+		_text = args?.Value?.ToString() ?? string.Empty;
+		_dirty = true;
+		ScheduleHighlight();
+	}
+
+	private void ScheduleHighlight()
+	{
+		_highlightCts?.Cancel();
+		_highlightCts = new CancellationTokenSource();
+		CancellationToken token = _highlightCts.Token;
+		_ = DebouncedHighlightAsync(token);
+	}
+
+	private async Task DebouncedHighlightAsync(CancellationToken token)
+	{
+		try
+		{
+			await Task.Delay(120, token);
+			RefreshHighlightImmediate();
+			await PushOverlayAsync();
+		}
+		catch (TaskCanceledException)
+		{
+		}
+	}
+
+	private void RefreshHighlightImmediate()
+	{
+		_highlightHtml = ReaderSyntaxHighlighter.ToHighlightedHtml(_text, _language);
+		int lines = 1;
+		if (!string.IsNullOrEmpty(_text))
+		{
+			lines = 1;
+			for (int i = 0; i < _text.Length; i++)
+			{
+				if (_text[i] == '\n')
+					lines++;
+			}
+		}
+		var sb = new StringBuilder(lines * 4);
+		for (int i = 1; i <= lines; i++)
+		{
+			if (i > 1)
+				sb.Append('\n');
+			sb.Append(i);
+		}
+		_lineNumbers = sb.ToString();
+	}
+
+	private async Task PushOverlayAsync()
+	{
+		if (_module == null)
+			return;
+		try
+		{
+			await _module.InvokeVoidAsync("setOverlay", _highlightRef, _gutterRef, _highlightHtml, _lineNumbers);
+		}
+		catch
+		{
+		}
+	}
+
+	private async Task SetTextareaValueAsync(string text)
+	{
+		if (_module == null)
+			return;
+		try
+		{
+			await _module.InvokeVoidAsync("setTextareaValue", _textareaRef, text ?? string.Empty);
+		}
+		catch
+		{
+		}
+	}
+
+	private async Task CopyAsync()
+	{
+		var sel = await GetSelectionAsync();
+		string text = string.IsNullOrEmpty(sel.Text) ? _text : sel.Text;
+		if (!string.IsNullOrEmpty(text))
+			await ClipboardService.SetTextAsync(text);
+	}
+
+	private async Task CutAsync()
+	{
+		var sel = await GetSelectionAsync();
+		if (string.IsNullOrEmpty(sel.Text))
+			return;
+		await ClipboardService.SetTextAsync(sel.Text);
+		string next = await ReplaceRangeAsync(sel.Start, sel.End, string.Empty);
+		await ApplyExternalTextAsync(next);
+	}
+
+	private async Task PasteAsync()
+	{
+		string clip = await ClipboardService.GetTextAsync();
+		if (clip == null)
+			return;
+		if (_module == null)
+		{
+			_text += clip;
+			_dirty = true;
+			RefreshHighlightImmediate();
+			return;
+		}
+		string next = await _module.InvokeAsync<string>("insertText", _textareaRef, clip);
+		await ApplyExternalTextAsync(next);
+	}
+
+	private async Task SelectAllAsync()
+	{
+		if (_module != null)
+			await _module.InvokeVoidAsync("selectAll", _textareaRef);
+	}
+
+	private async Task GoToStartAsync()
+	{
+		if (_module != null)
+			await _module.InvokeVoidAsync("goToStart", _textareaRef);
+		await OnScrollAsync();
+	}
+
+	private async Task GoToEndAsync()
+	{
+		if (_module != null)
+			await _module.InvokeVoidAsync("goToEnd", _textareaRef);
+		await OnScrollAsync();
+	}
+
+	private async Task CopyRowAsync()
+	{
+		var line = await GetCurrentLineAsync();
+		await ClipboardService.SetTextAsync(line.Text ?? string.Empty);
+	}
+
+	private async Task CutRowAsync()
+	{
+		var line = await GetCurrentLineAsync();
+		await ClipboardService.SetTextAsync(line.Text ?? string.Empty);
+		int end = line.End;
+		if (end < (_text?.Length ?? 0) && _text[end] == '\n')
+			end++;
+		else if (line.Start > 0 && end == (_text?.Length ?? 0))
+		{
+			// Include preceding newline when cutting the last line.
+			line = new Sel { Start = line.Start > 0 ? line.Start - 1 : line.Start, End = end, Text = line.Text };
+		}
+		string next = await ReplaceRangeAsync(line.Start, end, string.Empty);
+		await ApplyExternalTextAsync(next);
+	}
+
+	private async Task ApplyExternalTextAsync(string next)
+	{
+		_text = next ?? string.Empty;
+		_dirty = true;
+		RefreshHighlightImmediate();
+		await PushOverlayAsync();
+	}
+
+	private async Task<Sel> GetSelectionAsync()
+	{
+		if (_module == null)
+			return new Sel();
+		try
+		{
+			return await _module.InvokeAsync<Sel>("getSelection", _textareaRef);
+		}
+		catch
+		{
+			return new Sel();
+		}
+	}
+
+	private async Task<Sel> GetCurrentLineAsync()
+	{
+		if (_module == null)
+			return new Sel { Text = _text };
+		try
+		{
+			return await _module.InvokeAsync<Sel>("getCurrentLineRange", _textareaRef);
+		}
+		catch
+		{
+			return new Sel { Text = _text };
+		}
+	}
+
+	private async Task<string> ReplaceRangeAsync(int start, int end, string replacement)
+	{
+		if (_module == null)
+			return _text;
+		return await _module.InvokeAsync<string>("replaceRange", _textareaRef, start, end, replacement);
+	}
+
+	private void LoadEditorSettings()
+	{
+		SettingsModel settings = SettingsService.LoadSettingsOrDefault();
+		_wordWrap = settings.ReaderEditorWordWrap;
+		_fontDisplayName = string.IsNullOrWhiteSpace(settings.ReaderEditorFontDisplayName)
+			? "System"
+			: settings.ReaderEditorFontDisplayName;
+	}
+
+	private void PersistEditorSettings()
+	{
+		SettingsModel settings = SettingsService.LoadSettingsOrDefault();
+		settings.ReaderEditorWordWrap = _wordWrap;
+		settings.ReaderEditorFontFileName = GetSavedFontFileName() ?? string.Empty;
+		settings.ReaderEditorFontDisplayName = string.Equals(_fontDisplayName, "System", StringComparison.Ordinal)
+			? string.Empty
+			: _fontDisplayName;
+		SettingsService.TrySaveSettingsToLocalDevice(settings);
+	}
+
+	private async Task EnsureFontCssAsync()
+	{
+		SettingsModel settings = SettingsService.LoadSettingsOrDefault();
+		string fileName = settings.ReaderEditorFontFileName;
+		if (string.IsNullOrWhiteSpace(fileName))
+		{
+			_fontFaceCss = string.Empty;
+			_fontFamilyCss = string.Empty;
+			_fontDisplayName = "System";
+			_rootStyle = string.Empty;
+			return;
+		}
+
+		string path = Path.Combine(GetFontDir(), fileName);
+		if (!File.Exists(path))
+		{
+			_fontFaceCss = string.Empty;
+			_fontFamilyCss = string.Empty;
+			_fontDisplayName = "System";
+			_rootStyle = string.Empty;
+			return;
+		}
+
+		try
+		{
+			byte[] bytes = await File.ReadAllBytesAsync(path);
+			string mime = fileName.EndsWith(".otf", StringComparison.OrdinalIgnoreCase) ? "font/otf" : "font/ttf";
+			string b64 = Convert.ToBase64String(bytes);
+			string family = "ReaderEditorCustomFont";
+			_fontFaceCss = "@font-face{font-family:'" + family + "';src:url(data:" + mime + ";base64," + b64 + ") format('" +
+				(mime.Contains("otf") ? "opentype" : "truetype") + "');font-display:swap;}";
+			_fontFamilyCss = "'" + family + "'";
+			_fontDisplayName = string.IsNullOrWhiteSpace(settings.ReaderEditorFontDisplayName)
+				? Path.GetFileNameWithoutExtension(fileName)
+				: settings.ReaderEditorFontDisplayName;
+			_rootStyle = "--rte-font:" + _fontFamilyCss + ",ui-monospace,monospace;";
+		}
+		catch
+		{
+			_fontFaceCss = string.Empty;
+			_rootStyle = string.Empty;
+			_fontDisplayName = "System";
+		}
+	}
+
+	private async Task<bool> InstallCustomFontAsync(byte[] bytes, string originalName)
+	{
+		if (bytes == null || bytes.Length < 16)
+			return false;
+
+		string ext = Path.GetExtension(originalName);
+		if (!string.Equals(ext, ".ttf", StringComparison.OrdinalIgnoreCase) &&
+			!string.Equals(ext, ".otf", StringComparison.OrdinalIgnoreCase))
+		{
+			ext = ".ttf";
+		}
+
+		string dir = GetFontDir();
+		Directory.CreateDirectory(dir);
+		string safeName = "custom" + ext;
+		string path = Path.Combine(dir, safeName);
+		await File.WriteAllBytesAsync(path, bytes);
+
+		string display = Path.GetFileNameWithoutExtension(originalName);
+		try
+		{
+			using (var ms = new MemoryStream(bytes))
+			{
+				var parser = new FontMetadataParser();
+				List<FontMetadata> meta = await parser.Parse(ms);
+				if (meta != null && meta.Count > 0 && !string.IsNullOrWhiteSpace(meta[0].FontFamily))
+					display = meta[0].FontFamily;
+			}
+		}
+		catch
+		{
+		}
+
+		SettingsModel settings = SettingsService.LoadSettingsOrDefault();
+		settings.ReaderEditorFontFileName = safeName;
+		settings.ReaderEditorFontDisplayName = display;
+		settings.ReaderEditorWordWrap = _wordWrap;
+		SettingsService.TrySaveSettingsToLocalDevice(settings);
+		_fontDisplayName = display;
+		return true;
+	}
+
+	private void ClearCustomFont()
+	{
+		SettingsModel settings = SettingsService.LoadSettingsOrDefault();
+		string file = settings.ReaderEditorFontFileName;
+		settings.ReaderEditorFontFileName = string.Empty;
+		settings.ReaderEditorFontDisplayName = string.Empty;
+		SettingsService.TrySaveSettingsToLocalDevice(settings);
+		_fontDisplayName = "System";
+		try
+		{
+			if (!string.IsNullOrEmpty(file))
+			{
+				string path = Path.Combine(GetFontDir(), file);
+				if (File.Exists(path))
+					File.Delete(path);
+			}
+		}
+		catch
+		{
+		}
+	}
+
+	private string GetSavedFontFileName()
+	{
+		return SettingsService.LoadSettingsOrDefault().ReaderEditorFontFileName;
+	}
+
+	private static string GetFontDir()
+	{
+		return Path.Combine(FileSystem.AppDataDirectory, "reader-fonts");
+	}
+
+	public async ValueTask DisposeAsync()
+	{
+		_highlightCts?.Cancel();
+		try
+		{
+			await FlushSaveAsync();
+		}
+		catch
+		{
+		}
+		if (_module != null)
+		{
+			try { await _module.DisposeAsync(); }
+			catch { }
+		}
+	}
+
+	private sealed class Sel
+	{
+		public int Start { get; set; }
+		public int End { get; set; }
+		public string Text { get; set; }
+	}
+}

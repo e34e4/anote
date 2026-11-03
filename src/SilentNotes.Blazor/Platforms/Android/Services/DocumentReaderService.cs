@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
@@ -336,6 +337,51 @@ namespace SilentNotes.Platforms.Services
             string mime = _appContext.RootActivity.ContentResolver.GetType(uri);
             string name = QueryDisplayName(uri) ?? uri.LastPathSegment;
             await OpenUriAsync(uri.ToString(), mime, name);
+        }
+
+        /// <inheritdoc/>
+        public async Task<bool> SaveActiveTextAsync(string text)
+        {
+            if (_activeDocument == null || _activeDocument.Kind != DocumentKind.Text)
+                return false;
+
+            string path = _activeDocument.Path;
+            if (string.IsNullOrEmpty(path))
+                return false;
+
+            text ??= string.Empty;
+
+            try
+            {
+                if (path.StartsWith("content:", StringComparison.OrdinalIgnoreCase) ||
+                    path.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+                {
+                    AndroidUri uri = AndroidUri.Parse(path);
+                    using (Stream stream = _appContext.Context.ContentResolver.OpenOutputStream(uri, "wt")
+                        ?? _appContext.Context.ContentResolver.OpenOutputStream(uri))
+                    {
+                        if (stream == null)
+                            return false;
+                        using (var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
+                        {
+                            await writer.WriteAsync(text).ConfigureAwait(false);
+                            await writer.FlushAsync().ConfigureAwait(false);
+                        }
+                    }
+                }
+                else
+                {
+                    await File.WriteAllTextAsync(path, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
+                        .ConfigureAwait(false);
+                }
+
+                _activeDocument.Text = text;
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         /// <inheritdoc/>

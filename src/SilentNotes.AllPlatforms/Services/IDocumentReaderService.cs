@@ -72,5 +72,13 @@ namespace SilentNotes.Services
 
         /// <summary>Opens the active (or given) path in an external app.</summary>
         Task OpenExternallyAsync(string uriOrPath = null, string mimeType = null);
+
+        /// <summary>
+        /// Saves plain text back to the active document when it is a writable text file.
+        /// Updates <see cref="ActiveDocument"/>.Text on success.
+        /// </summary>
+        /// <param name="text">Full file contents to write.</param>
+        /// <returns>True when the file was written.</returns>
+        Task<bool> SaveActiveTextAsync(string text);
     }
 }
