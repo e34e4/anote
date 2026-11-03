@@ -267,7 +267,7 @@
 	@if (_showFind)
 	{
 		<div class="rte-panel">
-			<MudTextField @bind-Value="_findQuery" Immediate="true" Dense="true" Variant="Variant.Outlined"
+			<MudTextField @bind-Value="_findQuery" Immediate="true" Margin="Margin.Dense" Variant="Variant.Outlined"
 				Placeholder="@LanguageService["reader_editor_find_ph"]" />
 			<MudCheckBox @bind-Value="_findRegex" Dense="true" Color="Color.Primary">@LanguageService["reader_editor_regex"]</MudCheckBox>
 			<MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="FindNextAsync">@LanguageService["reader_editor_find_next"]</MudButton>
@@ -277,9 +277,9 @@
 	@if (_showReplace)
 	{
 		<div class="rte-panel">
-			<MudTextField @bind-Value="_replaceFind" Immediate="true" Dense="true" Variant="Variant.Outlined"
+			<MudTextField @bind-Value="_replaceFind" Immediate="true" Margin="Margin.Dense" Variant="Variant.Outlined"
 				Placeholder="@LanguageService["reader_editor_replace_find_ph"]" />
-			<MudTextField @bind-Value="_replaceWith" Immediate="true" Dense="true" Variant="Variant.Outlined"
+			<MudTextField @bind-Value="_replaceWith" Immediate="true" Margin="Margin.Dense" Variant="Variant.Outlined"
 				Placeholder="@LanguageService["reader_editor_replace_with_ph"]" />
 			<MudCheckBox @bind-Value="_replaceRegex" Dense="true" Color="Color.Primary">@LanguageService["reader_editor_regex"]</MudCheckBox>
 			<MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" OnClick="ReplaceOneAsync">@LanguageService["reader_editor_replace_one"]</MudButton>
@@ -290,7 +290,7 @@
 	@if (_showGoToLine)
 	{
 		<div class="rte-panel">
-			<MudNumericField @bind-Value="_goToLineNumber" Min="1" Dense="true" Variant="Variant.Outlined" Style="max-width:120px"
+			<MudNumericField @bind-Value="_goToLineNumber" Min="1" Margin="Margin.Dense" Variant="Variant.Outlined" Style="max-width:120px"
 				Placeholder="@LanguageService["reader_editor_goto_line_ph"]" />
 			<MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="GoToLineAsync">@LanguageService["reader_editor_goto_line_go"]</MudButton>
 		</div>
