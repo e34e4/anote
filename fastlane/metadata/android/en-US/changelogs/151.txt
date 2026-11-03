@@ -1,0 +1,3 @@
+• Reader editor: larger toolbar, clearer spaces/EOL, selection and active line
+• Undo/redo (50 steps), save, clear, find/replace with regex, go to line, duplicate line
+• Toolbar icons flash green for 10 seconds after use

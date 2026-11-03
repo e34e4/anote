@@ -1,5 +1,6 @@
 @using System.IO
 @using System.Text
+@using System.Text.RegularExpressions
 @using MudBlazor
 @using SilentNotes.Models
 @using SilentNotes.Services
@@ -43,12 +44,24 @@
 		overflow: hidden;
 		user-select: none;
 		white-space: pre;
+		z-index: 2;
 	}
 	.rte-surface {
 		flex: 1 1 auto;
 		position: relative;
 		overflow: hidden;
 		min-width: 0;
+	}
+	.rte-active-line {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 0;
+		height: 1.45em;
+		background: rgba(80, 160, 80, 0.12);
+		pointer-events: none;
+		z-index: 0;
+		display: none;
 	}
 	.rte-highlight,
 	.rte-textarea {
@@ -85,6 +98,14 @@
 		caret-color: #ffffff;
 		-webkit-text-fill-color: transparent;
 	}
+	.rte-textarea::selection {
+		background: rgba(144, 238, 144, 0.38);
+		color: transparent;
+	}
+	.rte-textarea::-moz-selection {
+		background: rgba(144, 238, 144, 0.38);
+		color: transparent;
+	}
 	.rte-space {
 		position: relative;
 	}
@@ -93,8 +114,8 @@
 		position: absolute;
 		left: 0;
 		top: 0;
-		opacity: 0.28;
-		color: #9e9e9e;
+		opacity: 0.72;
+		color: #b0b0b0;
 		pointer-events: none;
 	}
 	.rte-tab {
@@ -105,17 +126,17 @@
 		position: absolute;
 		left: 0;
 		top: 0;
-		opacity: 0.22;
-		color: #9e9e9e;
+		opacity: 0.55;
+		color: #a8a8a8;
 		pointer-events: none;
 	}
 	.rte-eol {
 		display: inline-block;
 		width: 0;
 		overflow: visible;
-		color: #5a5a5a;
-		opacity: 0.7;
-		font-size: 0.78em;
+		color: #9ccc65;
+		opacity: 0.9;
+		font-size: 0.85em;
 		vertical-align: baseline;
 		pointer-events: none;
 	}
@@ -127,12 +148,31 @@
 	.rte-toolbar {
 		display: flex;
 		align-items: center;
-		gap: 2px;
-		padding: 6px 2px 0 2px;
+		gap: 4px;
+		padding: 8px 2px 0 2px;
 		flex-wrap: wrap;
 		border-top: 1px solid #202020;
 		margin-top: 8px;
 	}
+	.rte-toolbar-btn.mud-icon-button {
+		width: 48px !important;
+		height: 48px !important;
+		padding: 8px !important;
+	}
+	.rte-toolbar-btn.mud-icon-button .mud-icon-root {
+		font-size: 1.85rem !important;
+	}
+	.rte-toolbar-btn.rte-flash .mud-icon-root {
+		color: #7cfc00 !important;
+	}
+	.rte-panel {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 2px 0 2px;
+	}
+	.rte-panel .mud-input-control { flex: 1 1 140px; min-width: 120px; }
 	.rte-preview-overlay {
 		position: fixed;
 		inset: 0;
@@ -185,6 +225,7 @@
 	<div class="rte-body">
 		<pre @ref="_gutterRef" class="rte-gutter"></pre>
 		<div class="rte-surface">
+			<div @ref="_activeLineRef" class="rte-active-line"></div>
 			<pre @ref="_highlightRef" class="rte-highlight @(_wordWrap ? "wrap" : null)"></pre>
 			<textarea @ref="_textareaRef"
 				class="rte-textarea @(_wordWrap ? "wrap" : null)"
@@ -193,29 +234,67 @@
 				autocomplete="off"
 				autocorrect="off"
 				@oninput="OnInput"
+				@onkeyup="OnCaretMovedAsync"
+				@onclick="OnCaretMovedAsync"
+				@onselect="OnCaretMovedAsync"
 				@onscroll="OnScrollAsync"
 				@onblur="OnBlurAsync"></textarea>
 		</div>
 	</div>
 
 	<div class="rte-toolbar">
-		<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Inherit"
-			OnClick="CopyAsync" title="@LanguageService["reader_editor_copy"]" />
-		<MudIconButton Icon="@Icons.Material.Filled.ContentPaste" Size="Size.Small" Color="Color.Inherit"
-			OnClick="PasteAsync" title="@LanguageService["reader_editor_paste"]" />
-		<MudIconButton Icon="@Icons.Material.Filled.ContentCut" Size="Size.Small" Color="Color.Inherit"
-			OnClick="CutAsync" title="@LanguageService["reader_editor_cut"]" />
-		<MudIconButton Icon="@Icons.Material.Filled.SelectAll" Size="Size.Small" Color="Color.Inherit"
-			OnClick="SelectAllAsync" title="@LanguageService["reader_editor_select_all"]" />
-		<MudIconButton Icon="@Icons.Material.Filled.VerticalAlignBottom" Size="Size.Small" Color="Color.Inherit"
-			OnClick="GoToEndAsync" title="@LanguageService["reader_editor_goto_end"]" />
-		<MudIconButton Icon="@Icons.Material.Filled.VerticalAlignTop" Size="Size.Small" Color="Color.Inherit"
-			OnClick="GoToStartAsync" title="@LanguageService["reader_editor_goto_start"]" />
-		<MudIconButton Icon="@Icons.Material.Filled.CopyAll" Size="Size.Small" Color="Color.Inherit"
-			OnClick="CopyRowAsync" title="@LanguageService["reader_editor_copy_row"]" />
-		<MudIconButton Icon="@Icons.Material.Filled.PlaylistRemove" Size="Size.Small" Color="Color.Inherit"
-			OnClick="CutRowAsync" title="@LanguageService["reader_editor_cut_row"]" />
+		@ToolbarButton("copy", Icons.Material.Filled.ContentCopy, LanguageService["reader_editor_copy"], CopyAsync)
+		@ToolbarButton("paste", Icons.Material.Filled.ContentPaste, LanguageService["reader_editor_paste"], PasteAsync)
+		@ToolbarButton("cut", Icons.Material.Filled.ContentCut, LanguageService["reader_editor_cut"], CutAsync)
+		@ToolbarButton("selectall", Icons.Material.Filled.SelectAll, LanguageService["reader_editor_select_all"], SelectAllAsync)
+		@ToolbarButton("gotoend", Icons.Material.Filled.VerticalAlignBottom, LanguageService["reader_editor_goto_end"], GoToEndAsync)
+		@ToolbarButton("gotostart", Icons.Material.Filled.VerticalAlignTop, LanguageService["reader_editor_goto_start"], GoToStartAsync)
+		@ToolbarButton("copyrow", Icons.Material.Filled.CopyAll, LanguageService["reader_editor_copy_row"], CopyRowAsync)
+		@ToolbarButton("cutrow", Icons.Material.Filled.PlaylistRemove, LanguageService["reader_editor_cut_row"], CutRowAsync)
 	</div>
+
+	<div class="rte-toolbar">
+		@ToolbarButton("undo", Icons.Material.Filled.Undo, LanguageService["reader_editor_undo"], UndoAsync)
+		@ToolbarButton("redo", Icons.Material.Filled.Redo, LanguageService["reader_editor_redo"], RedoAsync)
+		@ToolbarButton("save", Icons.Material.Filled.Save, LanguageService["reader_editor_save"], SaveAsync)
+		@ToolbarButton("clear", Icons.Material.Filled.DeleteSweep, LanguageService["reader_editor_clear_all"], ClearAllAsync)
+		@ToolbarButton("find", Icons.Material.Filled.Search, LanguageService["reader_editor_find"], ToggleFindAsync)
+		@ToolbarButton("replace", Icons.Material.Filled.FindReplace, LanguageService["reader_editor_replace"], ToggleReplaceAsync)
+		@ToolbarButton("gotoline", Icons.Material.Filled.FormatListNumbered, LanguageService["reader_editor_goto_line"], ToggleGoToLineAsync)
+		@ToolbarButton("dupline", Icons.Material.Filled.ControlPointDuplicate, LanguageService["reader_editor_dup_line"], DuplicateLineAsync)
+	</div>
+
+	@if (_showFind)
+	{
+		<div class="rte-panel">
+			<MudTextField @bind-Value="_findQuery" Immediate="true" Dense="true" Variant="Variant.Outlined"
+				Placeholder="@LanguageService["reader_editor_find_ph"]" />
+			<MudCheckBox @bind-Value="_findRegex" Dense="true" Color="Color.Primary">@LanguageService["reader_editor_regex"]</MudCheckBox>
+			<MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="FindNextAsync">@LanguageService["reader_editor_find_next"]</MudButton>
+		</div>
+	}
+
+	@if (_showReplace)
+	{
+		<div class="rte-panel">
+			<MudTextField @bind-Value="_replaceFind" Immediate="true" Dense="true" Variant="Variant.Outlined"
+				Placeholder="@LanguageService["reader_editor_replace_find_ph"]" />
+			<MudTextField @bind-Value="_replaceWith" Immediate="true" Dense="true" Variant="Variant.Outlined"
+				Placeholder="@LanguageService["reader_editor_replace_with_ph"]" />
+			<MudCheckBox @bind-Value="_replaceRegex" Dense="true" Color="Color.Primary">@LanguageService["reader_editor_regex"]</MudCheckBox>
+			<MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" OnClick="ReplaceOneAsync">@LanguageService["reader_editor_replace_one"]</MudButton>
+			<MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="ReplaceAllAsync">@LanguageService["reader_editor_replace_all"]</MudButton>
+		</div>
+	}
+
+	@if (_showGoToLine)
+	{
+		<div class="rte-panel">
+			<MudNumericField @bind-Value="_goToLineNumber" Min="1" Dense="true" Variant="Variant.Outlined" Style="max-width:120px"
+				Placeholder="@LanguageService["reader_editor_goto_line_ph"]" />
+			<MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="GoToLineAsync">@LanguageService["reader_editor_goto_line_go"]</MudButton>
+		</div>
+	}
 </div>
 
 @if (_previewOpen)
@@ -231,9 +310,13 @@
 }
 
 @code {
+	private const int MaxHistory = 50;
+	private static readonly TimeSpan FlashDuration = TimeSpan.FromSeconds(10);
+
 	private ElementReference _textareaRef;
 	private ElementReference _highlightRef;
 	private ElementReference _gutterRef;
+	private ElementReference _activeLineRef;
 	private IJSObjectReference _module;
 	private string _text = string.Empty;
 	private string _loadedPath;
@@ -250,7 +333,24 @@
 	private string _fontDisplayName = "System";
 	private string _rootStyle = string.Empty;
 	private CancellationTokenSource _highlightCts;
+	private CancellationTokenSource _historyCts;
 	private ReaderPreviewRenderer.PreviewKind _previewKind;
+	private bool _needsTextareaSync;
+	private readonly List<string> _history = new List<string>();
+	private int _historyIndex = -1;
+	private bool _applyingHistory;
+	private readonly Dictionary<string, DateTime> _flashUntil = new Dictionary<string, DateTime>(StringComparer.Ordinal);
+	private CancellationTokenSource _flashCts;
+
+	private bool _showFind;
+	private bool _showReplace;
+	private bool _showGoToLine;
+	private string _findQuery = string.Empty;
+	private bool _findRegex;
+	private string _replaceFind = string.Empty;
+	private string _replaceWith = string.Empty;
+	private bool _replaceRegex;
+	private int _goToLineNumber = 1;
 
 	[Parameter]
 	public DocumentContentModel Document { get; set; }
@@ -263,6 +363,23 @@
 	public bool WordWrap => _wordWrap;
 
 	public bool CanPreview => _previewKind != ReaderPreviewRenderer.PreviewKind.None;
+
+	private RenderFragment ToolbarButton(string id, string icon, string title, Func<Task> action) => __builder =>
+	{
+		bool flash = IsFlashing(id);
+		__builder.OpenComponent<MudIconButton>(0);
+		__builder.AddAttribute(1, "Class", flash ? "rte-toolbar-btn rte-flash" : "rte-toolbar-btn");
+		__builder.AddAttribute(2, "Icon", icon);
+		__builder.AddAttribute(3, "Size", Size.Medium);
+		__builder.AddAttribute(4, "Color", flash ? Color.Success : Color.Inherit);
+		__builder.AddAttribute(5, "title", title);
+		__builder.AddAttribute(6, "OnClick", EventCallback.Factory.Create(this, async () =>
+		{
+			FlashButton(id);
+			await action();
+		}));
+		__builder.CloseComponent();
+	};
 
 	protected override async Task OnParametersSetAsync()
 	{
@@ -283,12 +400,15 @@
 				Document.Kind == DocumentKind.Text &&
 				!string.IsNullOrEmpty(path) &&
 				!Document.WasTruncated;
+			ClearHistory();
+			PushHistory(_text);
 			RefreshHighlightImmediate();
 			_needsTextareaSync = true;
+			_showFind = false;
+			_showReplace = false;
+			_showGoToLine = false;
 		}
 	}
-
-	private bool _needsTextareaSync;
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -308,18 +428,22 @@
 			{
 			}
 			await PushOverlayAsync();
+			await RefreshActiveLineAsync();
 		}
 		else if (_needsTextareaSync)
 		{
 			_needsTextareaSync = false;
 			await SetTextareaValueAsync(_text);
 			await PushOverlayAsync();
+			await RefreshActiveLineAsync();
 		}
 	}
 
 	public async Task FlushSaveAsync()
 	{
-		if (!_dirty || !_canSave)
+		if (!_canSave)
+			return;
+		if (!_dirty && Document != null && string.Equals(Document.Text, _text, StringComparison.Ordinal))
 			return;
 		bool ok = await DocumentReaderService.SaveActiveTextAsync(_text);
 		if (ok)
@@ -347,7 +471,6 @@
 		bool picked = await FilePickerService.PickFile(new[] { ".ttf", ".otf" }, "font/*");
 		if (!picked)
 		{
-			// Offer reset when a custom font is already active.
 			if (!string.IsNullOrEmpty(GetSavedFontFileName()))
 			{
 				var answer = await FeedbackService.ShowMessageAsync(
@@ -401,13 +524,60 @@
 		StateHasChanged();
 	}
 
+	private bool IsFlashing(string id) =>
+		_flashUntil.TryGetValue(id, out DateTime until) && until > DateTime.UtcNow;
+
+	private void FlashButton(string id)
+	{
+		_flashUntil[id] = DateTime.UtcNow.Add(FlashDuration);
+		StateHasChanged();
+		_flashCts?.Cancel();
+		_flashCts = new CancellationTokenSource();
+		CancellationToken token = _flashCts.Token;
+		_ = ClearFlashLaterAsync(id, token);
+	}
+
+	private async Task ClearFlashLaterAsync(string id, CancellationToken token)
+	{
+		try
+		{
+			await Task.Delay(FlashDuration, token);
+			if (_flashUntil.TryGetValue(id, out DateTime until) && until <= DateTime.UtcNow.AddMilliseconds(50))
+			{
+				_flashUntil.Remove(id);
+				await InvokeAsync(StateHasChanged);
+			}
+		}
+		catch (TaskCanceledException)
+		{
+		}
+	}
+
 	private async Task OnScrollAsync()
 	{
 		if (_module == null)
 			return;
 		try
 		{
-			await _module.InvokeVoidAsync("syncScroll", _textareaRef, _highlightRef, _gutterRef);
+			await _module.InvokeVoidAsync("syncScroll", _textareaRef, _highlightRef, _gutterRef, _activeLineRef);
+		}
+		catch
+		{
+		}
+	}
+
+	private async Task OnCaretMovedAsync()
+	{
+		await RefreshActiveLineAsync();
+	}
+
+	private async Task RefreshActiveLineAsync()
+	{
+		if (_module == null)
+			return;
+		try
+		{
+			await _module.InvokeVoidAsync("updateActiveLine", _textareaRef, _activeLineRef);
 		}
 		catch
 		{
@@ -424,6 +594,8 @@
 		_text = args?.Value?.ToString() ?? string.Empty;
 		_dirty = true;
 		ScheduleHighlight();
+		ScheduleHistorySnapshot();
+		_ = RefreshActiveLineAsync();
 	}
 
 	private void ScheduleHighlight()
@@ -445,6 +617,61 @@
 		catch (TaskCanceledException)
 		{
 		}
+	}
+
+	private void ScheduleHistorySnapshot()
+	{
+		if (_applyingHistory)
+			return;
+		_historyCts?.Cancel();
+		_historyCts = new CancellationTokenSource();
+		CancellationToken token = _historyCts.Token;
+		_ = DebouncedHistoryAsync(token);
+	}
+
+	private async Task DebouncedHistoryAsync(CancellationToken token)
+	{
+		try
+		{
+			await Task.Delay(450, token);
+			PushHistory(_text);
+		}
+		catch (TaskCanceledException)
+		{
+		}
+	}
+
+	private void ClearHistory()
+	{
+		_history.Clear();
+		_historyIndex = -1;
+	}
+
+	private void PushHistory(string text)
+	{
+		if (_applyingHistory)
+			return;
+		text ??= string.Empty;
+		if (_historyIndex >= 0 && _historyIndex < _history.Count &&
+			string.Equals(_history[_historyIndex], text, StringComparison.Ordinal))
+		{
+			return;
+		}
+
+		if (_historyIndex < _history.Count - 1)
+			_history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
+
+		_history.Add(text);
+		while (_history.Count > MaxHistory)
+		{
+			_history.RemoveAt(0);
+		}
+		_historyIndex = _history.Count - 1;
+	}
+
+	private void PushHistoryBeforeMutation()
+	{
+		PushHistory(_text);
 	}
 
 	private void RefreshHighlightImmediate()
@@ -509,9 +736,10 @@
 		var sel = await GetSelectionAsync();
 		if (string.IsNullOrEmpty(sel.Text))
 			return;
+		PushHistoryBeforeMutation();
 		await ClipboardService.SetTextAsync(sel.Text);
 		string next = await ReplaceRangeAsync(sel.Start, sel.End, string.Empty);
-		await ApplyExternalTextAsync(next);
+		await ApplyExternalTextAsync(next, pushHistory: true);
 	}
 
 	private async Task PasteAsync()
@@ -519,21 +747,24 @@
 		string clip = await ClipboardService.GetTextAsync();
 		if (clip == null)
 			return;
+		PushHistoryBeforeMutation();
 		if (_module == null)
 		{
 			_text += clip;
 			_dirty = true;
+			PushHistory(_text);
 			RefreshHighlightImmediate();
 			return;
 		}
 		string next = await _module.InvokeAsync<string>("insertText", _textareaRef, clip);
-		await ApplyExternalTextAsync(next);
+		await ApplyExternalTextAsync(next, pushHistory: true);
 	}
 
 	private async Task SelectAllAsync()
 	{
 		if (_module != null)
 			await _module.InvokeVoidAsync("selectAll", _textareaRef);
+		await RefreshActiveLineAsync();
 	}
 
 	private async Task GoToStartAsync()
@@ -559,25 +790,230 @@
 	private async Task CutRowAsync()
 	{
 		var line = await GetCurrentLineAsync();
+		PushHistoryBeforeMutation();
 		await ClipboardService.SetTextAsync(line.Text ?? string.Empty);
 		int end = line.End;
 		if (end < (_text?.Length ?? 0) && _text[end] == '\n')
 			end++;
 		else if (line.Start > 0 && end == (_text?.Length ?? 0))
 		{
-			// Include preceding newline when cutting the last line.
 			line = new Sel { Start = line.Start > 0 ? line.Start - 1 : line.Start, End = end, Text = line.Text };
 		}
 		string next = await ReplaceRangeAsync(line.Start, end, string.Empty);
-		await ApplyExternalTextAsync(next);
+		await ApplyExternalTextAsync(next, pushHistory: true);
 	}
 
-	private async Task ApplyExternalTextAsync(string next)
+	private async Task UndoAsync()
+	{
+		if (_historyIndex <= 0)
+			return;
+		_historyIndex--;
+		await ApplyHistoryStateAsync(_history[_historyIndex]);
+	}
+
+	private async Task RedoAsync()
+	{
+		if (_historyIndex >= _history.Count - 1)
+			return;
+		_historyIndex++;
+		await ApplyHistoryStateAsync(_history[_historyIndex]);
+	}
+
+	private async Task ApplyHistoryStateAsync(string text)
+	{
+		_applyingHistory = true;
+		try
+		{
+			_text = text ?? string.Empty;
+			_dirty = true;
+			await SetTextareaValueAsync(_text);
+			RefreshHighlightImmediate();
+			await PushOverlayAsync();
+			await RefreshActiveLineAsync();
+		}
+		finally
+		{
+			_applyingHistory = false;
+		}
+	}
+
+	private async Task SaveAsync()
+	{
+		if (!_canSave)
+		{
+			FeedbackService.ShowToast(LanguageService["reader_editor_cannot_save"], FeedbackSeverity.Warning);
+			return;
+		}
+		_dirty = true;
+		await FlushSaveAsync();
+		if (!_dirty)
+			FeedbackService.ShowToast(LanguageService["reader_editor_saved"]);
+	}
+
+	private async Task ClearAllAsync()
+	{
+		PushHistoryBeforeMutation();
+		_text = string.Empty;
+		_dirty = true;
+		PushHistory(_text);
+		await SetTextareaValueAsync(_text);
+		RefreshHighlightImmediate();
+		await PushOverlayAsync();
+		await RefreshActiveLineAsync();
+	}
+
+	private Task ToggleFindAsync()
+	{
+		_showFind = !_showFind;
+		if (_showFind)
+		{
+			_showReplace = false;
+			_showGoToLine = false;
+		}
+		StateHasChanged();
+		return Task.CompletedTask;
+	}
+
+	private Task ToggleReplaceAsync()
+	{
+		_showReplace = !_showReplace;
+		if (_showReplace)
+		{
+			_showFind = false;
+			_showGoToLine = false;
+		}
+		StateHasChanged();
+		return Task.CompletedTask;
+	}
+
+	private Task ToggleGoToLineAsync()
+	{
+		_showGoToLine = !_showGoToLine;
+		if (_showGoToLine)
+		{
+			_showFind = false;
+			_showReplace = false;
+		}
+		StateHasChanged();
+		return Task.CompletedTask;
+	}
+
+	private async Task FindNextAsync()
+	{
+		if (_module == null || string.IsNullOrEmpty(_findQuery))
+			return;
+		if (_findRegex && !IsValidRegex(_findQuery))
+		{
+			FeedbackService.ShowToast(LanguageService["reader_editor_bad_regex"], FeedbackSeverity.Warning);
+			return;
+		}
+		try
+		{
+			var result = await _module.InvokeAsync<FindResult>("findNext", _textareaRef, _findQuery, _findRegex, true);
+			if (result?.Error == "invalid_regex")
+			{
+				FeedbackService.ShowToast(LanguageService["reader_editor_bad_regex"], FeedbackSeverity.Warning);
+				return;
+			}
+			if (result == null || !result.Found)
+				FeedbackService.ShowToast(LanguageService["reader_editor_not_found"], FeedbackSeverity.Info);
+			await RefreshActiveLineAsync();
+			await OnScrollAsync();
+		}
+		catch
+		{
+		}
+	}
+
+	private async Task ReplaceOneAsync()
+	{
+		if (_module == null || string.IsNullOrEmpty(_replaceFind))
+			return;
+		if (_replaceRegex && !IsValidRegex(_replaceFind))
+		{
+			FeedbackService.ShowToast(LanguageService["reader_editor_bad_regex"], FeedbackSeverity.Warning);
+			return;
+		}
+		PushHistoryBeforeMutation();
+		var result = await _module.InvokeAsync<ReplaceResult>("replaceOne", _textareaRef, _replaceFind, _replaceWith ?? string.Empty, _replaceRegex);
+		if (result?.Error == "invalid_regex")
+		{
+			FeedbackService.ShowToast(LanguageService["reader_editor_bad_regex"], FeedbackSeverity.Warning);
+			return;
+		}
+		if (result == null || !result.Changed)
+		{
+			FeedbackService.ShowToast(LanguageService["reader_editor_not_found"], FeedbackSeverity.Info);
+			return;
+		}
+		await ApplyExternalTextAsync(result.Value, pushHistory: true);
+	}
+
+	private async Task ReplaceAllAsync()
+	{
+		if (_module == null || string.IsNullOrEmpty(_replaceFind))
+			return;
+		if (_replaceRegex && !IsValidRegex(_replaceFind))
+		{
+			FeedbackService.ShowToast(LanguageService["reader_editor_bad_regex"], FeedbackSeverity.Warning);
+			return;
+		}
+		PushHistoryBeforeMutation();
+		var result = await _module.InvokeAsync<ReplaceResult>("replaceAll", _textareaRef, _replaceFind, _replaceWith ?? string.Empty, _replaceRegex);
+		if (result?.Error == "invalid_regex")
+		{
+			FeedbackService.ShowToast(LanguageService["reader_editor_bad_regex"], FeedbackSeverity.Warning);
+			return;
+		}
+		if (result == null || !result.Changed)
+		{
+			FeedbackService.ShowToast(LanguageService["reader_editor_not_found"], FeedbackSeverity.Info);
+			return;
+		}
+		await ApplyExternalTextAsync(result.Value, pushHistory: true);
+		FeedbackService.ShowToast(LanguageService.LoadTextFmt("reader_editor_replaced_n", result.Count));
+	}
+
+	private async Task GoToLineAsync()
+	{
+		if (_module == null)
+			return;
+		await _module.InvokeVoidAsync("goToLine", _textareaRef, _goToLineNumber);
+		await RefreshActiveLineAsync();
+		await OnScrollAsync();
+	}
+
+	private async Task DuplicateLineAsync()
+	{
+		if (_module == null)
+			return;
+		PushHistoryBeforeMutation();
+		string next = await _module.InvokeAsync<string>("duplicateLine", _textareaRef);
+		await ApplyExternalTextAsync(next, pushHistory: true);
+	}
+
+	private static bool IsValidRegex(string pattern)
+	{
+		try
+		{
+			_ = new Regex(pattern);
+			return true;
+		}
+		catch (ArgumentException)
+		{
+			return false;
+		}
+	}
+
+	private async Task ApplyExternalTextAsync(string next, bool pushHistory = false)
 	{
 		_text = next ?? string.Empty;
 		_dirty = true;
+		if (pushHistory)
+			PushHistory(_text);
 		RefreshHighlightImmediate();
 		await PushOverlayAsync();
+		await RefreshActiveLineAsync();
 	}
 
 	private async Task<Sel> GetSelectionAsync()
@@ -757,6 +1193,9 @@
 	public async ValueTask DisposeAsync()
 	{
 		_highlightCts?.Cancel();
+		_historyCts?.Cancel();
+		_flashCts?.Cancel();
+		ClearHistory();
 		try
 		{
 			await FlushSaveAsync();
@@ -776,5 +1215,21 @@
 		public int Start { get; set; }
 		public int End { get; set; }
 		public string Text { get; set; }
+	}
+
+	private sealed class FindResult
+	{
+		public bool Found { get; set; }
+		public int Start { get; set; }
+		public int End { get; set; }
+		public string Error { get; set; }
+	}
+
+	private sealed class ReplaceResult
+	{
+		public bool Changed { get; set; }
+		public string Value { get; set; }
+		public int Count { get; set; }
+		public string Error { get; set; }
 	}
 }
