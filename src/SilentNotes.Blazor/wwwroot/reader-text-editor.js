@@ -106,6 +106,100 @@ export function setTextareaValue(textarea, text) {
   }
 }
 
+export function getCaret(textarea) {
+  if (!textarea) return { start: 0, end: 0, scrollTop: 0 };
+  return {
+    start: textarea.selectionStart || 0,
+    end: textarea.selectionEnd || 0,
+    scrollTop: textarea.scrollTop || 0,
+  };
+}
+
+export function setCaret(textarea, start, end, scrollTop) {
+  if (!textarea) return;
+  const len = (textarea.value || "").length;
+  const s = Math.max(0, Math.min(start || 0, len));
+  const e = Math.max(0, Math.min(end == null ? s : end, len));
+  textarea.focus();
+  textarea.setSelectionRange(s, e);
+  if (scrollTop != null && !Number.isNaN(scrollTop)) {
+    textarea.scrollTop = scrollTop;
+  }
+  updateActiveLine(textarea, textarea._rteActiveLine || null);
+}
+
+const listenerState = new WeakMap();
+
+export function attachEditorListeners(textarea, highlight, gutter, activeLine) {
+  if (!textarea || listenerState.has(textarea)) return;
+  textarea._rteActiveLine = activeLine;
+  const onScroll = () => syncScroll(textarea, highlight, gutter, activeLine);
+  const onCaret = () => updateActiveLine(textarea, activeLine);
+  textarea.addEventListener("scroll", onScroll, { passive: true });
+  textarea.addEventListener("keyup", onCaret);
+  textarea.addEventListener("mouseup", onCaret);
+  textarea.addEventListener("select", onCaret);
+  textarea.addEventListener("click", onCaret);
+  textarea.addEventListener("input", onCaret);
+  listenerState.set(textarea, { onScroll, onCaret, highlight, gutter, activeLine });
+}
+
+export function moveCaret(textarea, direction) {
+  if (!textarea) return;
+  const value = textarea.value || "";
+  let pos = textarea.selectionStart || 0;
+  const line = getCurrentLineRange(textarea);
+  const col = pos - line.start;
+
+  if (direction === "left") {
+    pos = Math.max(0, pos - 1);
+  } else if (direction === "right") {
+    pos = Math.min(value.length, pos + 1);
+  } else if (direction === "up") {
+    if (line.start === 0) {
+      pos = 0;
+    } else {
+      let prevEnd = line.start - 1;
+      let prevStart = prevEnd;
+      while (prevStart > 0 && value[prevStart - 1] !== "\n") prevStart--;
+      pos = prevStart + Math.min(col, Math.max(0, prevEnd - prevStart));
+    }
+  } else if (direction === "down") {
+    let nextStart = line.end < value.length && value[line.end] === "\n" ? line.end + 1 : line.end;
+    if (nextStart >= value.length) {
+      pos = value.length;
+    } else {
+      let nextEnd = nextStart;
+      while (nextEnd < value.length && value[nextEnd] !== "\n") nextEnd++;
+      pos = nextStart + Math.min(col, Math.max(0, nextEnd - nextStart));
+    }
+  }
+
+  textarea.focus();
+  textarea.setSelectionRange(pos, pos);
+  const style = window.getComputedStyle(textarea);
+  const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.45;
+  let lineIndex = 0;
+  for (let i = 0; i < pos && i < value.length; i++) {
+    if (value[i] === "\n") lineIndex++;
+  }
+  const targetTop = lineIndex * lineHeight;
+  if (targetTop < textarea.scrollTop) {
+    textarea.scrollTop = targetTop;
+  } else if (targetTop + lineHeight > textarea.scrollTop + textarea.clientHeight) {
+    textarea.scrollTop = targetTop + lineHeight - textarea.clientHeight;
+  }
+  updateActiveLine(textarea, textarea._rteActiveLine || null);
+}
+
+export function goToLineEnd(textarea) {
+  if (!textarea) return;
+  const line = getCurrentLineRange(textarea);
+  textarea.focus();
+  textarea.setSelectionRange(line.end, line.end);
+  updateActiveLine(textarea, textarea._rteActiveLine || null);
+}
+
 export function updateActiveLine(textarea, activeLineEl) {
   if (!textarea || !activeLineEl) return;
   const style = window.getComputedStyle(textarea);

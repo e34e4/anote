@@ -808,6 +808,14 @@ reader_editor_dup_line = Duplicate line
 reader_editor_not_found = Not found.
 reader_editor_bad_regex = Invalid regular expression.
 reader_editor_cannot_save = This document cannot be saved in-app.
+reader_editor_key_left = Left
+reader_editor_key_right = Right
+reader_editor_key_up = Up
+reader_editor_key_down = Down
+reader_editor_key_space = Space
+reader_editor_key_tab = Tab
+reader_editor_key_enter = Enter
+reader_editor_key_end = End of line
 
 tab_password = Password
 password_search = Search passwords…

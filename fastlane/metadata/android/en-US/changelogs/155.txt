@@ -1,0 +1,2 @@
+• Fix Reader editor caret stuck on first line after clicks
+• Add arrow/space/tab/enter/end keys on a third toolbar row

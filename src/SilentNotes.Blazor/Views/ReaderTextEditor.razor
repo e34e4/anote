@@ -59,7 +59,7 @@
 		top: 0;
 		height: 1.45em;
 		background: rgba(80, 160, 80, 0.12);
-		pointer-events: none;
+		pointer-events: none !important;
 		z-index: 0;
 		display: none;
 	}
@@ -89,14 +89,18 @@
 	}
 	.rte-highlight {
 		color: #e8e8e8;
-		pointer-events: none;
+		pointer-events: none !important;
 		z-index: 1;
 	}
+	.rte-gutter {
+		pointer-events: none !important;
+	}
 	.rte-textarea {
-		z-index: 2;
-		color: transparent;
+		z-index: 3;
+		/* Near-invisible ink keeps Android WebView hit-testing/caret placement working. */
+		color: rgba(232, 232, 232, 0.01);
 		caret-color: #ffffff;
-		-webkit-text-fill-color: transparent;
+		-webkit-text-fill-color: rgba(232, 232, 232, 0.01);
 	}
 	.rte-textarea::selection {
 		background: rgba(144, 238, 144, 0.38);
@@ -234,10 +238,6 @@
 				autocomplete="off"
 				autocorrect="off"
 				@oninput="OnInput"
-				@onkeyup="OnCaretMovedAsync"
-				@onclick="OnCaretMovedAsync"
-				@onselect="OnCaretMovedAsync"
-				@onscroll="OnScrollAsync"
 				@onblur="OnBlurAsync"></textarea>
 		</div>
 	</div>
@@ -262,6 +262,17 @@
 		@ToolbarButton("replace", Icons.Material.Filled.FindReplace, LanguageService["reader_editor_replace"], ToggleReplaceAsync)
 		@ToolbarButton("gotoline", Icons.Material.Filled.FormatListNumbered, LanguageService["reader_editor_goto_line"], ToggleGoToLineAsync)
 		@ToolbarButton("dupline", Icons.Material.Filled.ControlPointDuplicate, LanguageService["reader_editor_dup_line"], DuplicateLineAsync)
+	</div>
+
+	<div class="rte-toolbar">
+		@ToolbarButton("left", Icons.Material.Filled.ArrowBack, LanguageService["reader_editor_key_left"], () => MoveCaretAsync("left"))
+		@ToolbarButton("right", Icons.Material.Filled.ArrowForward, LanguageService["reader_editor_key_right"], () => MoveCaretAsync("right"))
+		@ToolbarButton("up", Icons.Material.Filled.ArrowUpward, LanguageService["reader_editor_key_up"], () => MoveCaretAsync("up"))
+		@ToolbarButton("down", Icons.Material.Filled.ArrowDownward, LanguageService["reader_editor_key_down"], () => MoveCaretAsync("down"))
+		@ToolbarButton("space", Icons.Material.Filled.SpaceBar, LanguageService["reader_editor_key_space"], () => InsertKeyAsync(" "))
+		@ToolbarButton("tab", Icons.Material.Filled.KeyboardTab, LanguageService["reader_editor_key_tab"], () => InsertKeyAsync("\t"))
+		@ToolbarButton("enter", Icons.Material.Filled.KeyboardReturn, LanguageService["reader_editor_key_enter"], () => InsertKeyAsync("\n"))
+		@ToolbarButton("lineend", Icons.Material.Filled.LastPage, LanguageService["reader_editor_key_end"], GoToLineEndAsync)
 	</div>
 
 	@if (_showFind)
@@ -335,7 +346,6 @@
 	private CancellationTokenSource _highlightCts;
 	private CancellationTokenSource _historyCts;
 	private ReaderPreviewRenderer.PreviewKind _previewKind;
-	private bool _needsTextareaSync;
 	private readonly List<string> _history = new List<string>();
 	private int _historyIndex = -1;
 	private bool _applyingHistory;
@@ -351,6 +361,12 @@
 	private string _replaceWith = string.Empty;
 	private bool _replaceRegex;
 	private int _goToLineNumber = 1;
+	private bool _shouldRender = true;
+	private bool _listenersAttached;
+	private bool _restoreCaret;
+	private int _restoreCaretStart;
+	private int _restoreCaretEnd;
+	private double _restoreScrollTop;
 
 	[Parameter]
 	public DocumentContentModel Document { get; set; }
@@ -364,6 +380,26 @@
 
 	public bool CanPreview => _previewKind != ReaderPreviewRenderer.PreviewKind.None;
 
+	protected override bool ShouldRender()
+	{
+		if (!_shouldRender)
+			return false;
+		_shouldRender = false;
+		return true;
+	}
+
+	private async Task RequestRenderAsync()
+	{
+		await CaptureCaretAsync();
+		_shouldRender = true;
+		StateHasChanged();
+	}
+
+	private void RequestRender()
+	{
+		_ = RequestRenderAsync();
+	}
+
 	private RenderFragment ToolbarButton(string id, string icon, string title, Func<Task> action) => __builder =>
 	{
 		bool flash = IsFlashing(id);
@@ -376,7 +412,7 @@
 		// MudIconButton.OnClick is EventCallback<MouseEventArgs>; a non-generic EventCallback throws InvalidCastException.
 		__builder.AddAttribute(6, "OnClick", EventCallback.Factory.Create<MouseEventArgs>(this, async (MouseEventArgs _) =>
 		{
-			FlashButton(id);
+			await FlashButtonAsync(id);
 			await action();
 		}));
 		__builder.CloseComponent();
@@ -404,10 +440,10 @@
 			ClearHistory();
 			PushHistory(_text);
 			RefreshHighlightImmediate();
-			_needsTextareaSync = true;
 			_showFind = false;
 			_showReplace = false;
 			_showGoToLine = false;
+			_shouldRender = true;
 		}
 	}
 
@@ -428,16 +464,18 @@
 			catch
 			{
 			}
-			await PushOverlayAsync();
-			await RefreshActiveLineAsync();
 		}
-		else if (_needsTextareaSync)
+
+		// Blazor re-renders wipe DOM mutations on empty <textarea>/<pre>; always restore.
+		await SetTextareaValueAsync(_text);
+		await PushOverlayAsync();
+		if (_restoreCaret)
 		{
-			_needsTextareaSync = false;
-			await SetTextareaValueAsync(_text);
-			await PushOverlayAsync();
-			await RefreshActiveLineAsync();
+			await RestoreCaretAsync();
+			_restoreCaret = false;
 		}
+		await RefreshActiveLineAsync();
+		await EnsureListenersAsync();
 	}
 
 	public async Task FlushSaveAsync()
@@ -464,7 +502,7 @@
 		_wordWrap = !_wordWrap;
 		PersistEditorSettings();
 		await SettingsChanged.InvokeAsync();
-		StateHasChanged();
+		await RequestRenderAsync();
 	}
 
 	public async Task ChooseFontAsync()
@@ -485,7 +523,7 @@
 					await EnsureFontCssAsync();
 					PersistEditorSettings();
 					await SettingsChanged.InvokeAsync();
-					StateHasChanged();
+					await RequestRenderAsync();
 				}
 			}
 			return;
@@ -502,7 +540,7 @@
 			}
 			await EnsureFontCssAsync();
 			await SettingsChanged.InvokeAsync();
-			StateHasChanged();
+			await RequestRenderAsync();
 		}
 		catch (Exception)
 		{
@@ -516,22 +554,22 @@
 			return;
 		_previewHtml = ReaderPreviewRenderer.Render(_previewKind, _text, Document?.Title ?? Document?.Path);
 		_previewOpen = true;
-		StateHasChanged();
+		RequestRender();
 	}
 
 	private void ClosePreview()
 	{
 		_previewOpen = false;
-		StateHasChanged();
+		RequestRender();
 	}
 
 	private bool IsFlashing(string id) =>
 		_flashUntil.TryGetValue(id, out DateTime until) && until > DateTime.UtcNow;
 
-	private void FlashButton(string id)
+	private async Task FlashButtonAsync(string id)
 	{
 		_flashUntil[id] = DateTime.UtcNow.Add(FlashDuration);
-		StateHasChanged();
+		await RequestRenderAsync();
 		_flashCts?.Cancel();
 		_flashCts = new CancellationTokenSource();
 		CancellationToken token = _flashCts.Token;
@@ -546,30 +584,12 @@
 			if (_flashUntil.TryGetValue(id, out DateTime until) && until <= DateTime.UtcNow.AddMilliseconds(50))
 			{
 				_flashUntil.Remove(id);
-				await InvokeAsync(StateHasChanged);
+				await InvokeAsync(RequestRenderAsync);
 			}
 		}
 		catch (TaskCanceledException)
 		{
 		}
-	}
-
-	private async Task OnScrollAsync()
-	{
-		if (_module == null)
-			return;
-		try
-		{
-			await _module.InvokeVoidAsync("syncScroll", _textareaRef, _highlightRef, _gutterRef, _activeLineRef);
-		}
-		catch
-		{
-		}
-	}
-
-	private async Task OnCaretMovedAsync()
-	{
-		await RefreshActiveLineAsync();
 	}
 
 	private async Task RefreshActiveLineAsync()
@@ -585,6 +605,73 @@
 		}
 	}
 
+	private async Task SyncScrollAsync()
+	{
+		if (_module == null)
+			return;
+		try
+		{
+			await _module.InvokeVoidAsync("syncScroll", _textareaRef, _highlightRef, _gutterRef, _activeLineRef);
+		}
+		catch
+		{
+		}
+	}
+
+	private async Task EnsureListenersAsync()
+	{
+		if (_listenersAttached || _module == null)
+			return;
+		try
+		{
+			await _module.InvokeVoidAsync(
+				"attachEditorListeners",
+				_textareaRef,
+				_highlightRef,
+				_gutterRef,
+				_activeLineRef);
+			_listenersAttached = true;
+		}
+		catch
+		{
+		}
+	}
+
+	private async Task CaptureCaretAsync()
+	{
+		if (_module == null)
+			return;
+		try
+		{
+			CaretInfo caret = await _module.InvokeAsync<CaretInfo>("getCaret", _textareaRef);
+			_restoreCaretStart = caret?.Start ?? 0;
+			_restoreCaretEnd = caret?.End ?? _restoreCaretStart;
+			_restoreScrollTop = caret?.ScrollTop ?? 0;
+			_restoreCaret = true;
+		}
+		catch
+		{
+		}
+	}
+
+	private async Task RestoreCaretAsync()
+	{
+		if (_module == null)
+			return;
+		try
+		{
+			await _module.InvokeVoidAsync(
+				"setCaret",
+				_textareaRef,
+				_restoreCaretStart,
+				_restoreCaretEnd,
+				_restoreScrollTop);
+		}
+		catch
+		{
+		}
+	}
+
 	private async Task OnBlurAsync()
 	{
 		await FlushSaveAsync();
@@ -592,11 +679,11 @@
 
 	private void OnInput(ChangeEventArgs args)
 	{
+		// Do not RequestRender here: re-rendering the empty <textarea> resets caret/value.
 		_text = args?.Value?.ToString() ?? string.Empty;
 		_dirty = true;
 		ScheduleHighlight();
 		ScheduleHistorySnapshot();
-		_ = RefreshActiveLineAsync();
 	}
 
 	private void ScheduleHighlight()
@@ -772,14 +859,14 @@
 	{
 		if (_module != null)
 			await _module.InvokeVoidAsync("goToStart", _textareaRef);
-		await OnScrollAsync();
+		await SyncScrollAsync();
 	}
 
 	private async Task GoToEndAsync()
 	{
 		if (_module != null)
 			await _module.InvokeVoidAsync("goToEnd", _textareaRef);
-		await OnScrollAsync();
+		await SyncScrollAsync();
 	}
 
 	private async Task CopyRowAsync()
@@ -863,7 +950,7 @@
 		await RefreshActiveLineAsync();
 	}
 
-	private Task ToggleFindAsync()
+	private async Task ToggleFindAsync()
 	{
 		_showFind = !_showFind;
 		if (_showFind)
@@ -871,11 +958,10 @@
 			_showReplace = false;
 			_showGoToLine = false;
 		}
-		StateHasChanged();
-		return Task.CompletedTask;
+		await RequestRenderAsync();
 	}
 
-	private Task ToggleReplaceAsync()
+	private async Task ToggleReplaceAsync()
 	{
 		_showReplace = !_showReplace;
 		if (_showReplace)
@@ -883,11 +969,10 @@
 			_showFind = false;
 			_showGoToLine = false;
 		}
-		StateHasChanged();
-		return Task.CompletedTask;
+		await RequestRenderAsync();
 	}
 
-	private Task ToggleGoToLineAsync()
+	private async Task ToggleGoToLineAsync()
 	{
 		_showGoToLine = !_showGoToLine;
 		if (_showGoToLine)
@@ -895,8 +980,51 @@
 			_showFind = false;
 			_showReplace = false;
 		}
-		StateHasChanged();
-		return Task.CompletedTask;
+		await RequestRenderAsync();
+	}
+
+	private async Task MoveCaretAsync(string direction)
+	{
+		if (_module == null)
+			return;
+		try
+		{
+			await _module.InvokeVoidAsync("moveCaret", _textareaRef, direction);
+			await _module.InvokeVoidAsync("syncScroll", _textareaRef, _highlightRef, _gutterRef, _activeLineRef);
+		}
+		catch
+		{
+		}
+	}
+
+	private async Task InsertKeyAsync(string text)
+	{
+		PushHistoryBeforeMutation();
+		if (_module == null)
+		{
+			_text += text ?? string.Empty;
+			_dirty = true;
+			PushHistory(_text);
+			RefreshHighlightImmediate();
+			await PushOverlayAsync();
+			return;
+		}
+		string next = await _module.InvokeAsync<string>("insertText", _textareaRef, text ?? string.Empty);
+		await ApplyExternalTextAsync(next, pushHistory: true);
+	}
+
+	private async Task GoToLineEndAsync()
+	{
+		if (_module == null)
+			return;
+		try
+		{
+			await _module.InvokeVoidAsync("goToLineEnd", _textareaRef);
+			await _module.InvokeVoidAsync("syncScroll", _textareaRef, _highlightRef, _gutterRef, _activeLineRef);
+		}
+		catch
+		{
+		}
 	}
 
 	private async Task FindNextAsync()
@@ -919,7 +1047,7 @@
 			if (result == null || !result.Found)
 				FeedbackService.ShowToast(LanguageService["reader_editor_not_found"], FeedbackSeverity.Info);
 			await RefreshActiveLineAsync();
-			await OnScrollAsync();
+			await SyncScrollAsync();
 		}
 		catch
 		{
@@ -981,7 +1109,7 @@
 			return;
 		await _module.InvokeVoidAsync("goToLine", _textareaRef, _goToLineNumber);
 		await RefreshActiveLineAsync();
-		await OnScrollAsync();
+		await SyncScrollAsync();
 	}
 
 	private async Task DuplicateLineAsync()
@@ -1216,6 +1344,13 @@
 		public int Start { get; set; }
 		public int End { get; set; }
 		public string Text { get; set; }
+	}
+
+	private sealed class CaretInfo
+	{
+		public int Start { get; set; }
+		public int End { get; set; }
+		public double ScrollTop { get; set; }
 	}
 
 	private sealed class FindResult
