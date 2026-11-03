@@ -98,6 +98,10 @@ export function setOverlay(highlight, gutter, html, lineNumbers) {
   if (gutter) gutter.textContent = lineNumbers || "1";
 }
 
+export function setStats(statsEl, text) {
+  if (statsEl) statsEl.textContent = text || "";
+}
+
 export function setTextareaValue(textarea, text) {
   if (!textarea) return;
   const next = text ?? "";

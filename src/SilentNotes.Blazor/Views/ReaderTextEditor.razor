@@ -149,14 +149,27 @@
 	.rte-comment { color: #697098; font-style: italic; }
 	.rte-number { color: #f78c6c; }
 	.rte-tag { color: #82aaff; }
+	.rte-stats {
+		font-family: ui-monospace, "Cascadia Code", "Noto Sans Mono", monospace;
+		font-size: 0.72rem;
+		line-height: 1.3;
+		color: #9e9e9e;
+		padding: 6px 4px 0 4px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		border-top: 1px solid #202020;
+		margin-top: 8px;
+		user-select: none;
+	}
 	.rte-toolbar {
 		display: flex;
 		align-items: center;
 		gap: 4px;
 		padding: 8px 2px 0 2px;
 		flex-wrap: wrap;
-		border-top: 1px solid #202020;
-		margin-top: 8px;
+		border-top: none;
+		margin-top: 2px;
 	}
 	.rte-toolbar-btn.mud-icon-button {
 		width: 48px !important;
@@ -241,6 +254,8 @@
 				@onblur="OnBlurAsync"></textarea>
 		</div>
 	</div>
+
+	<div @ref="_statsRef" class="rte-stats" title="@_statsText">@_statsText</div>
 
 	<div class="rte-toolbar">
 		@ToolbarButton("copy", Icons.Material.Filled.ContentCopy, LanguageService["reader_editor_copy"], CopyAsync)
@@ -328,11 +343,14 @@
 	private ElementReference _highlightRef;
 	private ElementReference _gutterRef;
 	private ElementReference _activeLineRef;
+	private ElementReference _statsRef;
 	private IJSObjectReference _module;
 	private string _text = string.Empty;
 	private string _loadedPath;
 	private string _highlightHtml = string.Empty;
 	private string _lineNumbers = "1";
+	private string _statsText = "CH 0  LN 0  BL 0  WO 0  ENC UTF-8";
+	private string _encodingLabel = "UTF-8";
 	private string _language;
 	private bool _wordWrap = true;
 	private bool _dirty;
@@ -431,6 +449,9 @@
 			_loadedPath = path;
 			_text = incoming;
 			_dirty = false;
+			_encodingLabel = string.IsNullOrWhiteSpace(Document?.EncodingName)
+				? "UTF-8"
+				: Document.EncodingName;
 			_language = ReaderSyntaxHighlighter.DetectLanguage(Document?.Title ?? path);
 			_previewKind = ReaderPreviewRenderer.Detect(Document?.Title ?? path);
 			_canSave = Document != null &&
@@ -469,6 +490,7 @@
 		// Blazor re-renders wipe DOM mutations on empty <textarea>/<pre>; always restore.
 		await SetTextareaValueAsync(_text);
 		await PushOverlayAsync();
+		await PushStatsAsync();
 		if (_restoreCaret)
 		{
 			await RestoreCaretAsync();
@@ -682,6 +704,8 @@
 		// Do not RequestRender here: re-rendering the empty <textarea> resets caret/value.
 		_text = args?.Value?.ToString() ?? string.Empty;
 		_dirty = true;
+		RefreshStats();
+		_ = PushStatsAsync();
 		ScheduleHighlight();
 		ScheduleHistorySnapshot();
 	}
@@ -701,6 +725,7 @@
 			await Task.Delay(120, token);
 			RefreshHighlightImmediate();
 			await PushOverlayAsync();
+			await PushStatsAsync();
 		}
 		catch (TaskCanceledException)
 		{
@@ -765,24 +790,94 @@
 	private void RefreshHighlightImmediate()
 	{
 		_highlightHtml = ReaderSyntaxHighlighter.ToHighlightedHtml(_text, _language);
-		int lines = 1;
-		if (!string.IsNullOrEmpty(_text))
-		{
-			lines = 1;
-			for (int i = 0; i < _text.Length; i++)
-			{
-				if (_text[i] == '\n')
-					lines++;
-			}
-		}
-		var sb = new StringBuilder(lines * 4);
-		for (int i = 1; i <= lines; i++)
+		int lines = CountLines(_text);
+		var sb = new StringBuilder(Math.Max(1, lines) * 4);
+		for (int i = 1; i <= Math.Max(1, lines); i++)
 		{
 			if (i > 1)
 				sb.Append('\n');
 			sb.Append(i);
 		}
 		_lineNumbers = sb.ToString();
+		RefreshStats();
+	}
+
+	private void RefreshStats()
+	{
+		string text = _text ?? string.Empty;
+		int chars = text.Length;
+		int lines = CountLines(text);
+		int blank = CountBlankLines(text);
+		int words = CountWords(text);
+		_statsText = string.Format(
+			System.Globalization.CultureInfo.InvariantCulture,
+			"CH {0}  LN {1}  BL {2}  WO {3}  ENC {4}",
+			chars,
+			lines,
+			blank,
+			words,
+			string.IsNullOrWhiteSpace(_encodingLabel) ? "UTF-8" : _encodingLabel);
+	}
+
+	private static int CountLines(string text)
+	{
+		if (string.IsNullOrEmpty(text))
+			return 0;
+		int lines = 1;
+		for (int i = 0; i < text.Length; i++)
+		{
+			if (text[i] == '\n')
+				lines++;
+		}
+		return lines;
+	}
+
+	private static int CountBlankLines(string text)
+	{
+		if (string.IsNullOrEmpty(text))
+			return 0;
+		int blank = 0;
+		int lineStart = 0;
+		for (int i = 0; i <= text.Length; i++)
+		{
+			if (i == text.Length || text[i] == '\n')
+			{
+				bool isBlank = true;
+				for (int j = lineStart; j < i; j++)
+				{
+					if (!char.IsWhiteSpace(text[j]))
+					{
+						isBlank = false;
+						break;
+					}
+				}
+				if (isBlank)
+					blank++;
+				lineStart = i + 1;
+			}
+		}
+		return blank;
+	}
+
+	private static int CountWords(string text)
+	{
+		if (string.IsNullOrEmpty(text))
+			return 0;
+		int words = 0;
+		bool inWord = false;
+		foreach (char c in text)
+		{
+			if (char.IsWhiteSpace(c))
+			{
+				inWord = false;
+			}
+			else if (!inWord)
+			{
+				inWord = true;
+				words++;
+			}
+		}
+		return words;
 	}
 
 	private async Task PushOverlayAsync()
@@ -792,6 +887,19 @@
 		try
 		{
 			await _module.InvokeVoidAsync("setOverlay", _highlightRef, _gutterRef, _highlightHtml, _lineNumbers);
+		}
+		catch
+		{
+		}
+	}
+
+	private async Task PushStatsAsync()
+	{
+		if (_module == null)
+			return;
+		try
+		{
+			await _module.InvokeVoidAsync("setStats", _statsRef, _statsText);
 		}
 		catch
 		{
@@ -917,6 +1025,7 @@
 			await SetTextareaValueAsync(_text);
 			RefreshHighlightImmediate();
 			await PushOverlayAsync();
+			await PushStatsAsync();
 			await RefreshActiveLineAsync();
 		}
 		finally
@@ -947,6 +1056,7 @@
 		await SetTextareaValueAsync(_text);
 		RefreshHighlightImmediate();
 		await PushOverlayAsync();
+		await PushStatsAsync();
 		await RefreshActiveLineAsync();
 	}
 
@@ -1142,6 +1252,7 @@
 			PushHistory(_text);
 		RefreshHighlightImmediate();
 		await PushOverlayAsync();
+		await PushStatsAsync();
 		await RefreshActiveLineAsync();
 	}
 

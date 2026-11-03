@@ -181,7 +181,8 @@ namespace SilentNotes.Workers
         private static void FillText(DocumentContentModel content, Stream stream, string ext)
         {
             content.RenderMode = DocumentRenderMode.Text;
-            string text = ReadTextWithEncoding(stream);
+            (string text, string encodingName) = ReadTextWithEncoding(stream);
+            content.EncodingName = encodingName;
             if (string.Equals(ext, ".rtf", StringComparison.OrdinalIgnoreCase))
                 text = StripRtf(text);
             ApplyTextLimit(content, text);
@@ -197,6 +198,7 @@ namespace SilentNotes.Workers
         private static void FillOffice(DocumentContentModel content, Stream stream, string ext)
         {
             content.RenderMode = DocumentRenderMode.Text;
+            content.EncodingName = "UTF-8";
             string text;
             if (ext.StartsWith(".xls", StringComparison.OrdinalIgnoreCase))
                 text = ExtractXlsx(stream);
@@ -217,6 +219,7 @@ namespace SilentNotes.Workers
             if (string.Equals(ext, ".fb2", StringComparison.OrdinalIgnoreCase))
             {
                 content.RenderMode = DocumentRenderMode.Text;
+                content.EncodingName = "UTF-8";
                 ApplyTextLimit(content, ExtractFb2(stream));
                 return;
             }
@@ -245,30 +248,45 @@ namespace SilentNotes.Workers
             content.Text = text;
         }
 
-        private static string ReadTextWithEncoding(Stream stream)
+        private static (string Text, string EncodingName) ReadTextWithEncoding(Stream stream)
         {
             if (stream.CanSeek)
                 stream.Position = 0;
 
-            // Detect BOM / try UTF-8 then Windows-1251 (common for older local files).
             using (var ms = new MemoryStream())
             {
                 stream.CopyTo(ms);
                 byte[] bytes = ms.ToArray();
                 if (bytes.Length == 0)
-                    return string.Empty;
+                    return (string.Empty, "UTF-8");
+
+                // BOM detection first.
+                if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+                {
+                    return (Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3), "UTF-8 BOM");
+                }
+
+                if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+                {
+                    return (Encoding.Unicode.GetString(bytes), "UTF-16 LE");
+                }
+
+                if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+                {
+                    return (Encoding.BigEndianUnicode.GetString(bytes), "UTF-16 BE");
+                }
 
                 Encoding utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
                 try
                 {
-                    return utf8.GetString(bytes);
+                    return (utf8.GetString(bytes), "UTF-8");
                 }
                 catch (DecoderFallbackException)
                 {
                 }
 
                 // Fallback without CodePages package: ISO-8859-1 preserves byte values.
-                return Encoding.GetEncoding("ISO-8859-1").GetString(bytes);
+                return (Encoding.GetEncoding("ISO-8859-1").GetString(bytes), "ISO-8859-1");
             }
         }
 

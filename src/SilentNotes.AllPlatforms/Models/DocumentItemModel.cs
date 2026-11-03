@@ -79,6 +79,11 @@ namespace SilentNotes.Models
         /// <summary>Plain text body when <see cref="RenderMode"/> is <see cref="DocumentRenderMode.Text"/>.</summary>
         public string Text { get; set; }
 
+        /// <summary>
+        /// Detected or assumed character encoding label for text documents (e.g. UTF-8, ISO-8859-1).
+        /// </summary>
+        public string EncodingName { get; set; }
+
         /// <summary>HTML body when <see cref="RenderMode"/> is <see cref="DocumentRenderMode.Html"/>.</summary>
         public string Html { get; set; }
 
