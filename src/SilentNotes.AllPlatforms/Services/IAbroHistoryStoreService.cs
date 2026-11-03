@@ -22,7 +22,8 @@ namespace SilentNotes.Services
         bool TrySave(AbroHistoryStoreModel store);
 
         /// <summary>
-        /// Merges remote history into the local store (id LWW by VisitedAt, Url keeps newest).
+        /// Merges remote history into the local store without duplicating URLs.
+        /// Existing links are skipped (visit time/title updated only when remote is newer).
         /// </summary>
         bool MergeFromRemote(AbroHistoryStoreModel remote);
 

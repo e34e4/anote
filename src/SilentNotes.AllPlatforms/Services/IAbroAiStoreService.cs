@@ -28,7 +28,8 @@ namespace SilentNotes.Services
         bool TrySave(AbroAiStoreModel store);
 
         /// <summary>
-        /// Merges <paramref name="remote"/> into the local store by entity id and modifiedAt.
+        /// Merges <paramref name="remote"/> into the local store without duplicating providers
+        /// (matched by id or API url+model) or conversations (matched by id). Newer modifiedAt wins.
         /// Saves when local data changed. Returns true when the local store was modified.
         /// </summary>
         bool MergeFromRemote(AbroAiStoreModel remote);

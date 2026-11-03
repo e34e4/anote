@@ -102,31 +102,29 @@ namespace SilentNotes.Services
                     if (string.IsNullOrWhiteSpace(remoteItem.Url))
                         continue;
 
-                    AbroHistoryItemModel localById = local.Items.Find(i => i.Id == remoteItem.Id);
-                    if (localById != null)
+                    // One history row per URL: if the link already exists locally, never add another.
+                    AbroHistoryItemModel localMatch = local.Items.Find(i =>
+                        i.Id == remoteItem.Id
+                        || string.Equals(i.Url, remoteItem.Url, StringComparison.OrdinalIgnoreCase));
+                    if (localMatch != null)
                     {
-                        if (remoteItem.VisitedAt > localById.VisitedAt)
+                        if (remoteItem.VisitedAt > localMatch.VisitedAt)
                         {
-                            remoteItem.CloneTo(localById);
+                            Guid keepId = localMatch.Id;
+                            remoteItem.CloneTo(localMatch);
+                            localMatch.Id = keepId;
+                            localMatch.Url = remoteItem.Url?.Trim() ?? localMatch.Url;
                             changed = true;
                         }
                         continue;
                     }
 
-                    AbroHistoryItemModel localByUrl = local.Items.Find(i =>
-                        string.Equals(i.Url, remoteItem.Url, StringComparison.OrdinalIgnoreCase));
-                    if (localByUrl == null)
-                    {
-                        local.Items.Add(remoteItem);
-                        changed = true;
-                    }
-                    else if (remoteItem.VisitedAt > localByUrl.VisitedAt)
-                    {
-                        // Keep the newer visit; adopt remote id when remote is newer.
-                        remoteItem.CloneTo(localByUrl);
-                        changed = true;
-                    }
+                    local.Items.Add(remoteItem);
+                    changed = true;
                 }
+
+                if (DeduplicateByUrl(local))
+                    changed = true;
 
                 if (!changed)
                     return false;
@@ -193,10 +191,47 @@ namespace SilentNotes.Services
             }
         }
 
+        private static bool DeduplicateByUrl(AbroHistoryStoreModel store)
+        {
+            if (store?.Items == null || store.Items.Count < 2)
+                return false;
+
+            bool changed = false;
+            var kept = new System.Collections.Generic.List<AbroHistoryItemModel>();
+            var seen = new System.Collections.Generic.Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (AbroHistoryItemModel item in store.Items)
+            {
+                if (string.IsNullOrWhiteSpace(item.Url))
+                {
+                    changed = true;
+                    continue;
+                }
+
+                string key = item.Url.Trim();
+                if (seen.TryGetValue(key, out int index))
+                {
+                    changed = true;
+                    AbroHistoryItemModel existing = kept[index];
+                    if (item.VisitedAt > existing.VisitedAt)
+                        item.CloneTo(existing);
+                    continue;
+                }
+
+                item.Url = key;
+                seen[key] = kept.Count;
+                kept.Add(item);
+            }
+
+            if (changed)
+                store.Items = kept;
+            return changed;
+        }
+
         private bool TrySaveUnlocked(AbroHistoryStoreModel store)
         {
             try
             {
+                DeduplicateByUrl(store);
                 store.TrimItems();
                 store.Touch();
                 string directory = Path.GetDirectoryName(StoreFilePath);

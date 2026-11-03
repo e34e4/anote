@@ -22,7 +22,8 @@ namespace SilentNotes.Services
         bool TrySave(AbroBookmarkStoreModel store);
 
         /// <summary>
-        /// Merges remote bookmarks into the local store (id + ModifiedAt LWW, Url dedupe).
+        /// Merges remote bookmarks into the local store without duplicating URLs.
+        /// Existing links are skipped (metadata updated only when remote is newer).
         /// </summary>
         bool MergeFromRemote(AbroBookmarkStoreModel remote);
 

@@ -5,6 +5,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using SilentNotes.Models;
 using SilentNotes.Workers;
@@ -103,18 +104,28 @@ namespace SilentNotes.Services
 
                 foreach (AbroAiProviderModel remoteProvider in remote.Providers ?? new System.Collections.Generic.List<AbroAiProviderModel>())
                 {
-                    AbroAiProviderModel localProvider = local.Providers.Find(p => p.Id == remoteProvider.Id);
-                    if (localProvider == null)
+                    // One provider per API endpoint+model: skip adding when it already exists.
+                    AbroAiProviderModel localProvider = local.Providers.Find(p =>
+                        p.Id == remoteProvider.Id
+                        || SameProviderEndpoint(p, remoteProvider));
+                    if (localProvider != null)
                     {
-                        local.Providers.Add(remoteProvider);
-                        changed = true;
+                        if (remoteProvider.ModifiedAt > localProvider.ModifiedAt)
+                        {
+                            Guid keepId = localProvider.Id;
+                            remoteProvider.CloneTo(localProvider);
+                            localProvider.Id = keepId;
+                            changed = true;
+                        }
+                        continue;
                     }
-                    else if (remoteProvider.ModifiedAt > localProvider.ModifiedAt)
-                    {
-                        remoteProvider.CloneTo(localProvider);
-                        changed = true;
-                    }
+
+                    local.Providers.Add(remoteProvider);
+                    changed = true;
                 }
+
+                if (DeduplicateProviders(local))
+                    changed = true;
 
                 foreach (AbroAiConversationModel remoteConversation in remote.Conversations ?? new System.Collections.Generic.List<AbroAiConversationModel>())
                 {
@@ -170,6 +181,60 @@ namespace SilentNotes.Services
             {
             }
             return fallback;
+        }
+
+        private static bool SameProviderEndpoint(AbroAiProviderModel a, AbroAiProviderModel b)
+        {
+            if (a == null || b == null)
+                return false;
+            return string.Equals(NormalizeEndpoint(a.Url), NormalizeEndpoint(b.Url), StringComparison.OrdinalIgnoreCase)
+                && string.Equals((a.ModelId ?? string.Empty).Trim(), (b.ModelId ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeEndpoint(string url)
+        {
+            return (url ?? string.Empty).Trim().TrimEnd('/');
+        }
+
+        private static bool DeduplicateProviders(AbroAiStoreModel store)
+        {
+            if (store?.Providers == null || store.Providers.Count < 2)
+                return false;
+
+            bool changed = false;
+            var kept = new System.Collections.Generic.List<AbroAiProviderModel>();
+            foreach (AbroAiProviderModel provider in store.Providers)
+            {
+                AbroAiProviderModel existing = kept.Find(p =>
+                    p.Id == provider.Id || SameProviderEndpoint(p, provider));
+                if (existing != null)
+                {
+                    changed = true;
+                    if (provider.ModifiedAt > existing.ModifiedAt)
+                    {
+                        Guid keepId = existing.Id;
+                        provider.CloneTo(existing);
+                        existing.Id = keepId;
+                    }
+                    continue;
+                }
+                kept.Add(provider);
+            }
+
+            if (changed)
+            {
+                // Remap default id if the kept provider replaced a duplicate id.
+                Guid? defaultId = store.DefaultProviderId;
+                if (defaultId.HasValue && kept.Find(p => p.Id == defaultId.Value) == null)
+                {
+                    AbroAiProviderModel match = kept.Find(p =>
+                        store.Providers.Exists(orig =>
+                            orig.Id == defaultId.Value && SameProviderEndpoint(orig, p)));
+                    store.DefaultProviderId = match?.Id ?? kept.FirstOrDefault()?.Id;
+                }
+                store.Providers = kept;
+            }
+            return changed;
         }
 
         private static bool IsWritableDirectory(string path)

@@ -100,30 +100,30 @@ namespace SilentNotes.Services
                     if (string.IsNullOrWhiteSpace(remoteItem.Url))
                         continue;
 
-                    AbroBookmarkItemModel localById = local.Items.Find(i => i.Id == remoteItem.Id);
-                    if (localById != null)
+                    // One bookmark per URL: if the link already exists locally, never add another.
+                    AbroBookmarkItemModel localMatch = local.Items.Find(i =>
+                        i.Id == remoteItem.Id
+                        || string.Equals(i.Url, remoteItem.Url, StringComparison.OrdinalIgnoreCase));
+                    if (localMatch != null)
                     {
-                        if (remoteItem.ModifiedAt > localById.ModifiedAt)
+                        if (remoteItem.ModifiedAt > localMatch.ModifiedAt)
                         {
-                            remoteItem.CloneTo(localById);
+                            // Keep a single entry; refresh metadata from the newer side.
+                            Guid keepId = localMatch.Id;
+                            remoteItem.CloneTo(localMatch);
+                            localMatch.Id = keepId;
+                            localMatch.Url = remoteItem.Url?.Trim() ?? localMatch.Url;
                             changed = true;
                         }
                         continue;
                     }
 
-                    AbroBookmarkItemModel localByUrl = local.Items.Find(i =>
-                        string.Equals(i.Url, remoteItem.Url, StringComparison.OrdinalIgnoreCase));
-                    if (localByUrl == null)
-                    {
-                        local.Items.Add(remoteItem);
-                        changed = true;
-                    }
-                    else if (remoteItem.ModifiedAt > localByUrl.ModifiedAt)
-                    {
-                        remoteItem.CloneTo(localByUrl);
-                        changed = true;
-                    }
+                    local.Items.Add(remoteItem);
+                    changed = true;
                 }
+
+                if (DeduplicateByUrl(local))
+                    changed = true;
 
                 if (!changed)
                     return false;
@@ -163,10 +163,47 @@ namespace SilentNotes.Services
             }
         }
 
+        private static bool DeduplicateByUrl(AbroBookmarkStoreModel store)
+        {
+            if (store?.Items == null || store.Items.Count < 2)
+                return false;
+
+            bool changed = false;
+            var kept = new System.Collections.Generic.List<AbroBookmarkItemModel>();
+            var seen = new System.Collections.Generic.Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (AbroBookmarkItemModel item in store.Items)
+            {
+                if (string.IsNullOrWhiteSpace(item.Url))
+                {
+                    changed = true;
+                    continue;
+                }
+
+                string key = item.Url.Trim();
+                if (seen.TryGetValue(key, out int index))
+                {
+                    changed = true;
+                    AbroBookmarkItemModel existing = kept[index];
+                    if (item.ModifiedAt > existing.ModifiedAt)
+                        item.CloneTo(existing);
+                    continue;
+                }
+
+                item.Url = key;
+                seen[key] = kept.Count;
+                kept.Add(item);
+            }
+
+            if (changed)
+                store.Items = kept;
+            return changed;
+        }
+
         private bool TrySaveUnlocked(AbroBookmarkStoreModel store)
         {
             try
             {
+                DeduplicateByUrl(store);
                 store.Touch();
                 string directory = Path.GetDirectoryName(StoreFilePath);
                 if (!string.IsNullOrEmpty(directory))
