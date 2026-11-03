@@ -9,7 +9,22 @@ using System.Collections.Generic;
 namespace SilentNotes.Models
 {
     /// <summary>
-    /// Local Abro browser settings: search engines and custom font.
+    /// How Abro applies the forced black background / white text theme.
+    /// </summary>
+    public enum AbroBlackMode
+    {
+        /// <summary>Show pages without color modifications.</summary>
+        Disable = 0,
+
+        /// <summary>Force black background and white text on every page.</summary>
+        Enable = 1,
+
+        /// <summary>Force the theme only on listed domains.</summary>
+        Selectively = 2,
+    }
+
+    /// <summary>
+    /// Local Abro browser settings: search engines, custom font, and black mode.
     /// </summary>
     public class AbroBrowserSettingsModel
     {
@@ -30,6 +45,8 @@ namespace SilentNotes.Models
             Engines = new List<AbroSearchEngineModel>();
             UseCustomFont = false;
             CustomFontFileName = string.Empty;
+            BlackMode = AbroBlackMode.Disable;
+            BlackModeDomains = new List<string>();
         }
 
         /// <summary>Gets or sets the store format version.</summary>
@@ -56,12 +73,87 @@ namespace SilentNotes.Models
         /// </summary>
         public string CustomFontFileName { get; set; }
 
+        /// <summary>Gets or sets whether pages get a forced black / white color theme.</summary>
+        public AbroBlackMode BlackMode { get; set; }
+
+        /// <summary>
+        /// Gets or sets hostnames that receive black mode when
+        /// <see cref="BlackMode"/> is <see cref="AbroBlackMode.Selectively"/>.
+        /// </summary>
+        public List<string> BlackModeDomains { get; set; }
+
         /// <summary>
         /// Touches <see cref="UpdatedAt"/> to now (UTC).
         /// </summary>
         public void Touch()
         {
             UpdatedAt = DateTime.UtcNow;
+        }
+
+        /// <summary>
+        /// Returns whether the forced black theme should apply for <paramref name="pageUrl"/>.
+        /// </summary>
+        public bool ShouldApplyBlackMode(string pageUrl)
+        {
+            if (BlackMode == AbroBlackMode.Disable)
+                return false;
+            if (BlackMode == AbroBlackMode.Enable)
+                return true;
+
+            string host = TryGetHost(pageUrl);
+            if (string.IsNullOrEmpty(host))
+                return false;
+
+            host = NormalizeDomain(host);
+            if (BlackModeDomains == null || BlackModeDomains.Count == 0)
+                return false;
+
+            foreach (string entry in BlackModeDomains)
+            {
+                string domain = NormalizeDomain(entry);
+                if (string.IsNullOrEmpty(domain))
+                    continue;
+                if (string.Equals(host, domain, StringComparison.OrdinalIgnoreCase))
+                    return true;
+                if (host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>Normalizes a domain for storage / matching (lowercase, no scheme/path/www).</summary>
+        public static string NormalizeDomain(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            string text = value.Trim().ToLowerInvariant();
+            if (text.StartsWith("https://", StringComparison.Ordinal))
+                text = text.Substring("https://".Length);
+            else if (text.StartsWith("http://", StringComparison.Ordinal))
+                text = text.Substring("http://".Length);
+
+            int slash = text.IndexOf('/');
+            if (slash >= 0)
+                text = text.Substring(0, slash);
+            int colon = text.IndexOf(':');
+            if (colon >= 0)
+                text = text.Substring(0, colon);
+            if (text.StartsWith("www.", StringComparison.Ordinal))
+                text = text.Substring(4);
+            return text.Trim().Trim('.');
+        }
+
+        private static string TryGetHost(string pageUrl)
+        {
+            if (string.IsNullOrWhiteSpace(pageUrl))
+                return null;
+            if (!Uri.TryCreate(pageUrl, UriKind.Absolute, out Uri uri))
+                return null;
+            if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+                return null;
+            return uri.Host;
         }
 
         /// <summary>

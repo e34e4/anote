@@ -61,6 +61,21 @@ namespace SilentNotes.Workers
             if (obj["useCustomFont"] != null && obj["useCustomFont"].GetValueKind() == JsonValueKind.True)
                 settings.UseCustomFont = true;
             settings.CustomFontFileName = GetString(obj, "customFontFileName") ?? string.Empty;
+            settings.BlackMode = ParseBlackMode(GetString(obj, "blackMode"));
+            if (obj["blackModeDomains"] is JsonArray domains)
+            {
+                foreach (JsonNode node in domains)
+                {
+                    if (node == null || node.GetValueKind() != JsonValueKind.String)
+                        continue;
+                    string domain = AbroBrowserSettingsModel.NormalizeDomain(node.GetValue<string>());
+                    if (string.IsNullOrEmpty(domain))
+                        continue;
+                    if (settings.BlackModeDomains.Exists(d => string.Equals(d, domain, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    settings.BlackModeDomains.Add(domain);
+                }
+            }
 
             if (obj["engines"] is JsonArray engines)
             {
@@ -96,9 +111,20 @@ namespace SilentNotes.Workers
                 ["searchSuggestionsEnabled"] = settings.SearchSuggestionsEnabled,
                 ["useCustomFont"] = settings.UseCustomFont,
                 ["customFontFileName"] = settings.CustomFontFileName ?? string.Empty,
+                ["blackMode"] = FormatBlackMode(settings.BlackMode),
             };
             if (settings.DefaultEngineId.HasValue)
                 root["defaultEngineId"] = settings.DefaultEngineId.Value.ToString("D");
+
+            var blackDomains = new JsonArray();
+            foreach (string domain in settings.BlackModeDomains ?? new List<string>())
+            {
+                string normalized = AbroBrowserSettingsModel.NormalizeDomain(domain);
+                if (!string.IsNullOrEmpty(normalized))
+                    blackDomains.Add(normalized);
+            }
+
+            root["blackModeDomains"] = blackDomains;
 
             var engines = new JsonArray();
             foreach (AbroSearchEngineModel engine in settings.Engines ?? new List<AbroSearchEngineModel>())
@@ -114,6 +140,32 @@ namespace SilentNotes.Workers
 
             root["engines"] = engines;
             return root.ToJsonString(WriteOptions);
+        }
+
+        private static AbroBlackMode ParseBlackMode(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return AbroBlackMode.Disable;
+            if (string.Equals(value, "enable", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "enabled", StringComparison.OrdinalIgnoreCase))
+                return AbroBlackMode.Enable;
+            if (string.Equals(value, "selectively", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "selective", StringComparison.OrdinalIgnoreCase))
+                return AbroBlackMode.Selectively;
+            return AbroBlackMode.Disable;
+        }
+
+        private static string FormatBlackMode(AbroBlackMode mode)
+        {
+            switch (mode)
+            {
+                case AbroBlackMode.Enable:
+                    return "enable";
+                case AbroBlackMode.Selectively:
+                    return "selectively";
+                default:
+                    return "disable";
+            }
         }
 
         private static string GetString(JsonObject obj, string name)

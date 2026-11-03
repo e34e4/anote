@@ -46,6 +46,15 @@ namespace SilentNotes.Platforms
             + "html,body{font-family:'AbroCustom',system-ui,sans-serif !important;}\";"
             + "(document.head||document.documentElement).appendChild(s);}catch(e){}})();";
 
+        private const string BlackModeInjectScript =
+            "(function(){try{if(document.getElementById('abro-black-mode'))return;"
+            + "var s=document.createElement('style');s.id='abro-black-mode';"
+            + "s.textContent='html,body,body *{background-color:#000!important;background-image:none!important;"
+            + "color:#fff!important;border-color:#333!important;box-shadow:none!important;}"
+            + "a,a *{color:#9ecbff!important;}"
+            + "input,textarea,select,button{background-color:#111!important;color:#fff!important;}'"
+            + ";(document.head||document.documentElement).appendChild(s);}catch(e){}})();";
+
         private static readonly object HistoryLock = new object();
 
         private readonly List<BrowserTab> _tabs = new List<BrowserTab>();
@@ -920,6 +929,7 @@ namespace SilentNotes.Platforms
 
             RebuildTabStrip();
             InjectCustomFontIfNeeded(tab);
+            InjectBlackModeIfNeeded(tab);
         }
 
         private void InjectCustomFontIfNeeded(BrowserTab tab)
@@ -933,6 +943,26 @@ namespace SilentNotes.Platforms
                 if (native == null)
                     return;
                 native.EvaluateJavascript(CustomFontInjectScript, null);
+            }
+            catch
+            {
+            }
+        }
+
+        private void InjectBlackModeIfNeeded(BrowserTab tab)
+        {
+            try
+            {
+                IAbroBrowserSettingsService settings = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+                if (settings == null)
+                    return;
+                string url = tab?.Url ?? tab?.PendingUrl;
+                if (!settings.ShouldApplyBlackMode(url))
+                    return;
+                AWebView native = tab?.Native;
+                if (native == null)
+                    return;
+                native.EvaluateJavascript(BlackModeInjectScript, null);
             }
             catch
             {
@@ -1155,6 +1185,7 @@ namespace SilentNotes.Platforms
             const string adBlocking = "Ad blocking";
             const string search = "Search";
             const string font = "Font";
+            const string blackMode = "Black mode";
             string choice = await DisplayActionSheetAsync(
                 "Settings",
                 "Cancel",
@@ -1163,7 +1194,8 @@ namespace SilentNotes.Platforms
                 sync,
                 adBlocking,
                 search,
-                font).ConfigureAwait(true);
+                font,
+                blackMode).ConfigureAwait(true);
             switch (choice)
             {
                 case providers:
@@ -1180,6 +1212,9 @@ namespace SilentNotes.Platforms
                     break;
                 case font:
                     await OpenSettingsPageAsync(() => new AbroFontSettingsPage(), "Font").ConfigureAwait(true);
+                    break;
+                case blackMode:
+                    await OpenSettingsPageAsync(() => new AbroBlackModeSettingsPage(), "Black mode").ConfigureAwait(true);
                     break;
             }
         }

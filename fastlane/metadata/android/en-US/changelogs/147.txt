@@ -1,0 +1,2 @@
+• Add Abro Black mode settings (enable, disable, or per-domain)
+• Force black background and white text on matching pages

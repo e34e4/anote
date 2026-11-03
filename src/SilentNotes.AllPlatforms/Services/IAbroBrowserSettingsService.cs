@@ -40,6 +40,11 @@ namespace SilentNotes.Services
         /// <summary>Gets whether a custom font should be injected into pages.</summary>
         bool UseCustomFont { get; }
 
+        /// <summary>
+        /// Returns whether the forced black / white theme should apply for the given page URL.
+        /// </summary>
+        bool ShouldApplyBlackMode(string pageUrl);
+
         /// <summary>Gets the absolute path of the copied custom font file, or null.</summary>
         string GetCustomFontPath();
 

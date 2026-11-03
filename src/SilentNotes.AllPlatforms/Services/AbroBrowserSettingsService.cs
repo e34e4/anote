@@ -169,6 +169,12 @@ namespace SilentNotes.Services
         }
 
         /// <inheritdoc/>
+        public bool ShouldApplyBlackMode(string pageUrl)
+        {
+            return LoadOrDefault().ShouldApplyBlackMode(pageUrl);
+        }
+
+        /// <inheritdoc/>
         public string GetCustomFontPath()
         {
             AbroBrowserSettingsModel settings = LoadOrDefault();

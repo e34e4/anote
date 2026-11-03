@@ -5,7 +5,9 @@
 
 using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotesTest.Workers
 {
@@ -24,6 +26,44 @@ namespace SilentNotesTest.Workers
                 "[{\"phrase\":\"cats\"},{\"phrase\":\"cathode\"}]", 8);
             Assert.AreEqual(2, ddg.Count);
             Assert.AreEqual("cats", ddg[0]);
+        }
+
+        [TestMethod]
+        public void BlackModeAppliesByModeAndDomainList()
+        {
+            var settings = new AbroBrowserSettingsModel
+            {
+                BlackMode = AbroBlackMode.Disable,
+            };
+            Assert.IsFalse(settings.ShouldApplyBlackMode("https://example.com/"));
+
+            settings.BlackMode = AbroBlackMode.Enable;
+            Assert.IsTrue(settings.ShouldApplyBlackMode("https://example.com/page"));
+
+            settings.BlackMode = AbroBlackMode.Selectively;
+            settings.BlackModeDomains.Add("example.com");
+            Assert.IsTrue(settings.ShouldApplyBlackMode("https://www.example.com/a"));
+            Assert.IsTrue(settings.ShouldApplyBlackMode("https://news.example.com/"));
+            Assert.IsFalse(settings.ShouldApplyBlackMode("https://other.com/"));
+        }
+
+        [TestMethod]
+        public void SerializesAndParsesBlackModeSettings()
+        {
+            var settings = new AbroBrowserSettingsModel
+            {
+                BlackMode = AbroBlackMode.Selectively,
+            };
+            settings.BlackModeDomains.Add("Example.COM");
+            settings.BlackModeDomains.Add("news.site.org");
+
+            string json = AbroBrowserSettingsFormat.Serialize(settings);
+            AbroBrowserSettingsModel parsed = AbroBrowserSettingsFormat.Parse(json);
+            Assert.IsNotNull(parsed);
+            Assert.AreEqual(AbroBlackMode.Selectively, parsed.BlackMode);
+            Assert.AreEqual(2, parsed.BlackModeDomains.Count);
+            Assert.AreEqual("example.com", parsed.BlackModeDomains[0]);
+            Assert.AreEqual("news.site.org", parsed.BlackModeDomains[1]);
         }
     }
 }
