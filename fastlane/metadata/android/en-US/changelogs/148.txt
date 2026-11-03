@@ -1,0 +1,2 @@
+• Sync Abro bookmarks, history, and AI providers over Booky WebDAV
+• Add Sync to Abro three-dots menu; menu layout is now two columns

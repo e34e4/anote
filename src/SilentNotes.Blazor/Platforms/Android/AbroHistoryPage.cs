@@ -5,14 +5,14 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using Android.Content;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
+using SilentNotes.Models;
+using SilentNotes.Services;
 
 namespace SilentNotes.Platforms
 {
@@ -21,18 +21,18 @@ namespace SilentNotes.Platforms
     /// </summary>
     internal sealed class AbroHistoryPage : ContentPage
     {
-        private readonly string _historyFile;
+        private readonly IAbroHistoryStoreService _storeService;
+        private readonly Action _onChanged;
         private readonly Action<string> _openUrl;
-        private readonly object _historyLock;
         private readonly VerticalStackLayout _listStack;
         private readonly Label _emptyLabel;
 
-        public AbroHistoryPage(string historyFile, object historyLock, Action<string> openUrl)
+        public AbroHistoryPage(IAbroHistoryStoreService storeService, Action<string> openUrl, Action onChanged = null)
         {
             BackgroundColor = Colors.Black;
-            _historyFile = historyFile;
-            _historyLock = historyLock ?? new object();
+            _storeService = storeService;
             _openUrl = openUrl;
+            _onChanged = onChanged;
 
             Button backButton = CreateIconButton("←", 22);
             backButton.Clicked += async (s, e) => await CloseAsync().ConfigureAwait(true);
@@ -194,23 +194,17 @@ namespace SilentNotes.Platforms
             var entries = new List<(string Url, string Title)>();
             try
             {
-                if (!File.Exists(_historyFile))
+                if (_storeService == null)
                     return entries;
 
-                string[] lines;
-                lock (_historyLock)
-                    lines = File.ReadAllLines(_historyFile, Encoding.UTF8);
-
-                var seen = new HashSet<string>(StringComparer.Ordinal);
-                foreach (string line in lines.Reverse())
+                AbroHistoryStoreModel store = _storeService.LoadOrDefault();
+                foreach (AbroHistoryItemModel item in store.Items
+                    .OrderByDescending(i => i.VisitedAt)
+                    .Take(200))
                 {
-                    string[] parts = line.Split('\t');
-                    if (parts.Length < 2 || string.IsNullOrWhiteSpace(parts[1]) || !seen.Add(parts[1]))
+                    if (string.IsNullOrWhiteSpace(item.Url))
                         continue;
-                    string title = parts.Length > 2 ? parts[2] : string.Empty;
-                    entries.Add((parts[1], title));
-                    if (entries.Count >= 200)
-                        break;
+                    entries.Add((item.Url, item.Title ?? string.Empty));
                 }
             }
             catch
@@ -232,18 +226,8 @@ namespace SilentNotes.Platforms
 
             try
             {
-                lock (_historyLock)
-                {
-                    if (!File.Exists(_historyFile))
-                        return;
-                    string[] lines = File.ReadAllLines(_historyFile, Encoding.UTF8);
-                    IEnumerable<string> kept = lines.Where(line =>
-                    {
-                        string[] parts = line.Split('\t');
-                        return parts.Length < 2 || !string.Equals(parts[1], url, StringComparison.Ordinal);
-                    });
-                    File.WriteAllLines(_historyFile, kept, Encoding.UTF8);
-                }
+                _storeService?.RemoveByUrl(url);
+                _onChanged?.Invoke();
             }
             catch
             {
@@ -264,11 +248,8 @@ namespace SilentNotes.Platforms
 
             try
             {
-                lock (_historyLock)
-                {
-                    if (File.Exists(_historyFile))
-                        File.WriteAllText(_historyFile, string.Empty, Encoding.UTF8);
-                }
+                _storeService?.ClearAll();
+                _onChanged?.Invoke();
             }
             catch
             {

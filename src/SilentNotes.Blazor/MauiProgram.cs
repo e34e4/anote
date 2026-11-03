@@ -133,6 +133,16 @@ public static class MauiProgram
             serviceProvider.GetService<ISettingsService>(),
             serviceProvider.GetService<IAbroAiStoreService>(),
             serviceProvider.GetService<ICloudStorageClientFactory>()));
+        services.AddSingleton<IAbroBookmarkStoreService>((serviceProvider) => new AbroBookmarkStoreService());
+        services.AddSingleton<IAbroBookmarkSyncService>((serviceProvider) => new AbroBookmarkSyncService(
+            serviceProvider.GetService<ISettingsService>(),
+            serviceProvider.GetService<IAbroBookmarkStoreService>(),
+            serviceProvider.GetService<ICloudStorageClientFactory>()));
+        services.AddSingleton<IAbroHistoryStoreService>((serviceProvider) => new AbroHistoryStoreService());
+        services.AddSingleton<IAbroHistorySyncService>((serviceProvider) => new AbroHistorySyncService(
+            serviceProvider.GetService<ISettingsService>(),
+            serviceProvider.GetService<IAbroHistoryStoreService>(),
+            serviceProvider.GetService<ICloudStorageClientFactory>()));
         services.AddSingleton<AbroAiChatClient>((serviceProvider) => new AbroAiChatClient());
         services.AddSingleton<IAbroAdBlockService>((serviceProvider) => new AbroAdBlockService());
         services.AddSingleton<IAbroBrowserSettingsService>((serviceProvider) => new AbroBrowserSettingsService());

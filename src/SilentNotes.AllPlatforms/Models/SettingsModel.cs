@@ -69,6 +69,10 @@ namespace SilentNotes.Models
             PasswordVaultSyncRemotePath = "anote_password_vault.anote";
             AbroAiSyncEnabled = false;
             AbroAiSyncRemotePath = "abro/ai.json";
+            AbroBookmarksSyncEnabled = false;
+            AbroBookmarksSyncRemotePath = "abro/bookmarks.json";
+            AbroHistorySyncEnabled = false;
+            AbroHistorySyncRemotePath = "abro/history.json";
             BookySyncUsername = string.Empty;
             BookySyncPassword = string.Empty;
             ScreenshotFormat = "jpg";
@@ -464,6 +468,34 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("abro_ai_sync_remote_path")]
         public string AbroAiSyncRemotePath { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether Abro browser bookmarks should be synchronized
+        /// over the Booky WebDAV credentials.
+        /// </summary>
+        [XmlElement("abro_bookmarks_sync_enabled")]
+        public bool AbroBookmarksSyncEnabled { get; set; }
+
+        /// <summary>
+        /// Gets or sets the path of the Abro bookmarks file on the Booky WebDAV server, relative
+        /// to <see cref="BookySyncUrl"/>. Defaults to "abro/bookmarks.json".
+        /// </summary>
+        [XmlElement("abro_bookmarks_sync_remote_path")]
+        public string AbroBookmarksSyncRemotePath { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether Abro browsing history should be synchronized
+        /// over the Booky WebDAV credentials.
+        /// </summary>
+        [XmlElement("abro_history_sync_enabled")]
+        public bool AbroHistorySyncEnabled { get; set; }
+
+        /// <summary>
+        /// Gets or sets the path of the Abro history file on the Booky WebDAV server, relative
+        /// to <see cref="BookySyncUrl"/>. Defaults to "abro/history.json".
+        /// </summary>
+        [XmlElement("abro_history_sync_remote_path")]
+        public string AbroHistorySyncRemotePath { get; set; }
 
         /// <summary>
         /// Gets or sets the user name for the WebDAV server of the Booky sync.

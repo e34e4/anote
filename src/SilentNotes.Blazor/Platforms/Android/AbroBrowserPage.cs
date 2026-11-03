@@ -77,6 +77,8 @@ namespace SilentNotes.Platforms
         private readonly Border _suggestionsPanel;
         private readonly HorizontalStackLayout _passwordStack;
         private readonly Border _passwordPanel;
+        private readonly Grid _contentHost;
+        private Border _menuOverlay;
         private BrowserTab _current;
         private bool _restored;
         private bool _closing;
@@ -249,9 +251,9 @@ namespace SilentNotes.Platforms
                 BackgroundColor = Colors.Black,
             };
 
-            var contentHost = new Grid();
-            contentHost.Add(_webHost);
-            contentHost.Add(_suggestionsPanel);
+            _contentHost = new Grid();
+            _contentHost.Add(_webHost);
+            _contentHost.Add(_suggestionsPanel);
             Microsoft.Maui.Controls.Grid.SetRow(_suggestionsPanel, 0);
             _suggestionsPanel.VerticalOptions = LayoutOptions.Start;
             _suggestionsPanel.HorizontalOptions = LayoutOptions.Fill;
@@ -269,7 +271,7 @@ namespace SilentNotes.Platforms
             root.Add(header, 0, 0);
             root.Add(bar, 0, 1);
             root.Add(_passwordPanel, 0, 2);
-            root.Add(contentHost, 0, 3);
+            root.Add(_contentHost, 0, 3);
             Content = root;
             _liveInstance = new WeakReference<AbroBrowserPage>(this);
         }
@@ -459,6 +461,14 @@ namespace SilentNotes.Platforms
 
             try
             {
+                IAbroHistoryStoreService store = TryGetHistoryStoreService();
+                if (store != null)
+                {
+                    store.AppendVisit(url, title);
+                    ScheduleHistorySync();
+                    return;
+                }
+
                 string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\t" + url + "\t"
                     + (title ?? string.Empty).Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ');
                 lock (HistoryLock)
@@ -1000,6 +1010,7 @@ namespace SilentNotes.Platforms
             const string ai = "AI";
             const string settings = "Settings";
             const string downloads = "Downloads";
+            const string sync = "Sync";
             const string history = "History";
             const string bookmarks = "Bookmarks";
             const string addBookmark = "Add bookmark";
@@ -1010,13 +1021,12 @@ namespace SilentNotes.Platforms
             const string clearCache = "Clear cache";
             const string openFiles = "Open files folder";
 
-            string choice = await DisplayActionSheetAsync(
+            string choice = await ShowTwoColumnMenuAsync(
                 "Abro",
-                "Cancel",
-                null,
                 ai,
                 settings,
                 downloads,
+                sync,
                 history,
                 bookmarks,
                 addBookmark,
@@ -1036,6 +1046,9 @@ namespace SilentNotes.Platforms
                     break;
                 case downloads:
                     await OpenSettingsPageAsync(() => new AbroDownloadsPage(), "Downloads").ConfigureAwait(true);
+                    break;
+                case sync:
+                    await ShowSyncMenuAsync().ConfigureAwait(true);
                     break;
                 case history:
                     await ShowHistoryAsync().ConfigureAwait(true);
@@ -1064,6 +1077,146 @@ namespace SilentNotes.Platforms
                 case openFiles:
                     await OpenFilesFolderAsync().ConfigureAwait(true);
                     break;
+            }
+        }
+
+        private Task<string> ShowTwoColumnMenuAsync(string title, params string[] items)
+        {
+            var tcs = new TaskCompletionSource<string>();
+            try
+            {
+                DismissMenuOverlay();
+
+                var grid = new Grid
+                {
+                    ColumnDefinitions =
+                    {
+                        new ColumnDefinition(GridLength.Star),
+                        new ColumnDefinition(GridLength.Star),
+                    },
+                    ColumnSpacing = 8,
+                    RowSpacing = 8,
+                };
+
+                for (int i = 0; i < items.Length; i++)
+                {
+                    string label = items[i];
+                    int row = i / 2;
+                    int col = i % 2;
+                    if (row >= grid.RowDefinitions.Count)
+                        grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+
+                    var button = new Button
+                    {
+                        Text = label,
+                        TextColor = Colors.White,
+                        BackgroundColor = Color.FromArgb("#3a3a3c"),
+                        CornerRadius = 10,
+                        FontSize = 14,
+                        HeightRequest = 44,
+                        Padding = new Thickness(8, 0),
+                        HorizontalOptions = LayoutOptions.Fill,
+                    };
+                    button.Clicked += (s, e) =>
+                    {
+                        DismissMenuOverlay();
+                        tcs.TrySetResult(label);
+                    };
+                    grid.Add(button, col, row);
+                }
+
+                var titleLabel = new Label
+                {
+                    Text = title,
+                    TextColor = Colors.White,
+                    FontSize = 16,
+                    FontAttributes = FontAttributes.Bold,
+                    HorizontalOptions = LayoutOptions.Center,
+                    Margin = new Thickness(0, 0, 0, 12),
+                };
+
+                var cancelButton = new Button
+                {
+                    Text = "Cancel",
+                    TextColor = Colors.White,
+                    BackgroundColor = Color.FromArgb("#2c2c2e"),
+                    CornerRadius = 10,
+                    HeightRequest = 44,
+                    Margin = new Thickness(0, 12, 0, 0),
+                };
+                cancelButton.Clicked += (s, e) =>
+                {
+                    DismissMenuOverlay();
+                    tcs.TrySetResult(null);
+                };
+
+                var panel = new Border
+                {
+                    StrokeThickness = 0,
+                    BackgroundColor = Color.FromArgb("#1c1c1e"),
+                    Padding = new Thickness(16),
+                    StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 16 },
+                    HorizontalOptions = LayoutOptions.Center,
+                    VerticalOptions = LayoutOptions.Center,
+                    WidthRequest = 340,
+                    MaximumWidthRequest = 360,
+                    Content = new VerticalStackLayout
+                    {
+                        Spacing = 0,
+                        Children = { titleLabel, grid, cancelButton },
+                    },
+                };
+
+                var dimTap = new TapGestureRecognizer();
+                dimTap.Tapped += (s, e) =>
+                {
+                    DismissMenuOverlay();
+                    tcs.TrySetResult(null);
+                };
+
+                var dim = new BoxView
+                {
+                    Color = Color.FromRgba(0, 0, 0, 160),
+                    HorizontalOptions = LayoutOptions.Fill,
+                    VerticalOptions = LayoutOptions.Fill,
+                };
+                dim.GestureRecognizers.Add(dimTap);
+
+                _menuOverlay = new Border
+                {
+                    StrokeThickness = 0,
+                    BackgroundColor = Colors.Transparent,
+                    Padding = new Thickness(16),
+                    HorizontalOptions = LayoutOptions.Fill,
+                    VerticalOptions = LayoutOptions.Fill,
+                    Content = new Grid
+                    {
+                        Children = { dim, panel },
+                    },
+                };
+
+                _contentHost.Add(_menuOverlay);
+            }
+            catch
+            {
+                tcs.TrySetResult(null);
+            }
+
+            return tcs.Task;
+        }
+
+        private void DismissMenuOverlay()
+        {
+            try
+            {
+                if (_menuOverlay != null)
+                {
+                    _contentHost.Children.Remove(_menuOverlay);
+                    _menuOverlay = null;
+                }
+            }
+            catch
+            {
             }
         }
 
@@ -1479,6 +1632,194 @@ namespace SilentNotes.Platforms
                 _ = syncService.SyncAsync();
         }
 
+        private async Task ShowSyncMenuAsync()
+        {
+            ISettingsService settingsService = TryGetSettingsService();
+            if (settingsService == null)
+            {
+                ShowToast("Settings unavailable");
+                return;
+            }
+
+            SettingsModel settings = settingsService.LoadSettingsOrDefault();
+            string bookmarksToggle = settings.AbroBookmarksSyncEnabled ? "Disable bookmarks sync" : "Enable bookmarks sync";
+            string historyToggle = settings.AbroHistorySyncEnabled ? "Disable history sync" : "Enable history sync";
+            string aiToggle = settings.AbroAiSyncEnabled ? "Disable AI sync" : "Enable AI sync";
+            const string syncNow = "Sync now";
+            const string overwrite = "Overwrite remote";
+            const string bookmarksPath = "Bookmarks path";
+            const string historyPath = "History path";
+            const string aiPath = "AI path";
+
+            string choice = await DisplayActionSheetAsync(
+                "Sync",
+                "Back",
+                null,
+                syncNow,
+                overwrite,
+                bookmarksToggle,
+                historyToggle,
+                aiToggle,
+                bookmarksPath,
+                historyPath,
+                aiPath).ConfigureAwait(true);
+
+            switch (choice)
+            {
+                case syncNow:
+                    await RunBrowserSyncAsync(overwrite: false).ConfigureAwait(true);
+                    break;
+                case overwrite:
+                    await RunBrowserSyncAsync(overwrite: true).ConfigureAwait(true);
+                    break;
+                case var _ when choice == bookmarksToggle:
+                    settings.AbroBookmarksSyncEnabled = !settings.AbroBookmarksSyncEnabled;
+                    if (string.IsNullOrWhiteSpace(settings.AbroBookmarksSyncRemotePath))
+                        settings.AbroBookmarksSyncRemotePath = "abro/bookmarks.json";
+                    settingsService.TrySaveSettingsToLocalDevice(settings);
+                    ShowToast(settings.AbroBookmarksSyncEnabled
+                        ? "Bookmarks sync enabled (Booky WebDAV)"
+                        : "Bookmarks sync disabled");
+                    break;
+                case var _ when choice == historyToggle:
+                    settings.AbroHistorySyncEnabled = !settings.AbroHistorySyncEnabled;
+                    if (string.IsNullOrWhiteSpace(settings.AbroHistorySyncRemotePath))
+                        settings.AbroHistorySyncRemotePath = "abro/history.json";
+                    settingsService.TrySaveSettingsToLocalDevice(settings);
+                    ShowToast(settings.AbroHistorySyncEnabled
+                        ? "History sync enabled (Booky WebDAV)"
+                        : "History sync disabled");
+                    break;
+                case var _ when choice == aiToggle:
+                    settings.AbroAiSyncEnabled = !settings.AbroAiSyncEnabled;
+                    if (string.IsNullOrWhiteSpace(settings.AbroAiSyncRemotePath))
+                        settings.AbroAiSyncRemotePath = "abro/ai.json";
+                    settingsService.TrySaveSettingsToLocalDevice(settings);
+                    ShowToast(settings.AbroAiSyncEnabled
+                        ? "AI sync enabled (Booky WebDAV)"
+                        : "AI sync disabled");
+                    break;
+                case bookmarksPath:
+                    {
+                        string path = await DisplayPromptAsync(
+                            "Bookmarks path",
+                            "Relative to Booky WebDAV URL",
+                            "Save",
+                            "Cancel",
+                            "abro/bookmarks.json",
+                            -1,
+                            Keyboard.Text,
+                            settings.AbroBookmarksSyncRemotePath ?? "abro/bookmarks.json").ConfigureAwait(true);
+                        if (path == null)
+                            return;
+                        settings.AbroBookmarksSyncRemotePath = path.Trim().TrimStart('/');
+                        settingsService.TrySaveSettingsToLocalDevice(settings);
+                        ShowToast("Bookmarks path saved");
+                        break;
+                    }
+                case historyPath:
+                    {
+                        string path = await DisplayPromptAsync(
+                            "History path",
+                            "Relative to Booky WebDAV URL",
+                            "Save",
+                            "Cancel",
+                            "abro/history.json",
+                            -1,
+                            Keyboard.Text,
+                            settings.AbroHistorySyncRemotePath ?? "abro/history.json").ConfigureAwait(true);
+                        if (path == null)
+                            return;
+                        settings.AbroHistorySyncRemotePath = path.Trim().TrimStart('/');
+                        settingsService.TrySaveSettingsToLocalDevice(settings);
+                        ShowToast("History path saved");
+                        break;
+                    }
+                case aiPath:
+                    {
+                        string path = await DisplayPromptAsync(
+                            "AI path",
+                            "Relative to Booky WebDAV URL",
+                            "Save",
+                            "Cancel",
+                            "abro/ai.json",
+                            -1,
+                            Keyboard.Text,
+                            settings.AbroAiSyncRemotePath ?? "abro/ai.json").ConfigureAwait(true);
+                        if (path == null)
+                            return;
+                        settings.AbroAiSyncRemotePath = path.Trim().TrimStart('/');
+                        settingsService.TrySaveSettingsToLocalDevice(settings);
+                        ShowToast("AI path saved");
+                        break;
+                    }
+            }
+        }
+
+        private async Task RunBrowserSyncAsync(bool overwrite)
+        {
+            bool anyConfigured = false;
+            var parts = new List<string>();
+
+            IAbroBookmarkSyncService bookmarkSync = TryGetBookmarkSyncService();
+            if (bookmarkSync?.IsConfigured == true)
+            {
+                anyConfigured = true;
+                AbroBrowserSyncResult result = overwrite
+                    ? await bookmarkSync.OverwriteRemoteAsync().ConfigureAwait(true)
+                    : await bookmarkSync.SyncAsync().ConfigureAwait(true);
+                parts.Add(result == AbroBrowserSyncResult.Success
+                    ? "bookmarks ok"
+                    : "bookmarks: " + (string.IsNullOrEmpty(bookmarkSync.LastError) ? result.ToString() : bookmarkSync.LastError));
+            }
+
+            IAbroHistorySyncService historySync = TryGetHistorySyncService();
+            if (historySync?.IsConfigured == true)
+            {
+                anyConfigured = true;
+                AbroBrowserSyncResult result = overwrite
+                    ? await historySync.OverwriteRemoteAsync().ConfigureAwait(true)
+                    : await historySync.SyncAsync().ConfigureAwait(true);
+                parts.Add(result == AbroBrowserSyncResult.Success
+                    ? "history ok"
+                    : "history: " + (string.IsNullOrEmpty(historySync.LastError) ? result.ToString() : historySync.LastError));
+            }
+
+            IAbroAiSyncService aiSync = TryGetAiSyncService();
+            if (aiSync?.IsConfigured == true)
+            {
+                anyConfigured = true;
+                AbroAiSyncResult result = overwrite
+                    ? await aiSync.OverwriteRemoteAsync().ConfigureAwait(true)
+                    : await aiSync.SyncAsync().ConfigureAwait(true);
+                parts.Add(result == AbroAiSyncResult.Success
+                    ? "AI ok"
+                    : "AI: " + (string.IsNullOrEmpty(aiSync.LastError) ? result.ToString() : aiSync.LastError));
+            }
+
+            if (!anyConfigured)
+            {
+                ShowToast("Enable sync items and configure Booky WebDAV first");
+                return;
+            }
+
+            ShowToast(string.Join(" · ", parts));
+        }
+
+        private void ScheduleBookmarkSync()
+        {
+            IAbroBookmarkSyncService syncService = TryGetBookmarkSyncService();
+            if (syncService?.IsConfigured == true)
+                _ = syncService.SyncAsync();
+        }
+
+        private void ScheduleHistorySync()
+        {
+            IAbroHistorySyncService syncService = TryGetHistorySyncService();
+            if (syncService?.IsConfigured == true)
+                _ = syncService.SyncAsync();
+        }
+
         private static IAbroAiStoreService TryGetAiStoreService()
         {
             try
@@ -1503,6 +1844,54 @@ namespace SilentNotes.Platforms
             }
         }
 
+        private static IAbroBookmarkStoreService TryGetBookmarkStoreService()
+        {
+            try
+            {
+                return Ioc.Instance.GetService<IAbroBookmarkStoreService>();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static IAbroBookmarkSyncService TryGetBookmarkSyncService()
+        {
+            try
+            {
+                return Ioc.Instance.GetService<IAbroBookmarkSyncService>();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static IAbroHistoryStoreService TryGetHistoryStoreService()
+        {
+            try
+            {
+                return Ioc.Instance.GetService<IAbroHistoryStoreService>();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static IAbroHistorySyncService TryGetHistorySyncService()
+        {
+            try
+            {
+                return Ioc.Instance.GetService<IAbroHistorySyncService>();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         private static ISettingsService TryGetSettingsService()
         {
             try
@@ -1519,8 +1908,14 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                string historyFile = Path.Combine(_historyDir, "history.txt");
-                var page = new AbroHistoryPage(historyFile, HistoryLock, OpenOrNavigate);
+                IAbroHistoryStoreService store = TryGetHistoryStoreService();
+                if (store == null)
+                {
+                    ShowToast("History store unavailable");
+                    return;
+                }
+
+                var page = new AbroHistoryPage(store, OpenOrNavigate, ScheduleHistorySync);
                 await Navigation.PushModalAsync(page, false).ConfigureAwait(true);
             }
             catch
@@ -1584,6 +1979,25 @@ namespace SilentNotes.Platforms
             var entries = new List<(string Url, string Label)>();
             try
             {
+                IAbroBookmarkStoreService storeService = TryGetBookmarkStoreService();
+                if (storeService != null)
+                {
+                    AbroBookmarkStoreModel store = storeService.LoadOrDefault();
+                    foreach (AbroBookmarkItemModel item in store.Items
+                        .OrderByDescending(i => i.ModifiedAt)
+                        .Take(MaxHistoryMenuEntries))
+                    {
+                        if (string.IsNullOrWhiteSpace(item.Url))
+                            continue;
+                        string title = item.Title ?? string.Empty;
+                        string label = string.IsNullOrWhiteSpace(title) ? item.Url : title + " — " + item.Url;
+                        if (label.Length > 90)
+                            label = label.Substring(0, 89) + "…";
+                        entries.Add((item.Url, label));
+                    }
+                    return entries;
+                }
+
                 string file = Path.Combine(_bookmarksDir, "bookmarks.txt");
                 if (!File.Exists(file))
                     return entries;
@@ -1622,8 +2036,21 @@ namespace SilentNotes.Platforms
 
             try
             {
-                Directory.CreateDirectory(_bookmarksDir);
                 string title = _current.Title ?? string.Empty;
+                IAbroBookmarkStoreService store = TryGetBookmarkStoreService();
+                if (store != null)
+                {
+                    if (!store.AddOrUpdate(url, title))
+                    {
+                        ShowToast("Could not save bookmark");
+                        return;
+                    }
+                    ScheduleBookmarkSync();
+                    ShowToast("Bookmark added");
+                    return;
+                }
+
+                Directory.CreateDirectory(_bookmarksDir);
                 string line = url + "\t" + title.Replace('\t', ' ') + Environment.NewLine;
                 File.AppendAllText(Path.Combine(_bookmarksDir, "bookmarks.txt"), line, Encoding.UTF8);
                 ShowToast("Bookmark added");
