@@ -442,7 +442,26 @@
 		<div class="tg-status">@ViewModel.StatusMessage</div>
 	}
 
-	@if (ViewModel.NeedsApiCredentials)
+	@if (ViewModel.IsProxySetupOpen)
+	{
+		<div class="tg-card">
+			<div style="font-weight:700;margin-bottom:6px;">@LanguageService["tg_proxy_setup_title"]</div>
+			<div class="tg-hint">@LanguageService["tg_proxy_setup_hint"]</div>
+			<MudTextField T="string" @bind-Value="ViewModel.ProxyName" Label="@LanguageService["tg_proxy_name"]" Variant="Variant.Outlined" Margin="Margin.Dense" Class="tg-field" Immediate="true" />
+			<MudTextField T="string" @bind-Value="ViewModel.ProxyServer" Label="@LanguageService["tg_proxy_server"]" Variant="Variant.Outlined" Margin="Margin.Dense" Class="tg-field" Immediate="true" />
+			<MudTextField T="string" @bind-Value="ViewModel.ProxyPortText" Label="@LanguageService["tg_proxy_port"]" Variant="Variant.Outlined" Margin="Margin.Dense" Class="tg-field" Immediate="true" />
+			<MudTextField T="string" @bind-Value="ViewModel.ProxySecret" Label="@LanguageService["tg_proxy_secret"]" Variant="Variant.Outlined" Margin="Margin.Dense" Class="tg-field" Immediate="true" InputType="InputType.Password" />
+			<div style="display:flex;align-items:center;gap:10px;margin:8px 0;">
+				<MudSwitch T="bool" @bind-Value="ViewModel.ProxyEnabled" Color="Color.Primary" Label="@LanguageService["tg_proxy_enable"]" />
+			</div>
+			<div class="tg-hint">@LanguageService["tg_proxy_status"]: @ViewModel.ProxyStatusLabel</div>
+			<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+				<button class="tg-btn primary" @onclick="SaveProxyAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_proxy_save"]</button>
+				<button class="tg-btn" @onclick="() => ViewModel.CloseOverlayCommand.Execute(null)" disabled="@ViewModel.IsBusy">@LanguageService["close"]</button>
+			</div>
+		</div>
+	}
+	else if (ViewModel.NeedsApiCredentials)
 	{
 		<div class="tg-card">
 			<div style="font-weight:700;margin-bottom:6px;">@LanguageService["tg_api_setup_title"]</div>
@@ -698,7 +717,24 @@
 	{
 		<div class="tg-topbar">
 			<div class="tg-account-label">@ViewModel.ActiveAccountLabel</div>
-			<button class="tg-btn" @onclick="() => ViewModel.OpenAccountsCommand.Execute(null)" title="@LanguageService["tg_accounts"]">⋮</button>
+			@if (ViewModel.IsProxyEnabled)
+			{
+				<span class="tg-hint" style="margin:0;white-space:nowrap;" title="@ViewModel.ProxyStatusLabel">@LanguageService["tg_proxy_on"]</span>
+			}
+			<MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+				<ActivatorContent>
+					<button class="tg-btn" @onclick="context.ToggleAsync" title="@LanguageService["tg_menu"]">⋮</button>
+				</ActivatorContent>
+				<ChildContent>
+					<MudMenuItem OnClick="() => ViewModel.OpenAccountsCommand.Execute(null)">@LanguageService["tg_accounts"]</MudMenuItem>
+					<MudMenu Label="@LanguageService["tg_proxy"]">
+						<MudMenuItem OnClick="() => ViewModel.ShowProxySetupCommand.Execute(null)">@LanguageService["tg_proxy_setup"]</MudMenuItem>
+						<MudMenuItem OnClick="ToggleProxyAsync">
+							@(ViewModel.IsProxyEnabled ? LanguageService["tg_proxy_disable"] : LanguageService["tg_proxy_enable"])
+						</MudMenuItem>
+					</MudMenu>
+				</ChildContent>
+			</MudMenu>
 			<button class="tg-btn" @onclick="RefreshAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_refresh"]</button>
 		</div>
 
@@ -907,6 +943,24 @@
 			await asyncCmd.ExecuteAsync(null);
 		else
 			ViewModel.SaveApiCredentialsCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task SaveProxyAsync()
+	{
+		if (ViewModel.SaveProxyCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.SaveProxyCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task ToggleProxyAsync()
+	{
+		if (ViewModel.ToggleProxyCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.ToggleProxyCommand.Execute(null);
 		StateHasChanged();
 	}
 

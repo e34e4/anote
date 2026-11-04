@@ -27,6 +27,50 @@ namespace SilentNotes.Models
         [XmlElement("active_account_id")]
         public string ActiveAccountId { get; set; } = string.Empty;
 
+        /// <summary>When true and proxy fields are complete, WTelegram routes MTProto via this MTProxy.</summary>
+        [XmlElement("mt_proxy_enabled")]
+        public bool MtProxyEnabled { get; set; }
+
+        [XmlElement("mt_proxy_name")]
+        public string MtProxyName { get; set; } = string.Empty;
+
+        [XmlElement("mt_proxy_server")]
+        public string MtProxyServer { get; set; } = string.Empty;
+
+        [XmlElement("mt_proxy_port")]
+        public int MtProxyPort { get; set; }
+
+        [XmlIgnore]
+        public string MtProxySecret { get; set; } = string.Empty;
+
+        [XmlElement("encrypted_mt_proxy_secret")]
+        public string EncryptedMtProxySecret { get; set; }
+
+        /// <summary>True when name/server/port/secret are filled enough to build an MTProxy URL.</summary>
+        [XmlIgnore]
+        public bool HasMtProxyConfig =>
+            !string.IsNullOrWhiteSpace(MtProxyServer)
+            && MtProxyPort > 0
+            && MtProxyPort <= 65535
+            && !string.IsNullOrWhiteSpace(MtProxySecret);
+
+        /// <summary>
+        /// Builds <c>https://t.me/proxy?server=…&amp;port=…&amp;secret=…</c> for <c>Client.MTProxyUrl</c>,
+        /// or null when proxy is disabled / incomplete.
+        /// </summary>
+        public string BuildMtProxyUrl()
+        {
+            if (!MtProxyEnabled || !HasMtProxyConfig)
+                return null;
+
+            return "https://t.me/proxy?server="
+                + Uri.EscapeDataString(MtProxyServer.Trim())
+                + "&port="
+                + MtProxyPort.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + "&secret="
+                + Uri.EscapeDataString(MtProxySecret.Trim());
+        }
+
         [XmlArray("accounts")]
         [XmlArrayItem("account")]
         public List<TelegramAccountModel> Accounts { get; set; } = new List<TelegramAccountModel>();

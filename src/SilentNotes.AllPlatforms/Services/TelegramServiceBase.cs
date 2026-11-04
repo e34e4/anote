@@ -171,6 +171,7 @@ namespace SilentNotes.Services
                     if (store != null)
                     {
                         UnprotectSecret(store.EncryptedApiHash, value => store.ApiHash = value);
+                        UnprotectSecret(store.EncryptedMtProxySecret, value => store.MtProxySecret = value);
                         return store;
                     }
                 }
@@ -190,7 +191,10 @@ namespace SilentNotes.Services
             try
             {
                 if (_dataProtectionService != null)
+                {
                     store.EncryptedApiHash = ProtectSecret(store.ApiHash);
+                    store.EncryptedMtProxySecret = ProtectSecret(store.MtProxySecret);
+                }
 
                 string dir = GetStoreDirectory();
                 Directory.CreateDirectory(dir);
@@ -956,6 +960,27 @@ namespace SilentNotes.Services
             }
             RaiseAuthChanged();
             RaiseChatsChanged();
+        }
+
+        /// <inheritdoc/>
+        public async Task<TelegramOperationResult> ReconnectAfterProxyChangeAsync(CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+            await CancelLoginAsync().ConfigureAwait(false);
+
+            TelegramStoreModel store = LoadStore();
+            List<string> connectedIds = _runtimes.Keys.ToList();
+            foreach (string id in connectedIds)
+                await DisconnectAccountAsync(id).ConfigureAwait(false);
+
+            string activeId = store.ActiveAccountId;
+            if (string.IsNullOrEmpty(activeId) && store.Accounts.Count > 0)
+                activeId = store.Accounts[0].Id;
+
+            if (string.IsNullOrEmpty(activeId))
+                return TelegramOperationResult.Ok(TelegramAuthState.LoggedOut);
+
+            return await ConnectAccountAsync(activeId, cancellationToken).ConfigureAwait(false);
         }
 
         /// <inheritdoc/>
@@ -2259,7 +2284,12 @@ namespace SilentNotes.Services
                 _ => null,
             };
 
-            return new Client(Config);
+            var client = new Client(Config);
+            // Must be set before Connect / LoginUserIfNeeded so all MTProto DCs use the proxy.
+            string mtProxyUrl = store.BuildMtProxyUrl();
+            if (!string.IsNullOrEmpty(mtProxyUrl))
+                client.MTProxyUrl = mtProxyUrl;
+            return client;
         }
 
         private string WaitForPasswordConfig()

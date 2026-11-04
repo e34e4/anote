@@ -323,7 +323,25 @@
 					Immediate="true" Clearable="true" Placeholder="@LanguageService["tg_search"]" />
 			</MudPaper>
 			<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.Refresh" OnClick="@(() => _telegramViewModel.RefreshCommand.Execute(null))" title="@LanguageService["tg_refresh"]" />
-			<MudIconButton Class="ml-1" Icon="@Icons.Material.Filled.MoreVert" OnClick="@(() => _telegramViewModel.OpenAccountsCommand.Execute(null))" title="@LanguageService["tg_accounts"]" />
+			<MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Class="ml-1">
+				<ActivatorContent>
+					<MudIconButton OnClick="@context.ToggleAsync" Icon="@Icons.Material.Filled.MoreVert" title="@LanguageService["tg_menu"]" />
+				</ActivatorContent>
+				<ChildContent>
+					<MudMenuItem OnClick="@(() => _telegramViewModel.OpenAccountsCommand.Execute(null))" Icon="@Icons.Material.Filled.AccountCircle">
+						@LanguageService["tg_accounts"]
+					</MudMenuItem>
+					<MudMenu Label="@LanguageService["tg_proxy"]" Icon="@Icons.Material.Filled.VpnLock">
+						<MudMenuItem OnClick="@(() => _telegramViewModel.ShowProxySetupCommand.Execute(null))" Icon="@Icons.Material.Filled.Settings">
+							@LanguageService["tg_proxy_setup"]
+						</MudMenuItem>
+						<MudMenuItem OnClick="@(() => _telegramViewModel.ToggleProxyCommand.Execute(null))"
+							Icon="@(_telegramViewModel.IsProxyEnabled ? Icons.Material.Filled.Check : Icons.Material.Filled.ToggleOff)">
+							@(_telegramViewModel.IsProxyEnabled ? LanguageService["tg_proxy_disable"] : LanguageService["tg_proxy_enable"])
+						</MudMenuItem>
+					</MudMenu>
+				</ChildContent>
+			</MudMenu>
 		}
 
 		<MudSpacer />

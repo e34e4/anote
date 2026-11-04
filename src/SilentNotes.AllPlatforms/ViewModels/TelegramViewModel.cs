@@ -34,6 +34,7 @@ namespace SilentNotes.ViewModels
         private bool _isBusy;
         private bool _isAccountsMenuOpen;
         private bool _isApiSetupOpen;
+        private bool _isProxySetupOpen;
         private string _filter = string.Empty;
         private string _composerText = string.Empty;
         private string _openChatKey;
@@ -44,6 +45,11 @@ namespace SilentNotes.ViewModels
 
         private string _apiIdText = string.Empty;
         private string _apiHash = string.Empty;
+        private string _proxyName = string.Empty;
+        private string _proxyServer = string.Empty;
+        private string _proxyPortText = string.Empty;
+        private string _proxySecret = string.Empty;
+        private bool _proxyEnabled;
         private string _loginPhone = string.Empty;
         private string _loginCode = string.Empty;
         private string _loginPassword = string.Empty;
@@ -89,6 +95,7 @@ namespace SilentNotes.ViewModels
             _store = _telegramService?.LoadStore() ?? new TelegramStoreModel();
             _apiIdText = _store.ApiId > 0 ? _store.ApiId.ToString() : string.Empty;
             _apiHash = _store.ApiHash ?? string.Empty;
+            LoadProxyFieldsFromStore();
 
             RefreshCommand = new AsyncRelayCommand(RefreshAsync);
             OpenAccountsCommand = new RelayCommand(() => IsAccountsMenuOpen = !IsAccountsMenuOpen);
@@ -96,6 +103,8 @@ namespace SilentNotes.ViewModels
             AddAccountCommand = new AsyncRelayCommand(AddAccountAsync);
             StartQrLoginCommand = new AsyncRelayCommand(StartQrLoginAsync);
             SaveApiCredentialsCommand = new AsyncRelayCommand(SaveApiCredentialsAsync);
+            SaveProxyCommand = new AsyncRelayCommand(SaveProxyAsync);
+            ToggleProxyCommand = new AsyncRelayCommand(ToggleProxyAsync);
             ContinueLoginCommand = new AsyncRelayCommand(ContinueLoginAsync);
             CancelLoginCommand = new AsyncRelayCommand(CancelLoginAsync);
             ResendCodeCommand = new AsyncRelayCommand(ResendCodeAsync);
@@ -106,6 +115,13 @@ namespace SilentNotes.ViewModels
             ShowApiSetupCommand = new RelayCommand(() =>
             {
                 IsApiSetupOpen = true;
+                NotifyChanged();
+            });
+            ShowProxySetupCommand = new RelayCommand(() =>
+            {
+                IsAccountsMenuOpen = false;
+                LoadProxyFieldsFromStore();
+                IsProxySetupOpen = true;
                 NotifyChanged();
             });
 
@@ -127,6 +143,8 @@ namespace SilentNotes.ViewModels
         public ICommand AddAccountCommand { get; }
         public ICommand StartQrLoginCommand { get; }
         public ICommand SaveApiCredentialsCommand { get; }
+        public ICommand SaveProxyCommand { get; }
+        public ICommand ToggleProxyCommand { get; }
         public ICommand ContinueLoginCommand { get; }
         public ICommand CancelLoginCommand { get; }
         public ICommand ResendCodeCommand { get; }
@@ -135,6 +153,7 @@ namespace SilentNotes.ViewModels
         public ICommand AttachFileCommand { get; }
         public ICommand AttachPhotoCommand { get; }
         public ICommand ShowApiSetupCommand { get; }
+        public ICommand ShowProxySetupCommand { get; }
 
         public IReadOnlyList<TelegramAccountModel> Accounts => _store.Accounts;
 
@@ -257,8 +276,30 @@ namespace SilentNotes.ViewModels
             set => SetProperty(ref _isApiSetupOpen, value);
         }
 
+        public bool IsProxySetupOpen
+        {
+            get => _isProxySetupOpen;
+            set => SetProperty(ref _isProxySetupOpen, value);
+        }
+
+        /// <summary>True when the store has a complete MTProto proxy and it is currently enabled.</summary>
+        public bool IsProxyEnabled => _store?.MtProxyEnabled == true && (_store?.HasMtProxyConfig ?? false);
+
+        /// <summary>Display label for the configured proxy (name, or server:port).</summary>
+        public string ProxyStatusLabel
+        {
+            get
+            {
+                if (_store == null || !_store.HasMtProxyConfig)
+                    return _languageService?["tg_proxy_not_configured"] ?? "Not configured";
+                if (!string.IsNullOrWhiteSpace(_store.MtProxyName))
+                    return _store.MtProxyName.Trim();
+                return _store.MtProxyServer + ":" + _store.MtProxyPort;
+            }
+        }
+
         // Login flow is NOT an overlay for back-key purposes — cancel only via the Cancel button.
-        public bool IsAnyOverlayOpen => IsAccountsMenuOpen || IsApiSetupOpen;
+        public bool IsAnyOverlayOpen => IsAccountsMenuOpen || IsApiSetupOpen || IsProxySetupOpen;
 
         public string Filter
         {
@@ -286,6 +327,36 @@ namespace SilentNotes.ViewModels
         {
             get => _apiHash;
             set => SetProperty(ref _apiHash, value ?? string.Empty);
+        }
+
+        public string ProxyName
+        {
+            get => _proxyName;
+            set => SetProperty(ref _proxyName, value ?? string.Empty);
+        }
+
+        public string ProxyServer
+        {
+            get => _proxyServer;
+            set => SetProperty(ref _proxyServer, value ?? string.Empty);
+        }
+
+        public string ProxyPortText
+        {
+            get => _proxyPortText;
+            set => SetProperty(ref _proxyPortText, value ?? string.Empty);
+        }
+
+        public string ProxySecret
+        {
+            get => _proxySecret;
+            set => SetProperty(ref _proxySecret, value ?? string.Empty);
+        }
+
+        public bool ProxyEnabled
+        {
+            get => _proxyEnabled;
+            set => SetProperty(ref _proxyEnabled, value);
         }
 
         public string LoginPhone
@@ -450,6 +521,7 @@ namespace SilentNotes.ViewModels
             _store = _telegramService?.LoadStore() ?? new TelegramStoreModel();
             _apiIdText = _store.ApiId > 0 ? _store.ApiId.ToString() : string.Empty;
             _apiHash = _store.ApiHash ?? string.Empty;
+            LoadProxyFieldsFromStore();
             _telegramService?.EnsureDirectories();
 
             // Prefer an in-progress login over wiping the UI (e.g. after process pause).
@@ -974,6 +1046,14 @@ namespace SilentNotes.ViewModels
                 return;
             }
 
+            if (IsProxySetupOpen)
+            {
+                IsProxySetupOpen = false;
+                LoadProxyFieldsFromStore();
+                NotifyChanged();
+                return;
+            }
+
             if (IsApiSetupOpen && HasApiCredentials)
             {
                 IsApiSetupOpen = false;
@@ -992,6 +1072,7 @@ namespace SilentNotes.ViewModels
                 return;
 
             _store = _telegramService.LoadStore() ?? _store;
+            LoadProxyFieldsFromStore();
             TelegramAuthState pending = _telegramService.GetAuthState();
             if (pending == TelegramAuthState.NeedPhone
                 || pending == TelegramAuthState.NeedCode
@@ -1300,6 +1381,155 @@ namespace SilentNotes.ViewModels
             StatusMessage = string.Empty;
             AuthState = HasAccounts ? TelegramAuthState.Ready : TelegramAuthState.LoggedOut;
             NotifyChanged();
+        }
+
+        private void LoadProxyFieldsFromStore()
+        {
+            if (_store == null)
+            {
+                _proxyName = string.Empty;
+                _proxyServer = string.Empty;
+                _proxyPortText = string.Empty;
+                _proxySecret = string.Empty;
+                _proxyEnabled = false;
+                return;
+            }
+
+            _proxyName = _store.MtProxyName ?? string.Empty;
+            _proxyServer = _store.MtProxyServer ?? string.Empty;
+            _proxyPortText = _store.MtProxyPort > 0 ? _store.MtProxyPort.ToString() : string.Empty;
+            _proxySecret = _store.MtProxySecret ?? string.Empty;
+            _proxyEnabled = _store.MtProxyEnabled;
+        }
+
+        private async Task SaveProxyAsync()
+        {
+            if (_telegramService == null)
+                return;
+
+            string server = (_proxyServer ?? string.Empty).Trim();
+            string secret = (_proxySecret ?? string.Empty).Trim();
+            string name = (_proxyName ?? string.Empty).Trim();
+
+            if (string.IsNullOrWhiteSpace(server))
+            {
+                StatusMessage = _languageService?["tg_proxy_server_required"] ?? "Enter the MTProto proxy server host or IP.";
+                NotifyChanged();
+                return;
+            }
+
+            if (!int.TryParse((_proxyPortText ?? string.Empty).Trim(), out int port) || port <= 0 || port > 65535)
+            {
+                StatusMessage = _languageService?["tg_proxy_port_invalid"] ?? "Enter a valid port (1–65535).";
+                NotifyChanged();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(secret))
+            {
+                StatusMessage = _languageService?["tg_proxy_secret_required"] ?? "Enter the MTProto proxy secret.";
+                NotifyChanged();
+                return;
+            }
+
+            bool wasEnabled = _store.MtProxyEnabled && _store.HasMtProxyConfig;
+            _store.MtProxyName = name;
+            _store.MtProxyServer = server;
+            _store.MtProxyPort = port;
+            _store.MtProxySecret = secret;
+            _store.MtProxyEnabled = _proxyEnabled;
+            // Enabling with incomplete fields is blocked above; if toggled on, keep it on after save.
+            if (_proxyEnabled && !_store.HasMtProxyConfig)
+                _store.MtProxyEnabled = false;
+
+            if (!_telegramService.SaveStore(_store))
+            {
+                StatusMessage = _languageService?["tg_proxy_save_failed"] ?? "Failed to save proxy settings.";
+                NotifyChanged();
+                return;
+            }
+
+            _store = _telegramService.LoadStore();
+            LoadProxyFieldsFromStore();
+            IsProxySetupOpen = false;
+            StatusMessage = string.Empty;
+
+            bool nowEnabled = _store.MtProxyEnabled && _store.HasMtProxyConfig;
+            if (HasAccounts && (wasEnabled || nowEnabled))
+                await ReconnectForProxyAsync().ConfigureAwait(true);
+            else
+                NotifyChanged();
+        }
+
+        private async Task ToggleProxyAsync()
+        {
+            if (_telegramService == null)
+                return;
+
+            _store = _telegramService.LoadStore() ?? _store;
+            LoadProxyFieldsFromStore();
+
+            if (!_store.HasMtProxyConfig)
+            {
+                IsAccountsMenuOpen = false;
+                IsProxySetupOpen = true;
+                StatusMessage = _languageService?["tg_proxy_configure_first"] ?? "Configure an MTProto proxy first.";
+                NotifyChanged();
+                return;
+            }
+
+            bool enable = !_store.MtProxyEnabled;
+            _store.MtProxyEnabled = enable;
+            _proxyEnabled = enable;
+
+            if (!_telegramService.SaveStore(_store))
+            {
+                StatusMessage = _languageService?["tg_proxy_save_failed"] ?? "Failed to save proxy settings.";
+                NotifyChanged();
+                return;
+            }
+
+            _store = _telegramService.LoadStore();
+            LoadProxyFieldsFromStore();
+            StatusMessage = enable
+                ? (_languageService?["tg_proxy_enabled"] ?? "MTProto proxy enabled. Reconnecting…")
+                : (_languageService?["tg_proxy_disabled"] ?? "MTProto proxy disabled. Reconnecting…");
+
+            if (HasAccounts)
+                await ReconnectForProxyAsync().ConfigureAwait(true);
+            else
+                NotifyChanged();
+        }
+
+        private async Task ReconnectForProxyAsync()
+        {
+            if (_telegramService == null)
+                return;
+
+            IsBusy = true;
+            try
+            {
+                TelegramOperationResult result = await _telegramService.ReconnectAfterProxyChangeAsync();
+                AuthState = result.AuthState;
+                if (!result.Success && !string.IsNullOrEmpty(result.ErrorMessage))
+                    StatusMessage = result.ErrorMessage;
+                else if (result.Success)
+                    StatusMessage = _store.MtProxyEnabled
+                        ? (_languageService?["tg_proxy_connected"] ?? "Connected via MTProto proxy.")
+                        : (_languageService?["tg_proxy_direct"] ?? "Connected without proxy.");
+
+                if (result.Success)
+                {
+                    await RefreshChatsQuietAsync().ConfigureAwait(true);
+                    if (IsChatOpen)
+                        ReloadMessages();
+                }
+            }
+            finally
+            {
+                IsBusy = false;
+                NotifyChanged();
+            }
         }
 
         private async Task AddAccountAsync()

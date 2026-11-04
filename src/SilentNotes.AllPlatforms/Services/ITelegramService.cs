@@ -93,6 +93,12 @@ namespace SilentNotes.Services
         /// <summary>Disconnects an account client without removing it from the store.</summary>
         Task DisconnectAccountAsync(string accountId);
 
+        /// <summary>
+        /// Disconnects every connected account (and cancels pending login), then reconnects the
+        /// active account so a changed MTProto proxy takes effect on new sockets.
+        /// </summary>
+        Task<TelegramOperationResult> ReconnectAfterProxyChangeAsync(CancellationToken cancellationToken = default);
+
         /// <summary>Sets the active account id in the store and raises auth/chat events.</summary>
         Task<TelegramOperationResult> SwitchActiveAccountAsync(string accountId);
 
