@@ -1,0 +1,3 @@
+• Upgrade QR camera scanning to native ML Kit (BarcodeScanning.Native.Maui)
+• Add a centered square viewfinder to make aiming easier
+• Prefer ML Kit when decoding QR codes from image files

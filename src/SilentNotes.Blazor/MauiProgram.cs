@@ -16,6 +16,7 @@ using SilentNotes.Platforms;
 using SilentNotes.Platforms.Services;
 using SilentNotes.Services;
 using SilentNotes.Workers;
+using BarcodeScanning;
 using ZXing.Net.Maui.Controls;
 
 namespace SilentNotes;
@@ -53,6 +54,7 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
+            .UseBarcodeScanning()
             .UseBarcodeReader()
             .ConfigureLifecycleEvents(events =>
             {

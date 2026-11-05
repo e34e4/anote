@@ -7,6 +7,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using BarcodeScanning;
 using SilentNotes.Services;
 using ZXing.Net.Maui;
 using Color = Microsoft.Maui.Graphics.Color;
@@ -15,9 +16,9 @@ using Colors = Microsoft.Maui.Graphics.Colors;
 namespace SilentNotes.Platforms.Services
 {
     /// <summary>
-    /// Abstract base implementation of the <see cref="IQrService"/> interface. Decoding images and
-    /// generating QR codes is done with the ZXing library and works on all platforms, scanning
-    /// with the camera is implemented by the platform specific sub class.
+    /// Abstract base implementation of the <see cref="IQrService"/> interface. Live camera scanning
+    /// uses native ML Kit via <c>BarcodeScanning.Native.Maui</c> on Android. Image decoding prefers
+    /// the native scanner and falls back to ZXing. QR generation remains ZXing-based.
     /// </summary>
     internal abstract class QrServiceBase : IQrService
     {
@@ -42,13 +43,33 @@ namespace SilentNotes.Platforms.Services
             if ((image == null) || (image.Length == 0))
                 return null;
 
+            // Prefer native ML Kit / platform decoder when available.
+            try
+            {
+                var nativeResults = await Methods.ScanFromImageAsync(image);
+                BarcodeResult native = nativeResults?.FirstOrDefault();
+                if (native != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(native.RawValue))
+                        return native.RawValue;
+                    if (!string.IsNullOrWhiteSpace(native.DisplayValue))
+                        return native.DisplayValue;
+                }
+            }
+            catch (PlatformNotSupportedException)
+            {
+            }
+            catch (Exception)
+            {
+            }
+
             try
             {
                 using (var stream = new MemoryStream(image))
                 {
-                    var results = await BarcodeReader.DecodeAsync(stream, new BarcodeReaderOptions
+                    var results = await BarcodeReader.DecodeAsync(stream, new ZXing.Net.Maui.BarcodeReaderOptions
                     {
-                        Formats = BarcodeFormats.All,
+                        Formats = ZXing.Net.Maui.BarcodeFormats.All,
                         AutoRotate = true,
                         TryHarder = true,
                     });
