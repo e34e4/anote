@@ -145,7 +145,7 @@ namespace SilentNotes.Platforms
             if (_isCompleted || e?.BarcodeResults == null || e.BarcodeResults.Count == 0)
                 return;
 
-            BarcodeResult match = e.BarcodeResults.FirstOrDefault();
+            BarcodeScanning.BarcodeResult match = e.BarcodeResults.FirstOrDefault();
             if (match == null)
                 return;
 

@@ -47,7 +47,7 @@ namespace SilentNotes.Platforms.Services
             try
             {
                 var nativeResults = await Methods.ScanFromImageAsync(image);
-                BarcodeResult native = nativeResults?.FirstOrDefault();
+                BarcodeScanning.BarcodeResult native = nativeResults?.FirstOrDefault();
                 if (native != null)
                 {
                     if (!string.IsNullOrWhiteSpace(native.RawValue))

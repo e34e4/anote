@@ -1,0 +1,1 @@
+• Fix ML Kit QR build: disambiguate BarcodeResult type vs ZXing
