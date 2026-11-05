@@ -69,6 +69,10 @@
 		font-size: 1.35rem;
 		font-weight: 600;
 	}
+	.phone-call-title.contact-name {
+		font-size: 1.55rem;
+		font-weight: 700;
+	}
 	.phone-call-state {
 		font-size: 0.9rem;
 		color: #9e9e9e;
@@ -108,6 +112,10 @@
 		font-size: 0.85rem;
 		color: var(--mud-palette-primary);
 		min-height: 1.2rem;
+	}
+	.phone-matched-contact .contact-name {
+		font-size: 1.05rem;
+		font-weight: 700;
 	}
 	.phone-numpad {
 		display: grid;
@@ -321,7 +329,9 @@
 		@if (ViewModel.ActiveCall is ActiveCallModel activeCall)
 		{
 			<div class="phone-active-call">
-				<div class="phone-call-title">@(string.IsNullOrWhiteSpace(activeCall.DisplayName) ? activeCall.Number : activeCall.DisplayName)</div>
+				<div class="phone-call-title @(!string.IsNullOrWhiteSpace(activeCall.DisplayName) ? "contact-name" : null)">
+					@(string.IsNullOrWhiteSpace(activeCall.DisplayName) ? activeCall.Number : activeCall.DisplayName)
+				</div>
 				@if (!string.IsNullOrWhiteSpace(activeCall.DisplayName))
 				{
 					<div class="phone-log-meta">@activeCall.Number</div>
@@ -377,7 +387,7 @@
 				<div class="phone-matched-contact">
 					@if (!string.IsNullOrEmpty(ViewModel.MatchedContactName))
 					{
-						<span>@ViewModel.MatchedContactName</span>
+						<span class="contact-name">@ViewModel.MatchedContactName</span>
 					}
 					@if (ViewModel.DialedBlockedRule is PhoneBlockRuleModel matchedRule)
 					{

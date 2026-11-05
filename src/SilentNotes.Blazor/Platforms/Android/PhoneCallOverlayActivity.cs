@@ -287,12 +287,16 @@ namespace SilentNotes
                     return;
                 }
 
-                string title = string.IsNullOrWhiteSpace(call.DisplayName) ? call.Number : call.DisplayName;
+                bool hasContactName = !string.IsNullOrWhiteSpace(call.DisplayName);
+                string title = hasContactName ? call.DisplayName : call.Number;
                 if (string.IsNullOrWhiteSpace(title))
                     title = "Phone call";
                 _titleView.Text = title;
+                // Known aNote contacts get a slightly larger bold name on the incoming/ongoing overlay.
+                _titleView.TextSize = hasContactName ? 22f : 18f;
+                _titleView.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
 
-                if (!string.IsNullOrWhiteSpace(call.DisplayName) && !string.IsNullOrWhiteSpace(call.Number))
+                if (hasContactName && !string.IsNullOrWhiteSpace(call.Number))
                 {
                     _numberView.Text = call.Number;
                     _numberView.Visibility = ViewStates.Visible;

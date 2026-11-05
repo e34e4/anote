@@ -167,11 +167,15 @@ namespace SilentNotes
                 return null;
 
             string number = ExtractNumber(call);
+            string displayName = nameResolver?.Invoke(number);
+            if (string.IsNullOrWhiteSpace(displayName))
+                displayName = FindContactNameInRepository(number);
+
             PhoneSpamEntryModel spam = _currentCallSpam ?? Ioc.Instance.GetService<IPhoneSpamService>()?.LookupLocal(number);
             return new ActiveCallModel
             {
                 Number = number,
-                DisplayName = nameResolver?.Invoke(number),
+                DisplayName = displayName,
                 State = FormatState(state),
                 IsRinging = state == CallState.Ringing,
                 IsActive = state == CallState.Active,
@@ -296,7 +300,10 @@ namespace SilentNotes
                 NotificationChannels.CreateAll(this);
                 CallState state = GetCallState(call);
                 string number = ExtractNumber(call);
-                string title = string.IsNullOrWhiteSpace(number) ? "Phone call" : number;
+                string contactName = FindContactNameInRepository(number);
+                string title = !string.IsNullOrWhiteSpace(contactName)
+                    ? contactName
+                    : (string.IsNullOrWhiteSpace(number) ? "Phone call" : number);
 
                 PendingIntent openIntent = BuildOpenPhonePendingIntent();
                 PendingIntent hangupIntent = BuildServicePendingIntent(ActionHangupCall, 7602);
@@ -304,6 +311,8 @@ namespace SilentNotes
                 Notification.Builder builder = AppNotifications.CreateBuilder(this, NotificationChannels.CallChannelId);
                 builder.SetContentTitle(title);
                 string stateText = FormatState(state);
+                if (!string.IsNullOrWhiteSpace(contactName) && !string.IsNullOrWhiteSpace(number))
+                    stateText = $"{number} · {stateText}";
                 if (_currentCallSpam != null && !string.IsNullOrWhiteSpace(_currentCallSpam.SummaryText))
                     stateText = $"{stateText} · {_currentCallSpam.SummaryText}";
                 builder.SetContentText(stateText);
@@ -411,37 +420,58 @@ namespace SilentNotes
 
         private static bool IsNumberInRepositoryContacts(string number)
         {
+            return FindMatchingRepositoryContact(number) != null;
+        }
+
+        /// <summary>
+        /// Looks up the aNote contacts list for a number and returns the contact name when found.
+        /// Matching uses the last 9 digits so local/international formatting still matches.
+        /// </summary>
+        private static string FindContactNameInRepository(string number)
+        {
+            ContactModel contact = FindMatchingRepositoryContact(number);
+            if (contact == null)
+                return null;
+            return string.IsNullOrWhiteSpace(contact.Name) ? null : contact.Name.Trim();
+        }
+
+        private static ContactModel FindMatchingRepositoryContact(string number)
+        {
             try
             {
                 var repoService = Ioc.Instance.GetService<IRepositoryStorageService>();
                 if (repoService == null)
-                    return false;
+                    return null;
                 repoService.LoadRepositoryOrDefault(out NoteRepositoryModel repo);
                 if (repo?.Contacts == null)
-                    return false;
+                    return null;
 
-                string norm = new string((number ?? string.Empty).Where(char.IsDigit).ToArray());
-                if (norm.Length > 9)
-                    norm = norm.Substring(norm.Length - 9);
+                string norm = NormalizePhoneDigits(number);
                 if (string.IsNullOrEmpty(norm))
-                    return false;
+                    return null;
 
-                foreach (ContactModel c in repo.Contacts)
+                foreach (ContactModel contact in repo.Contacts)
                 {
-                    foreach (string p in c.Phones)
+                    foreach (string phone in contact.Phones)
                     {
-                        string pn = new string((p ?? string.Empty).Where(char.IsDigit).ToArray());
-                        if (pn.Length > 9)
-                            pn = pn.Substring(pn.Length - 9);
-                        if (!string.IsNullOrEmpty(pn) && pn == norm)
-                            return true;
+                        string phoneNorm = NormalizePhoneDigits(phone);
+                        if (!string.IsNullOrEmpty(phoneNorm) && phoneNorm == norm)
+                            return contact;
                     }
                 }
             }
             catch (Exception)
             {
             }
-            return false;
+            return null;
+        }
+
+        private static string NormalizePhoneDigits(string number)
+        {
+            string digits = new string((number ?? string.Empty).Where(char.IsDigit).ToArray());
+            if (digits.Length > 9)
+                digits = digits.Substring(digits.Length - 9);
+            return string.IsNullOrEmpty(digits) ? null : digits;
         }
 
         private static CallState GetCallState(Call call)
