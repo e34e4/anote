@@ -1,0 +1,1 @@
+• Contacts call button places the call through aNote's dialer instead of opening a tel: link
