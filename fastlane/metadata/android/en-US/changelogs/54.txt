@@ -1,3 +1,0 @@
-SilentNotes version 6.1.4
-
-* Added a recovey function for the AtomicFileWriter, so that a failed/interrupted writing process can be continued later on.

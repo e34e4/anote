@@ -1,8 +1,0 @@
-SilentNotes version 8.1.0
-
-* Added flag "usesCleartextTraffic" to allow HTTP connections to locale WebDav server (Android only).
-* Improved tag treeview.
-* Readded option to remember the last used tag.
-* Fixed crash when working with open safe.
-* Safe will now automatically be closed, 3 min after leaving the app (Android only).
-* Update zu Maui and MudBlazor 7.6.

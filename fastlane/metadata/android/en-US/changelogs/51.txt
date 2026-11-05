@@ -1,3 +1,2 @@
-SilentNotes version 6.1.1
-
-* Fixed wrong placing of pinned notes after synchronization.
+• Fix Reader editor caret stuck on first line after clicks
+• Add arrow/space/tab/enter/end keys on a third toolbar row

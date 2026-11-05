@@ -1,1 +1,0 @@
-• Abro sync merges without duplicating bookmarks, history, or AI providers

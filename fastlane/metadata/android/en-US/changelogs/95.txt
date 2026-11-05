@@ -1,3 +1,0 @@
-SilentNotes version 8.7.3
-
-* Fixed problem with edge-to-edge enforcement of Android15 (Android only).

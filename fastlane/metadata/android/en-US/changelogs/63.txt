@@ -1,4 +1,0 @@
-SilentNotes version 7.3.1
-
-* Implemented startup notification system.
-* Added reminder to store the transfer code.

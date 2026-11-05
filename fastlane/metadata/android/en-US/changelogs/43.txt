@@ -1,5 +1,2 @@
-SilentNotes version 5.7.0
-
-* Added shopping mode, so one can use to-do lists without fear of making unintended changes.
-* Set XChaCha20-Poly1305 as default encryption algorithm.
-* Switched back to Vue 2.x, because of compatibility issues with Android 5 and 6.
+• Add Abro Black mode settings (enable, disable, or per-domain)
+• Force black background and white text on matching pages

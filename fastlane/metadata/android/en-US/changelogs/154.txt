@@ -1,1 +1,0 @@
-• Fix Reader crash: MudIconButton OnClick InvalidCastException

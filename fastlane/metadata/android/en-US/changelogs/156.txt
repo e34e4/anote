@@ -1,1 +1,0 @@
-• Reader editor status line: characters, lines, blanks, words, encoding

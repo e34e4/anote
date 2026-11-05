@@ -1,4 +1,0 @@
-• Abro opens as its own window/task so aNote stays usable alongside it
-• Abro: password vault suggestions and fill for the current site
-• Abro: add to Booky / open Booky records from the menu
-• Quick menu: more reliable tab opens; Abro launches the browser window

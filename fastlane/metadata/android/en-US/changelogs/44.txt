@@ -1,6 +1,2 @@
-SilentNotes version 5.8.0
-
-* Integrated italian translation.
-* Separated language resources for easier future localizations.
-* Minor GUI improvement.
-* Component updates (Flurl)
+• Sync Abro bookmarks, history, and AI providers over Booky WebDAV
+• Add Sync to Abro three-dots menu; menu layout is now two columns

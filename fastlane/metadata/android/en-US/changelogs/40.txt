@@ -1,3 +1,2 @@
-SilentNotes version 5.5.1
-
-* Allowed Windows app access to locale NextCloud instance on the NAS.
+• Quick menu: Apps button lists installed apps to launch from the same dialog
+• Apps list: optional floating/freeform window launch (tap or 🪟 toggle)

@@ -1,3 +1,1 @@
-SilentNotes version 5.8.1
-
-* Implemented fail-safe file saving on Android, even when process is killed while writing.
+• Abro sync merges without duplicating bookmarks, history, or AI providers

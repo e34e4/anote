@@ -1,1 +1,0 @@
-• Fix MudBlazor Dense analyzer warnings on Reader editor fields

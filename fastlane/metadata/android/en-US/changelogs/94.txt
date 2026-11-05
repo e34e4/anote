@@ -1,3 +1,0 @@
-SilentNotes version 8.7.2
-
-* Fixed problem that caused a crash when quickly opening/closing the menu (Android only).

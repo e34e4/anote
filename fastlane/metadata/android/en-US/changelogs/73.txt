@@ -1,3 +1,0 @@
-SilentNotes version 8.0.3
-
-* Fixes the problem that sometimes the user changes on a note are not stored (Android only).

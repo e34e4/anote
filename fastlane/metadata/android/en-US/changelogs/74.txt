@@ -1,4 +1,0 @@
-SilentNotes version 8.0.4
-
-* Fixes the problem that tags where not stored anymore.
-* Implemented page to show error information, with function to create a backup.
