@@ -13,7 +13,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SilentNotesTest", "src\Test
 EndProject
 Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "VanillaCloudStorageClient", "src\VanillaCloudStorageClient\VanillaCloudStorageClient.shproj", "{206E934E-A44E-4ED1-97F0-1FFFE0718E5E}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SilentNotes", "src\SilentNotes.Blazor\SilentNotes.csproj", "{559C827A-A958-4CC4-A3B6-81419F4DECF2}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "aNote", "src\SilentNotes.Blazor\anote.csproj", "{559C827A-A958-4CC4-A3B6-81419F4DECF2}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

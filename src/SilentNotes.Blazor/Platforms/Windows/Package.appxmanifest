@@ -28,7 +28,7 @@
     <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$">
       <uap:VisualElements
         DisplayName="aNote"
-        Description="SilentNotes is a simple note taking app which respects your privacy."
+        Description="aNote is a simple note taking app which respects your privacy."
         Square150x150Logo="$placeholder$.png"
         Square44x44Logo="$placeholder$.png"
         BackgroundColor="transparent">

@@ -1,4 +1,4 @@
-<i>SilentNotes</i> is a note taking app which respects your privacy. It doesn't collect personal data, runs free of ads and is an open source (FOSS) software. Write your notes in a comfortable WYSIWYG editor with basic formatting like headers or lists, and synchronize them end-to-end encrypted between Android and Windows devices.
+<i>aNote</i> is a note taking app which respects your privacy. It doesn't collect personal data, runs free of ads and is an open source (FOSS) software. Write your notes in a comfortable WYSIWYG editor with basic formatting like headers or lists, and synchronize them end-to-end encrypted between Android and Windows devices.
 
 Beside writing of traditional notes, you can also create to-do lists to keep track of your pending tasks. Additionally the notes can be password protected with your own password, and quickly found with a full-text search.
 
@@ -14,7 +14,8 @@ Beside writing of traditional notes, you can also create to-do lists to keep tra
 * A dark theme is available for more comfortable working in dark environment.
 * Use basic formatting to structure your notes and make them more readable.
 * Get a note back from the recycle-bin if it was deleted by accident.
-* SilentNotes does not collect user information and requires no unnecessary privileges, thus the name silent notes.
-* SilentNotes is an open source project, its source code can be verified on GitHub.
+* aNote does not collect user information and requires no unnecessary privileges.
+* aNote is an open source project, its source code can be verified on GitHub.
+* aNote is a fork of SilentNotes with additional Android productivity tabs and tools.
 
 The Windows version is available from the Microsoft store.

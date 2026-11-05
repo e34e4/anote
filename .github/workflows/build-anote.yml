@@ -18,7 +18,7 @@ on:
         description: Publish new release on GitHub
 
 env:
-  Project_Path: src\SilentNotes.Blazor\SilentNotes.csproj
+  Project_Path: src\SilentNotes.Blazor\anote.csproj
   WinManifest_Path: src\SilentNotes.Blazor\Platforms\Windows\Package.appxmanifest
   Dotnet_Version: 10.0.x
   Target_Framework_Android: net10.0-android
@@ -213,7 +213,10 @@ jobs:
     # Collect files for upload
     - name: Collect msix files
       run: |
-        $files = Get-ChildItem -Path "" -Filter SilentNotes*.msix -Recurse -File
+        $files = Get-ChildItem -Path "" -Filter anote*.msix -Recurse -File
+        if (-not $files -or $files.Count -eq 0) {
+          $files = Get-ChildItem -Path "" -Filter SilentNotes*.msix -Recurse -File
+        }
         New-Item -Path ".\windows" -ItemType "directory"
         Move-Item -Path $files[0].FullName -Destination ".\windows\anote_${{ env.Platform }}.msix"
       env:
@@ -284,8 +287,8 @@ jobs:
     runs-on: windows-latest
 
     env:
-      Solution_Name: SilentNotes.sln
-      Project_Path: src\SilentNotes.Blazor\SilentNotes.csproj
+      Solution_Name: anote.sln
+      Project_Path: src\SilentNotes.Blazor\anote.csproj
       Android_Manifest: src\SilentNotes.Blazor\Platforms\Android\AndroidManifest.xml
 
     steps:

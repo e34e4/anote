@@ -1,6 +1,6 @@
 Write-Host "Modifies the csproj and the appxmanifest, so that debugging wont interference with the installed original version."
 
-$Project = ".\src\SilentNotes.Blazor\SilentNotes.csproj"
+$Project = ".\src\SilentNotes.Blazor\anote.csproj"
 $Search  = "<ApplicationId>app.anote</ApplicationId>"
 $Replace = "<ApplicationId>dev.anote</ApplicationId>"
 

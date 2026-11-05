@@ -1,0 +1,3 @@
+• Rename solution/project to anote.sln / anote.csproj
+• Update store metadata title and descriptions to aNote
+• Keep repository crypto and sync file formats compatible with existing data

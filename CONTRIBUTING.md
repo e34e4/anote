@@ -1,4 +1,4 @@
-# Contributing to SilentNotes
+# Contributing to aNote
 
 Thank you for taking the time to read this lines, before making a pull request or opening an issue! 👍
 
@@ -43,9 +43,9 @@ If the contribution affects the Android app, please test with the minimum versio
 
 Install a current version of VisualStudio and make sure the mobile development and the Maui package is selected. Make a rebuild of the whole application.
 
-You can build a side by side installation with the real SilentNotes version by altering the ApplicationId name in the SilentNotes.csproj (e.g. to `dev.martinstoeckli.silentnotes`) and in the Windows project options by clicking the `Package Manifest...` button and opening the `Packaging` tab. You can find two PowerShell scripts ([StartDevMode.ps1](StartDevMode.ps1) and [StopDevMode.ps1](StopDevMode.ps1)) in the root directory, which do exactly this.
+You can build a side by side installation with the real aNote version by altering the ApplicationId name in the anote.csproj (e.g. to `dev.anote`) and in the Windows project options by clicking the `Package Manifest...` button and opening the `Packaging` tab. You can find two PowerShell scripts ([StartDevMode.ps1](StartDevMode.ps1) and [StopDevMode.ps1](StopDevMode.ps1)) in the root directory, which do exactly this.
 
-When compiling in Debug mode, SilentNotes will read and write to an alternative repository and leaves the original repository intact. In the `Directory.Build.props` file one can append some constants as explained in the comments, e.g. to set a fixed localization or to load the demo repository.
+When compiling in Debug mode, aNote will read and write to an alternative repository and leaves the original repository intact. In the `Directory.Build.props` file one can append some constants as explained in the comments, e.g. to set a fixed localization or to load the demo repository.
 
 For debugging the Windows application, one has to choose the `x64` platform instead of `Any CPU`, VisualStudio
 often forgets about this setting after switching the "Startup Project".

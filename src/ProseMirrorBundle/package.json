@@ -1,10 +1,10 @@
 {
-  "name": "silentnotes-prosemirror",
+  "name": "anote-prosemirror",
   "version": "1.0.0",
-  "description": "Transpiles and bundles the required JS files of ProseMirror for SilentNotes",
+  "description": "Transpiles and bundles the required JS files of ProseMirror for aNote",
   "repository": {
     "type": "git",
-    "url": "https://github.com/martinstoeckli/SilentNotes"
+    "url": "https://github.com/e34e4/anote"
   },
   "scripts": {
     "build": "esbuild src/prose-mirror-bundle.ts --bundle --minify --tsconfig-raw=true --format=esm --keep-names --tree-shaking=true --target=es2020,chrome67,edge18,firefox60,node12 --outfile=../SilentNotes.Blazor/wwwroot/prose-mirror-bundle.js",

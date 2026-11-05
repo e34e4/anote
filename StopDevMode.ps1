@@ -1,6 +1,6 @@
 Write-Host "Reverses the modifications done with StartDevMode.ps1"
 
-$Project = ".\src\SilentNotes.Blazor\SilentNotes.csproj"
+$Project = ".\src\SilentNotes.Blazor\anote.csproj"
 $Search  = "<ApplicationId>dev.anote</ApplicationId>"
 $Replace = "<ApplicationId>app.anote</ApplicationId>"
 
