@@ -34,7 +34,7 @@ namespace SilentNotes.Platforms
                 IsDetecting = true,
                 Options = new BarcodeReaderOptions
                 {
-                    Formats = BarcodeFormat.QrCode,
+                    Formats = BarcodeFormats.QrCode,
                     AutoRotate = true,
                     TryHarder = true,
                 },
