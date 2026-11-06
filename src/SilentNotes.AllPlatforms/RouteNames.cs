@@ -50,7 +50,7 @@ namespace SilentNotes
             {
                 if (part != null)
                 {
-                    string encodedPart = System.Web.HttpUtility.UrlEncode(part.ToString());
+                    string encodedPart = Uri.EscapeDataString(part.ToString());
                     if (result[result.Length - 1] != delimiter)
                         result.Append(delimiter);
                     result.Append(encodedPart);

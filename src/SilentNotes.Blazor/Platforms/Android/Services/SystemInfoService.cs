@@ -18,19 +18,32 @@ using Android.Content;
 using Android.Content.PM;
 using Android.Hardware;
 using Android.Hardware.Camera2;
-using Android.Net;
-using Android.Net.Wifi;
 using Android.OS;
 using Android.OS.Storage;
 using Android.Provider;
 using Android.Telephony;
+using Java.Net;
 using Java.Util;
 using SilentNotes.Models;
 using SilentNotes.Services;
-using BatteryStatus = Android.OS.BatteryStatus;
-using Debug = Android.OS.Debug;
-using Process = Android.OS.Process;
+using AConnectivityManager = global::Android.Net.ConnectivityManager;
+using ALinkAddress = global::Android.Net.LinkAddress;
+using ALinkProperties = global::Android.Net.LinkProperties;
+using ANetwork = global::Android.Net.Network;
+using ANetworkCapabilities = global::Android.Net.NetworkCapabilities;
+using ANetworkStats = global::Android.Net.NetworkStats;
+using ANetworkStatsManager = global::Android.Net.NetworkStatsManager;
+using AProxyInfo = global::Android.Net.ProxyInfo;
+using ATransportType = global::Android.Net.TransportType;
+using AUri = global::Android.Net.Uri;
+using AWifiInfo = global::Android.Net.Wifi.WifiInfo;
+using AWifiManager = global::Android.Net.Wifi.WifiManager;
+using BatteryStatus = global::Android.OS.BatteryStatus;
+using ConnectivityType = global::Android.Net.ConnectivityType;
+using Debug = global::Android.OS.Debug;
+using Process = global::Android.OS.Process;
 using SysEnvironment = System.Environment;
+using ThermalStatus = global::Android.OS.ThermalStatus;
 
 namespace SilentNotes.Platforms.Services
 {
@@ -96,7 +109,7 @@ namespace SilentNotes.Platforms.Services
                 Context context = _appContext.Context;
                 Intent intent = new Intent(Settings.ActionUsageAccessSettings);
                 intent.AddFlags(ActivityFlags.NewTask);
-                intent.SetData(Android.Net.Uri.Parse("package:" + context.PackageName));
+                intent.SetData(AUri.Parse("package:" + context.PackageName));
                 try
                 {
                     context.StartActivity(intent);
@@ -298,7 +311,7 @@ namespace SilentNotes.Platforms.Services
                             var chars = cameraManager.GetCameraCharacteristics(id);
                             var facing = chars.Get(CameraCharacteristics.LensFacing);
                             string facingText = facing?.ToString() ?? "?";
-                            var size = chars.Get(CameraCharacteristics.SensorInfoPixelArraySize) as Android.Util.Size;
+                            var size = chars.Get(CameraCharacteristics.SensorInfoPixelArraySize) as global::Android.Util.Size;
                             string res = size != null ? $"{size.Width}x{size.Height}" : "?";
                             info.Cameras.Add($"Camera {id}: facing={facingText}, sensor={res}");
                         }
@@ -597,39 +610,39 @@ namespace SilentNotes.Platforms.Services
 
                 try
                 {
-                    var cm = context.GetSystemService(Context.ConnectivityService) as ConnectivityManager;
+                    var cm = context.GetSystemService(Context.ConnectivityService) as AConnectivityManager;
                     if (cm != null)
                     {
                         info.IsMetered = cm.IsActiveNetworkMetered;
-                        Network active = cm.ActiveNetwork;
-                        NetworkCapabilities caps = active != null ? cm.GetNetworkCapabilities(active) : null;
+                        ANetwork active = cm.ActiveNetwork;
+                        ANetworkCapabilities caps = active != null ? cm.GetNetworkCapabilities(active) : null;
                         info.IsConnected = caps != null;
                         if (caps != null)
                         {
-                            if (caps.HasTransport(TransportType.Wifi))
+                            if (caps.HasTransport(ATransportType.Wifi))
                                 info.ActiveConnectionType = "Wi‑Fi";
-                            else if (caps.HasTransport(TransportType.Cellular))
+                            else if (caps.HasTransport(ATransportType.Cellular))
                                 info.ActiveConnectionType = "Cellular";
-                            else if (caps.HasTransport(TransportType.Ethernet))
+                            else if (caps.HasTransport(ATransportType.Ethernet))
                                 info.ActiveConnectionType = "Ethernet";
-                            else if (caps.HasTransport(TransportType.Bluetooth))
+                            else if (caps.HasTransport(ATransportType.Bluetooth))
                                 info.ActiveConnectionType = "Bluetooth";
-                            else if (caps.HasTransport(TransportType.Vpn))
+                            else if (caps.HasTransport(ATransportType.Vpn))
                                 info.ActiveConnectionType = "VPN";
                             else
                                 info.ActiveConnectionType = "Other";
 
-                            info.VpnActive = caps.HasTransport(TransportType.Vpn);
+                            info.VpnActive = caps.HasTransport(ATransportType.Vpn);
                         }
                         else
                         {
                             info.ActiveConnectionType = "None";
                         }
 
-                        LinkProperties link = active != null ? cm.GetLinkProperties(active) : null;
+                        ALinkProperties link = active != null ? cm.GetLinkProperties(active) : null;
                         if (link != null)
                         {
-                            foreach (LinkAddress addr in link.LinkAddresses)
+                            foreach (ALinkAddress addr in link.LinkAddresses)
                             {
                                 string text = addr?.Address?.HostAddress;
                                 if (!string.IsNullOrEmpty(text))
@@ -643,7 +656,7 @@ namespace SilentNotes.Platforms.Services
                             }
                             try
                             {
-                                ProxyInfo proxy = link.HttpProxy;
+                                AProxyInfo proxy = link.HttpProxy;
                                 if (proxy != null && !string.IsNullOrEmpty(proxy.Host))
                                     info.ProxyHost = proxy.Host + ":" + proxy.Port;
                             }
@@ -661,12 +674,12 @@ namespace SilentNotes.Platforms.Services
 
                 try
                 {
-                    var wifi = context.GetSystemService(Context.WifiService) as WifiManager;
+                    var wifi = context.GetSystemService(Context.WifiService) as AWifiManager;
                     if (wifi != null)
                     {
 #pragma warning disable CS0618
                         info.WifiStatus = wifi.IsWifiEnabled ? "Enabled" : "Disabled";
-                        WifiInfo wi = wifi.ConnectionInfo;
+                        AWifiInfo wi = wifi.ConnectionInfo;
 #pragma warning restore CS0618
                         if (wi != null)
                         {
@@ -802,15 +815,14 @@ namespace SilentNotes.Platforms.Services
                         long screenMs = st.TotalTimeInForeground;
                         wakeApprox.TryGetValue(pair.Key, out long wakes);
                         cpuApproxMs.TryGetValue(pair.Key, out long cpuEvents);
-                        // Prefer TotalTimeVisible / TotalTimeForegroundService when available (API 29+).
+                        // Prefer TotalTimeVisible when available (API 29+).
                         long cpuMs = screenMs;
                         try
                         {
                             if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
                             {
                                 long visible = st.TotalTimeVisible;
-                                long fgs = st.TotalTimeForegroundService;
-                                cpuMs = Math.Max(screenMs, Math.Max(visible, fgs));
+                                cpuMs = Math.Max(screenMs, visible);
                             }
                         }
                         catch
@@ -855,7 +867,7 @@ namespace SilentNotes.Platforms.Services
                 if (Build.VERSION.SdkInt < BuildVersionCodes.M)
                     return result;
 
-                var nsm = context.GetSystemService(Context.NetworkStatsService) as NetworkStatsManager;
+                var nsm = context.GetSystemService(Context.NetworkStatsService) as ANetworkStatsManager;
                 if (nsm == null)
                     return result;
 
@@ -864,13 +876,13 @@ namespace SilentNotes.Platforms.Services
                 long start = end - 30L * 24L * 60L * 60L * 1000L;
                 var byUid = new Dictionary<int, SystemNetworkAppUsage>();
 
-                void Accumulate(NetworkStats stats, bool mobile)
+                void Accumulate(ANetworkStats stats, bool mobile)
                 {
                     if (stats == null)
                         return;
                     try
                     {
-                        var bucket = new NetworkStats.Bucket();
+                        var bucket = new ANetworkStats.Bucket();
                         while (stats.HasNextBucket)
                         {
                             stats.GetNextBucket(bucket);
@@ -1031,18 +1043,18 @@ namespace SilentNotes.Platforms.Services
             return parts.Count > 0 ? string.Join(", ", parts) : plugged.ToString(CultureInfo.InvariantCulture);
         }
 
-        private static string ThermalStatusToString(int status)
+        private static string ThermalStatusToString(ThermalStatus status)
         {
             return status switch
             {
-                0 => "None",
-                1 => "Light",
-                2 => "Moderate",
-                3 => "Severe",
-                4 => "Critical",
-                5 => "Emergency",
-                6 => "Shutdown",
-                _ => status.ToString(CultureInfo.InvariantCulture),
+                ThermalStatus.None => "None",
+                ThermalStatus.Light => "Light",
+                ThermalStatus.Moderate => "Moderate",
+                ThermalStatus.Severe => "Severe",
+                ThermalStatus.Critical => "Critical",
+                ThermalStatus.Emergency => "Emergency",
+                ThermalStatus.Shutdown => "Shutdown",
+                _ => status.ToString(),
             };
         }
 
