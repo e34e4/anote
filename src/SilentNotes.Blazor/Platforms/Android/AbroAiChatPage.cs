@@ -14,6 +14,7 @@ using Microsoft.Maui.Graphics;
 using SilentNotes.Models;
 using SilentNotes.Services;
 using SilentNotes.Workers;
+using MauiApplication = Microsoft.Maui.Controls.Application;
 
 namespace SilentNotes.Platforms
 {

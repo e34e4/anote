@@ -5,10 +5,11 @@
 @inject IFeedbackService FeedbackService
 @inject ILanguageService LanguageService
 
-<MudIconButton Icon="@Icons.Material.Filled.AutoAwesome" Size="@Size" Color="@Color"
-	@onclick:stopPropagation="true"
-	@onclick="AskAsync"
-	title="@(string.IsNullOrWhiteSpace(Title) ? LanguageService["ask_ai"] : Title)" />
+<span @onclick:stopPropagation="true">
+	<MudIconButton Icon="@Icons.Material.Filled.AutoAwesome" Size="@Size" Color="@Color"
+		OnClick="@AskAsync"
+		title="@(string.IsNullOrWhiteSpace(Title) ? LanguageService["ask_ai"] : Title)" />
+</span>
 
 @code {
 	[Parameter]

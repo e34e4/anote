@@ -690,7 +690,7 @@ namespace SilentNotes
         {
             try
             {
-                var component = new ComponentName(context, typeof(AbroBrowserActivity));
+                var component = new ComponentName(context, Java.Lang.Class.FromType(typeof(AbroBrowserActivity)));
                 ActivityInfo info = context.PackageManager?.GetActivityInfo(component, 0);
                 return info?.Name;
             }
@@ -722,7 +722,7 @@ namespace SilentNotes
                 if (pm == null)
                     return null;
 
-                var component = new ComponentName(context, typeof(AbroBrowserActivity));
+                var component = new ComponentName(context, Java.Lang.Class.FromType(typeof(AbroBrowserActivity)));
                 ActivityInfo act = pm.GetActivityInfo(component, 0);
                 if (act == null)
                     return null;

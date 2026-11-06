@@ -283,10 +283,10 @@ namespace SilentNotes.ViewModels
             if (mainTabOrder == null || mainTabOrder.Count == 0)
                 return 0;
 
-            long hash = mainTabOrder.Count.GetHashCode();
+            var parts = new List<long> { mainTabOrder.Count };
             foreach (int tabIndex in mainTabOrder)
-                hash = ModificationDetector.CombineHashCodes(hash, tabIndex.GetHashCode());
-            return hash;
+                parts.Add(tabIndex.GetHashCode());
+            return ModificationDetector.CombineHashCodes(parts);
         }
 
         /// <inheritdoc/>

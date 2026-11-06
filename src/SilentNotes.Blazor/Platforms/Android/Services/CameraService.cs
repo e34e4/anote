@@ -1719,8 +1719,8 @@ namespace SilentNotes.Platforms.Services
                 _barcodeValueText = new TextView(activity)
                 {
                     TextSize = 13f,
-                    MaxLines = 2,
                 };
+                _barcodeValueText.SetMaxLines(2);
                 _barcodeValueText.SetTextColor(Color.White);
                 container.AddView(_barcodeValueText, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MatchParent,
