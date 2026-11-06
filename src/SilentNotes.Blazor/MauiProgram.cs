@@ -214,6 +214,7 @@ public static class MauiProgram
         services.AddSingleton<IScreenRecorderService>((serviceProvider) => new ScreenRecorderService());
         services.AddSingleton<IScreenshotGalleryService>((serviceProvider) => new ScreenshotGalleryService());
         services.AddSingleton<ICompassService>((serviceProvider) => new CompassService());
+        services.AddSingleton<ISystemInfoService>((serviceProvider) => new SystemInfoService());
         services.AddSingleton<IWebdavFileService>((serviceProvider) => new WebdavFileService());
         services.AddSingleton<IDevicePhoneService>((serviceProvider) => new DevicePhoneService());
         services.AddSingleton<ICameraService>((serviceProvider) => new CameraService());
@@ -298,6 +299,8 @@ public static class MauiProgram
         services.AddSingleton<IScreenshotGalleryService>((serviceProvider) => new ScreenshotGalleryService(
             serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<ICompassService>((serviceProvider) => new CompassService(
+            serviceProvider.GetService<IAppContextService>()));
+        services.AddSingleton<ISystemInfoService>((serviceProvider) => new SystemInfoService(
             serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<IWebdavFileService>((serviceProvider) => new WebdavFileService(
             serviceProvider.GetService<IAppContextService>()));

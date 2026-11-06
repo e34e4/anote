@@ -1,0 +1,444 @@
+@attribute [Route(RouteNames.System)]
+@inherits PageBase
+
+@using System.Globalization
+@using MudBlazor
+@using SilentNotes.Models
+@using SilentNotes.Services
+
+@inject ILanguageService LanguageService
+@inject ISvgIconService IconService
+@inject INavigationService Navigation
+@inject ISystemInfoService SystemInfoService
+@inject IFeedbackService FeedbackService
+@inject IJSRuntime JSRuntime
+
+<style type="text/css">
+	.system-scroll {
+		overflow-y: auto;
+		max-height: calc(100vh - 140px);
+	}
+	.system-mono {
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 0.85rem;
+		word-break: break-word;
+	}
+</style>
+
+<MudAppBar Class="flex-none" Fixed="true" Dense="true" WrapContent="false">
+	<MudIconButton OnClick="@(() => Navigation.NavigateTo(BackRoute))" Icon="@IconService[IconNames.ArrowLeft]" Color="Color.Inherit" title="@LanguageService["back"]" Edge="Edge.Start" />
+	<MudText Typo="Typo.h6">@LanguageService["show_system"]</MudText>
+	<MudSpacer />
+	@if (_loading)
+	{
+		<MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+	}
+</MudAppBar>
+
+<MudMainContent>
+	<MudContainer Class="ms-0 px-2" MaxWidth="MaxWidth.Large">
+		<MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="false" PanelClass="pt-2" ActivePanelIndex="_tabIndex" ActivePanelIndexChanged="OnTabChanged">
+			<MudTabPanel Text="@LanguageService["system_tab_battery"]">
+				<div class="system-scroll pa-1">
+					<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="1">
+						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshBatteryAsync">@LanguageService["system_refresh"]</MudButton>
+						@if (_battery != null && !_battery.HasUsageAccess)
+						{
+							<MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="GrantUsageAccess">@LanguageService["system_grant_usage"]</MudButton>
+						}
+						<MudSelect T="SystemBatterySortMode" Dense="true" Margin="Margin.Dense" Label="@LanguageService["system_battery_sort"]" Value="_batterySort" ValueChanged="OnBatterySortChanged" Style="max-width:200px">
+							<MudSelectItem T="SystemBatterySortMode" Value="@SystemBatterySortMode.ScreenTime">@LanguageService["system_sort_screen"]</MudSelectItem>
+							<MudSelectItem T="SystemBatterySortMode" Value="@SystemBatterySortMode.CpuTime">@LanguageService["system_sort_cpu"]</MudSelectItem>
+							<MudSelectItem T="SystemBatterySortMode" Value="@SystemBatterySortMode.Wakelocks">@LanguageService["system_sort_wakelocks"]</MudSelectItem>
+						</MudSelect>
+					</MudStack>
+
+					@if (_battery != null)
+					{
+						<MudSimpleTable Dense="true" Elevation="0" Hover="true" Class="mb-3">
+							<tbody>
+								<tr><th>@LanguageService["system_level"]</th><td>@FormatPercent(_battery.LevelPercent)</td></tr>
+								<tr><th>@LanguageService["system_health"]</th><td>@_battery.Health</td></tr>
+								<tr><th>@LanguageService["system_status"]</th><td>@_battery.Status (@_battery.Plugged)</td></tr>
+								<tr><th>@LanguageService["system_doze"]</th><td>@YesNo(_battery.IsDoze) / power-save @YesNo(_battery.IsPowerSave)</td></tr>
+								<tr><th>@LanguageService["system_temp"]</th><td>@FormatOptional(_battery.TemperatureCelsius, "0.0") °C</td></tr>
+								<tr><th>@LanguageService["system_voltage"]</th><td>@FormatOptional(_battery.VoltageVolts, "0.000") V</td></tr>
+								<tr><th>@LanguageService["system_current"]</th><td>@FormatOptional(_battery.CurrentMilliAmps, "0.0") mA</td></tr>
+								<tr><th>@LanguageService["system_charge_counter"]</th><td>@FormatOptionalLong(_battery.ChargeCounterMicroAh) µAh</td></tr>
+								<tr><th>@LanguageService["system_cycle_count"]</th><td>@(_battery.CycleCount?.ToString() ?? "—")</td></tr>
+								<tr><th>@LanguageService["system_technology"]</th><td>@(_battery.Technology ?? "—")</td></tr>
+								<tr><th>@LanguageService["system_last_full"]</th><td>@FormatDate(_battery.LastNearFullChargeLocal)</td></tr>
+							</tbody>
+						</MudSimpleTable>
+						@if (!string.IsNullOrEmpty(_battery.Notes))
+						{
+							<MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">@_battery.Notes</MudAlert>
+						}
+						@foreach (var app in _battery.Apps)
+						{
+							<MudPaper Class="pa-2 mb-1" Elevation="1">
+								<div class="d-flex justify-space-between">
+									<div>
+										<div>@app.Label</div>
+										<div class="mud-text-secondary system-mono">@app.PackageName</div>
+									</div>
+									<div class="text-right system-mono">
+										<div>screen @FormatDuration(app.ScreenTime)</div>
+										<div>cpu @FormatDuration(app.CpuTime)</div>
+										<div>wake ~@app.WakelockCount</div>
+									</div>
+								</div>
+							</MudPaper>
+						}
+					}
+				</div>
+			</MudTabPanel>
+
+			<MudTabPanel Text="@LanguageService["system_tab_hardware"]">
+				<div class="system-scroll pa-1">
+					<MudStack Row="true" Class="mb-2">
+						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshHardwareAsync">@LanguageService["system_refresh"]</MudButton>
+					</MudStack>
+					@if (_hardware != null)
+					{
+						<MudSimpleTable Dense="true" Elevation="0" Hover="true" Class="mb-3">
+							<tbody>
+								<tr><th>Manufacturer</th><td>@_hardware.Manufacturer</td></tr>
+								<tr><th>Model</th><td>@_hardware.Brand @_hardware.Model</td></tr>
+								<tr><th>Device / product</th><td>@_hardware.Device / @_hardware.Product</td></tr>
+								<tr><th>Board / hardware</th><td>@_hardware.Board / @_hardware.Hardware</td></tr>
+								<tr><th>@LanguageService["system_android_version"]</th><td>@_hardware.AndroidVersion (SDK @_hardware.SdkInt)</td></tr>
+								<tr><th>@LanguageService["system_build"]</th><td>@_hardware.BuildDisplay</td></tr>
+								<tr><th>Build ID</th><td>@_hardware.BuildId</td></tr>
+								<tr><th>Security patch</th><td>@_hardware.SecurityPatch</td></tr>
+								<tr><th>CPU ABI</th><td>@_hardware.CpuAbi</td></tr>
+								<tr><th>CPU</th><td>@(_hardware.CpuHardware ?? "—") (@_hardware.CpuCores cores)</td></tr>
+								<tr><th>Thermal</th><td>@(_hardware.ThermalStatus ?? "—")</td></tr>
+								<tr><th>Fingerprint</th><td class="system-mono">@_hardware.Fingerprint</td></tr>
+								@foreach (var pair in _hardware.Extra)
+								{
+									<tr><th>@pair.Key</th><td class="system-mono">@pair.Value</td></tr>
+								}
+							</tbody>
+						</MudSimpleTable>
+						<MudText Typo="Typo.subtitle2" Class="mb-1">@LanguageService["system_cameras"] (@_hardware.Cameras.Count)</MudText>
+						@foreach (var cam in _hardware.Cameras)
+						{
+							<div class="system-mono mb-1">@cam</div>
+						}
+						<MudText Typo="Typo.subtitle2" Class="mt-3 mb-1">@LanguageService["system_sensors"] (@_hardware.Sensors.Count)</MudText>
+						@foreach (var sensor in _hardware.Sensors)
+						{
+							<div class="system-mono mb-1">@sensor</div>
+						}
+					}
+				</div>
+			</MudTabPanel>
+
+			<MudTabPanel Text="@LanguageService["system_tab_storage"]">
+				<div class="system-scroll pa-1">
+					<MudStack Row="true" Class="mb-2">
+						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshStorageAsync">@LanguageService["system_refresh"]</MudButton>
+					</MudStack>
+					@foreach (var app in _storageApps)
+					{
+						<MudPaper Class="pa-2 mb-1" Elevation="1">
+							<div class="d-flex justify-space-between">
+								<div>
+									<div>@app.Label</div>
+									<div class="mud-text-secondary system-mono">@app.PackageName</div>
+								</div>
+								<div class="text-right system-mono">
+									<div>@FormatBytes(app.TotalBytes)</div>
+									<div class="mud-text-secondary">app @FormatBytes(app.AppBytes) · data @FormatBytes(app.DataBytes) · cache @FormatBytes(app.CacheBytes)</div>
+								</div>
+							</div>
+						</MudPaper>
+					}
+				</div>
+			</MudTabPanel>
+
+			<MudTabPanel Text="@LanguageService["system_tab_processes"]">
+				<div class="system-scroll pa-1">
+					<MudStack Row="true" Class="mb-2">
+						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshProcessesAsync">@LanguageService["system_refresh"]</MudButton>
+					</MudStack>
+					@foreach (var proc in _processes)
+					{
+						<MudPaper Class="pa-2 mb-1" Elevation="1">
+							<div class="d-flex justify-space-between align-center">
+								<div>
+									<div>@proc.Label</div>
+									<div class="mud-text-secondary system-mono">pid @proc.Pid · @proc.ProcessName</div>
+									<div class="mud-text-secondary system-mono">@proc.Importance · PSS @FormatBytes(proc.PssKb * 1024)</div>
+								</div>
+								@if (proc.CanKill)
+								{
+									<MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="@(() => KillAsync(proc))">@LanguageService["system_kill"]</MudButton>
+								}
+							</div>
+						</MudPaper>
+					}
+				</div>
+			</MudTabPanel>
+
+			<MudTabPanel Text="@LanguageService["system_tab_memory"]">
+				<div class="system-scroll pa-1">
+					<MudStack Row="true" Class="mb-2">
+						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshMemoryAsync">@LanguageService["system_refresh"]</MudButton>
+					</MudStack>
+					@if (_memory != null)
+					{
+						<MudSimpleTable Dense="true" Elevation="0" Class="mb-3">
+							<tbody>
+								<tr><th>@LanguageService["system_ram_total"]</th><td>@FormatBytes(_memory.TotalRamBytes)</td></tr>
+								<tr><th>@LanguageService["system_ram_available"]</th><td>@FormatBytes(_memory.AvailableRamBytes)</td></tr>
+								<tr><th>Threshold</th><td>@FormatBytes(_memory.ThresholdBytes) @( _memory.LowMemory ? "(low)" : "")</td></tr>
+								<tr><th>@LanguageService["system_cache"]</th><td>@FormatBytes(_memory.CachedBytes)</td></tr>
+								<tr><th>@LanguageService["system_swap"]</th><td>@FormatBytes(_memory.SwapTotalBytes - _memory.SwapFreeBytes) / @FormatBytes(_memory.SwapTotalBytes)</td></tr>
+								<tr><th>@LanguageService["system_zram"]</th><td>@FormatBytes(_memory.ZramTotalBytes)</td></tr>
+							</tbody>
+						</MudSimpleTable>
+						@if (!string.IsNullOrEmpty(_memory.Notes))
+						{
+							<MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">@_memory.Notes</MudAlert>
+						}
+						@foreach (var app in _memory.Apps)
+						{
+							<MudPaper Class="pa-2 mb-1" Elevation="1">
+								<div class="d-flex justify-space-between">
+									<div>
+										<div>@app.Label</div>
+										<div class="mud-text-secondary system-mono">@app.PackageName</div>
+									</div>
+									<div class="text-right system-mono">
+										<div>PSS @FormatBytes(app.PssBytes)</div>
+										<div class="mud-text-secondary">private @FormatBytes(app.PrivateDirtyBytes)</div>
+									</div>
+								</div>
+							</MudPaper>
+						}
+					}
+				</div>
+			</MudTabPanel>
+
+			<MudTabPanel Text="@LanguageService["system_tab_network"]">
+				<div class="system-scroll pa-1">
+					<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="1">
+						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshNetworkAsync">@LanguageService["system_refresh"]</MudButton>
+						@if (_network != null && !_network.HasUsageAccess)
+						{
+							<MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="GrantUsageAccess">@LanguageService["system_grant_usage"]</MudButton>
+						}
+					</MudStack>
+					@if (_network != null)
+					{
+						<MudSimpleTable Dense="true" Elevation="0" Class="mb-3">
+							<tbody>
+								<tr><th>@LanguageService["system_connection"]</th><td>@_network.ActiveConnectionType (@YesNo(_network.IsConnected))</td></tr>
+								<tr><th>Metered</th><td>@YesNo(_network.IsMetered)</td></tr>
+								<tr><th>Wi‑Fi</th><td>@_network.WifiStatus @(_network.WifiSsid != null ? "· " + _network.WifiSsid : "") @(_network.WifiRssi.HasValue ? $"· {_network.WifiRssi} dBm" : "")</td></tr>
+								<tr><th>Cellular</th><td>@_network.CellularStatus · @_network.CellularNetworkType</td></tr>
+								<tr><th>VPN</th><td>@YesNo(_network.VpnActive)</td></tr>
+								<tr><th>Proxy</th><td>@(_network.ProxyHost ?? "—")</td></tr>
+								<tr><th>IP</th><td class="system-mono">@string.Join(", ", _network.IpAddresses)</td></tr>
+								<tr><th>DNS</th><td class="system-mono">@string.Join(", ", _network.DnsServers)</td></tr>
+							</tbody>
+						</MudSimpleTable>
+						@if (!string.IsNullOrEmpty(_network.Notes))
+						{
+							<MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">@_network.Notes</MudAlert>
+						}
+						@foreach (var app in _network.Apps)
+						{
+							<MudPaper Class="pa-2 mb-1" Elevation="1">
+								<div class="d-flex justify-space-between">
+									<div>
+										<div>@app.Label</div>
+										<div class="mud-text-secondary system-mono">@app.PackageName</div>
+									</div>
+									<div class="text-right system-mono">
+										<div>@FormatBytes(app.TotalBytes)</div>
+										<div class="mud-text-secondary">cell ↓@FormatBytes(app.MobileRxBytes) ↑@FormatBytes(app.MobileTxBytes)</div>
+										<div class="mud-text-secondary">wifi ↓@FormatBytes(app.WifiRxBytes) ↑@FormatBytes(app.WifiTxBytes)</div>
+									</div>
+								</div>
+							</MudPaper>
+						}
+					}
+				</div>
+			</MudTabPanel>
+		</MudTabs>
+	</MudContainer>
+</MudMainContent>
+
+@code {
+	private int _tabIndex;
+	private bool _loading;
+	private bool[] _loaded = new bool[6];
+	private SystemBatterySortMode _batterySort = SystemBatterySortMode.ScreenTime;
+	private SystemBatteryInfo _battery;
+	private SystemHardwareInfo _hardware;
+	private SystemStorageAppInfo[] _storageApps = Array.Empty<SystemStorageAppInfo>();
+	private SystemProcessInfo[] _processes = Array.Empty<SystemProcessInfo>();
+	private SystemMemoryInfo _memory;
+	private SystemNetworkInfo _network;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await RefreshBatteryAsync();
+	}
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (firstRender)
+		{
+			await KeyboardShortcuts.InitializeAsync(JSRuntime);
+			KeyboardShortcuts
+				.AddShortcut(new SnKeyboardShortcut(SnKey.Escape), () => Navigation.NavigateTo(BackRoute));
+		}
+	}
+
+	private async Task OnTabChanged(int index)
+	{
+		_tabIndex = index;
+		if (_loaded[index])
+			return;
+		switch (index)
+		{
+			case 0: await RefreshBatteryAsync(); break;
+			case 1: await RefreshHardwareAsync(); break;
+			case 2: await RefreshStorageAsync(); break;
+			case 3: await RefreshProcessesAsync(); break;
+			case 4: await RefreshMemoryAsync(); break;
+			case 5: await RefreshNetworkAsync(); break;
+		}
+	}
+
+	private async Task OnBatterySortChanged(SystemBatterySortMode mode)
+	{
+		_batterySort = mode;
+		await RefreshBatteryAsync();
+	}
+
+	private void GrantUsageAccess()
+	{
+		SystemInfoService.OpenUsageAccessSettings();
+	}
+
+	private async Task RefreshBatteryAsync()
+	{
+		await RunLoad(0, async () =>
+		{
+			_battery = await SystemInfoService.GetBatteryInfoAsync(_batterySort);
+		});
+	}
+
+	private async Task RefreshHardwareAsync()
+	{
+		await RunLoad(1, async () =>
+		{
+			_hardware = await SystemInfoService.GetHardwareInfoAsync();
+		});
+	}
+
+	private async Task RefreshStorageAsync()
+	{
+		await RunLoad(2, async () =>
+		{
+			_storageApps = await SystemInfoService.GetStorageAppsAsync();
+		});
+	}
+
+	private async Task RefreshProcessesAsync()
+	{
+		await RunLoad(3, async () =>
+		{
+			_processes = await SystemInfoService.GetRunningProcessesAsync();
+		});
+	}
+
+	private async Task RefreshMemoryAsync()
+	{
+		await RunLoad(4, async () =>
+		{
+			_memory = await SystemInfoService.GetMemoryInfoAsync();
+		});
+	}
+
+	private async Task RefreshNetworkAsync()
+	{
+		await RunLoad(5, async () =>
+		{
+			_network = await SystemInfoService.GetNetworkInfoAsync();
+		});
+	}
+
+	private async Task KillAsync(SystemProcessInfo process)
+	{
+		bool ok = await SystemInfoService.KillProcessAsync(process);
+		FeedbackService.ShowToast(ok
+			? LanguageService["system_kill_ok"]
+			: LanguageService["system_kill_fail"]);
+		await RefreshProcessesAsync();
+	}
+
+	private async Task RunLoad(int tab, Func<Task> action)
+	{
+		_loading = true;
+		StateHasChanged();
+		try
+		{
+			await action();
+			_loaded[tab] = true;
+		}
+		catch (Exception ex)
+		{
+			FeedbackService.ShowToast(ex.Message);
+		}
+		finally
+		{
+			_loading = false;
+			StateHasChanged();
+		}
+	}
+
+	private static string YesNo(bool value) => value ? "yes" : "no";
+
+	private static string FormatPercent(int value) => value < 0 ? "—" : value + "%";
+
+	private static string FormatOptional(double? value, string format)
+		=> value.HasValue ? value.Value.ToString(format, CultureInfo.InvariantCulture) : "—";
+
+	private static string FormatOptionalLong(long? value)
+		=> value.HasValue ? value.Value.ToString("N0", CultureInfo.InvariantCulture) : "—";
+
+	private static string FormatDate(DateTime? value)
+		=> value.HasValue ? value.Value.ToString("g") : "—";
+
+	private static string FormatDuration(TimeSpan span)
+	{
+		if (span.TotalHours >= 1)
+			return $"{(int)span.TotalHours}h {span.Minutes}m";
+		if (span.TotalMinutes >= 1)
+			return $"{(int)span.TotalMinutes}m {span.Seconds}s";
+		return $"{(int)span.TotalSeconds}s";
+	}
+
+	private static string FormatBytes(long bytes)
+	{
+		if (bytes < 0)
+			return "—";
+		string[] units = { "B", "KB", "MB", "GB", "TB" };
+		double value = bytes;
+		int unit = 0;
+		while (value >= 1024 && unit < units.Length - 1)
+		{
+			value /= 1024;
+			unit++;
+		}
+		return unit == 0
+			? $"{bytes} {units[unit]}"
+			: $"{value.ToString("0.##", CultureInfo.InvariantCulture)} {units[unit]}";
+	}
+}

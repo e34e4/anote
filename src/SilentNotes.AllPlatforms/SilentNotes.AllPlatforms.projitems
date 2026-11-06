@@ -250,6 +250,8 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAudioRecorderService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IScreenRecorderService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\ICompassService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\ISystemInfoService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\SystemInfoModels.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\ScreenRecordIntentRequest.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\UnitConverterEngine.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IWebdavFileService.cs" />

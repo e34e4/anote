@@ -1,0 +1,1 @@
+• Add System page (Battery, Hardware, Storage, Processes, Memory, Network) from the overflow menu
