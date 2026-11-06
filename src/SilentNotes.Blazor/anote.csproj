@@ -23,8 +23,8 @@
         <ApplicationIdGuid>11EC9146-7F8B-417D-B616-3CF75D22866E</ApplicationIdGuid>
 
         <!-- Versions -->
-        <ApplicationDisplayVersion>1.3.57</ApplicationDisplayVersion>
-        <ApplicationVersion>163</ApplicationVersion>
+        <ApplicationDisplayVersion>1.3.58</ApplicationDisplayVersion>
+        <ApplicationVersion>164</ApplicationVersion>
 
         <!-- Workaround: for https://github.com/dotnet/maui/issues/12859 -->
         <Version>$(ApplicationDisplayVersion)</Version>
@@ -62,7 +62,17 @@
       <!-- Embed the managed assemblies into the APK, so the APK can be installed
            manually (sideloaded) instead of relying on fast deployment over adb. -->
       <EmbedAssembliesIntoApk>True</EmbedAssembliesIntoApk>
+      <!-- ML Kit barcode registrars are discovered via reflection; do not link them away. -->
+      <AndroidLinkSkip>Xamarin.Google.MLKit.BarcodeScanning;Xamarin.GooglePlayServices.MLKit.BarcodeScanning;Xamarin.Google.MLKit.BarcodeScanning.Common;Xamarin.Google.MLKit.Common;Xamarin.Google.MLKit.Vision.Common;BarcodeScanning.Native.Maui</AndroidLinkSkip>
     </PropertyGroup>
+
+    <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+      <ProguardConfiguration Include="Platforms\Android\proguard-mlkit.cfg" />
+      <TrimmerRootAssembly Include="BarcodeScanning.Native.Maui" RootMode="All" />
+      <TrimmerRootAssembly Include="Xamarin.Google.MLKit.BarcodeScanning" RootMode="All" />
+      <TrimmerRootAssembly Include="Xamarin.GooglePlayServices.MLKit.BarcodeScanning" RootMode="All" />
+      <TrimmerRootAssembly Include="Xamarin.Google.MLKit.Common" RootMode="All" />
+    </ItemGroup>
 
     <!-- Release Android all -->
     <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)'=='Release|net10.0-android'">

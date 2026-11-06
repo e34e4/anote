@@ -13,6 +13,9 @@ using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Devices;
 using SilentNotes.Services;
+using Xamarin.Google.MLKit.Vision.BarCode;
+using Xamarin.Google.MLKit.Vision.Barcode.Common;
+using MlKitBarcodeScanning = Xamarin.Google.MLKit.Vision.BarCode.BarcodeScanning;
 
 namespace SilentNotes.Platforms.Services
 {
@@ -112,16 +115,12 @@ namespace SilentNotes.Platforms.Services
         {
             try
             {
-                // Ensure ML Kit is ready before CameraView creates a barcode client.
-                MainApplication.EnsureMlKitInitialized(_appContext.Context);
-
                 var resultSource = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
                 Page previousPage = await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    MainApplication.EnsureMlKitInitialized(_appContext.Context);
                     Window window = Application.Current.Windows[0];
                     Page oldPage = window.Page;
-                    window.Page = new QrScanPage(resultSource);
+                    window.Page = CreateScanPage(resultSource);
                     return oldPage;
                 });
 
@@ -136,6 +135,32 @@ namespace SilentNotes.Platforms.Services
             catch (Exception)
             {
                 return null;
+            }
+        }
+
+        private Page CreateScanPage(TaskCompletionSource<string> resultSource)
+        {
+            // Prefer native ML Kit when a barcode client can be created; otherwise fall back to ZXing
+            // so scanning still works on devices/builds where ML Kit registrars fail.
+            if (CanCreateMlKitBarcodeClient())
+                return new QrScanPage(resultSource);
+            return new QrScanPageZxing(resultSource);
+        }
+
+        private bool CanCreateMlKitBarcodeClient()
+        {
+            try
+            {
+                MainApplication.EnsureMlKitInitialized(_appContext.Context);
+                using IBarcodeScanner scanner = MlKitBarcodeScanning.GetClient(
+                    new BarcodeScannerOptions.Builder()
+                        .SetBarcodeFormats(Barcode.FormatQrCode)
+                        .Build());
+                return scanner != null;
+            }
+            catch (Exception)
+            {
+                return false;
             }
         }
 
