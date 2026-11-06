@@ -36,7 +36,11 @@ namespace SilentNotes.Views
             messenger.Register<ClosePageMessage>(
                 this, async (recipient, message) => await TriggerOnClosingPageAsync());
             messenger.Register<RedrawCurrentPageMessage>(
-                this, (recipient, message) => InvokeAsync(StateHasChanged));
+                this, (recipient, message) => InvokeAsync(() =>
+                {
+                    OnRedrawCurrentPage();
+                    StateHasChanged();
+                }));
             messenger.Register<BackButtonPressedMessage>(
                 this, (recipient, message) => TriggerCloseMenuOrDialog(message));
             messenger.Register<AfterResumeMessage>(
@@ -76,6 +80,14 @@ namespace SilentNotes.Views
         protected virtual void OnStoringUnsavedData(StoreUnsavedDataMessage message)
         {
             Debug.WriteLine(string.Format("*** {0}.OnStoringUnsavedData {1}", GetType().Name, Id));
+        }
+
+        /// <summary>
+        /// Method invoked before the page is redrawn in response to <see cref="RedrawCurrentPageMessage"/>.
+        /// Override to refresh cached view state; do not call <see cref="ComponentBase.StateHasChanged"/> here.
+        /// </summary>
+        protected virtual void OnRedrawCurrentPage()
+        {
         }
 
         private async ValueTask TriggerOnClosingPageAsync()

@@ -953,8 +953,6 @@
 			this, (recipient, message) => OnTelegramLinkIntent());
 		MessengerService.Register<ScreenRecordIntentMessage>(
 			this, (recipient, message) => OnScreenRecordIntent());
-		MessengerService.Register<RedrawCurrentPageMessage>(
-			this, (recipient, message) => OnMainViewSettingsRedraw());
 
 		if (loadResult == RepositoryStorageLoadResult.InvalidRepository)
 			throw new Exception("Invalid repository");
@@ -1433,10 +1431,10 @@
 		_mainTabDisplayOrder = SettingsService.LoadSettingsOrDefault().GetEffectiveMainTabOrder();
 	}
 
-	private void OnMainViewSettingsRedraw()
+	/// <inheritdoc/>
+	protected override void OnRedrawCurrentPage()
 	{
 		ReloadMainTabDisplayOrder();
-		InvokeAsync(StateHasChanged);
 	}
 
 	/// <summary>
