@@ -112,9 +112,13 @@ namespace SilentNotes.Platforms.Services
         {
             try
             {
+                // Ensure ML Kit is ready before CameraView creates a barcode client.
+                MainApplication.EnsureMlKitInitialized(_appContext.Context);
+
                 var resultSource = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
                 Page previousPage = await MainThread.InvokeOnMainThreadAsync(() =>
                 {
+                    MainApplication.EnsureMlKitInitialized(_appContext.Context);
                     Window window = Application.Current.Windows[0];
                     Page oldPage = window.Page;
                     window.Page = new QrScanPage(resultSource);

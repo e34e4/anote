@@ -1,0 +1,1 @@
+• Fix QR scan crash: initialize ML Kit before opening the camera scanner
