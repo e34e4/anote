@@ -207,7 +207,7 @@ div.note-dark .detail-view.checklist .ProseMirror p::after { content: @(IconServ
 @* body *@
 <MudMainContent class="@ViewModel.LightOrDarkClass()">
 	<div id="content" class="d-flex flex-column" style="height: 100%">
-		<div class="flex-1" style="overflow-y: auto">
+		<div id="note-editor-scroll" class="flex-1" style="overflow-y: auto">
 			<div @ref="_editorContainer" id="myeditor" class="note-viewer detail-view @ViewModel.CssClassNoteType"></div>
 		</div>
 
@@ -228,6 +228,8 @@ div.note-dark .detail-view.checklist .ProseMirror p::after { content: @(IconServ
 			}
 		</div>
 	</div>
+
+	<ScrollJumpButtons />
 </MudMainContent>
 
 @* Color palette *@

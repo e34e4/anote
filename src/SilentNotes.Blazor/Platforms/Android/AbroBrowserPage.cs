@@ -272,8 +272,65 @@ namespace SilentNotes.Platforms
             root.Add(bar, 0, 1);
             root.Add(_passwordPanel, 0, 2);
             root.Add(_contentHost, 0, 3);
-            Content = root;
+
+            var shell = new Grid();
+            shell.Add(root);
+            shell.Add(CreateScrollJumpOverlay());
+            Content = shell;
             _liveInstance = new WeakReference<AbroBrowserPage>(this);
+        }
+
+        private Microsoft.Maui.Controls.View CreateScrollJumpOverlay()
+        {
+            Button up = CreateChromeButton("↑");
+            up.Clicked += async (s, e) => await ScrollWebViewExtremeAsync(toTop: true).ConfigureAwait(true);
+
+            Button down = CreateChromeButton("↓");
+            down.Clicked += async (s, e) => await ScrollWebViewExtremeAsync(toTop: false).ConfigureAwait(true);
+
+            return new VerticalStackLayout
+            {
+                Spacing = 4,
+                HorizontalOptions = LayoutOptions.Start,
+                VerticalOptions = LayoutOptions.Center,
+                Margin = new Thickness(10, 0, 0, 0),
+                Children = { up, down },
+            };
+        }
+
+        private static Button CreateChromeButton(string text)
+        {
+            return new Button
+            {
+                Text = text,
+                FontSize = 18,
+                TextColor = Colors.White,
+                BackgroundColor = Color.FromArgb("#CC141414"),
+                WidthRequest = 36,
+                HeightRequest = 36,
+                Padding = 0,
+                CornerRadius = 10,
+            };
+        }
+
+        private Task ScrollWebViewExtremeAsync(bool toTop)
+        {
+            try
+            {
+                AWebView native = _current?.Native;
+                if (native == null)
+                    return Task.CompletedTask;
+
+                string script = toTop
+                    ? "try{window.scrollTo({top:0,left:0,behavior:'smooth'});}catch(e){window.scrollTo(0,0);}"
+                    : "try{var h=Math.max(document.body?document.body.scrollHeight:0,document.documentElement?document.documentElement.scrollHeight:0);window.scrollTo({top:h,left:0,behavior:'smooth'});}catch(e){window.scrollTo(0,document.body.scrollHeight);}";
+                native.EvaluateJavascript(script, null);
+            }
+            catch
+            {
+            }
+
+            return Task.CompletedTask;
         }
 
         /// <inheritdoc/>

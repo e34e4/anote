@@ -12,6 +12,7 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.ViewModels
 {
@@ -524,6 +525,25 @@ namespace SilentNotes.ViewModels
             {
                 IsBusy = false;
             }
+        }
+
+        /// <summary>
+        /// Downloads a remote file and returns text suitable for an Abro AI prompt.
+        /// Binary files get a short placeholder instead of raw bytes.
+        /// </summary>
+        public async Task<string> ReadFileTextForAiAsync(WebdavFileItemViewModel item)
+        {
+            if (item == null || item.IsDirectory)
+                return null;
+
+            string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
+            byte[] bytes = await _webdavService.DownloadFileAsync(
+                EffectiveUrl, remoteFolder, item.Name, EffectiveUsername, EffectivePassword);
+
+            if (AbroAiAskText.TryDecodeText(bytes, out string text))
+                return text;
+
+            return _languageService.LoadTextFmt("ask_ai_binary_file", bytes?.Length ?? 0);
         }
 
         /// <summary>Downloads a remote file and opens the platform share chooser.</summary>

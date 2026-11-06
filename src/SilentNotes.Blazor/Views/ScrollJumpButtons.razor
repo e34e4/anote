@@ -1,0 +1,39 @@
+@using Microsoft.JSInterop
+@using MudBlazor
+@using SilentNotes.Services
+
+@inject IJSRuntime JSRuntime
+@inject ILanguageService LanguageService
+
+<div class="scroll-jump" @onclick:stopPropagation="true">
+	<button type="button" class="scroll-jump-btn" title="@LanguageService["scroll_to_top"]" @onclick="ScrollTopAsync">
+		<MudIcon Icon="@Icons.Material.Filled.KeyboardArrowUp" Size="Size.Small" />
+	</button>
+	<button type="button" class="scroll-jump-btn" title="@LanguageService["scroll_to_bottom"]" @onclick="ScrollBottomAsync">
+		<MudIcon Icon="@Icons.Material.Filled.KeyboardArrowDown" Size="Size.Small" />
+	</button>
+</div>
+
+@code {
+	private async Task ScrollTopAsync()
+	{
+		try
+		{
+			await JSRuntime.InvokeVoidAsync("anoteScrollJump.toTop");
+		}
+		catch
+		{
+		}
+	}
+
+	private async Task ScrollBottomAsync()
+	{
+		try
+		{
+			await JSRuntime.InvokeVoidAsync("anoteScrollJump.toBottom");
+		}
+		catch
+		{
+		}
+	}
+}

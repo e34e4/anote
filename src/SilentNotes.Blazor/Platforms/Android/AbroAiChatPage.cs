@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Maui.ApplicationModel;
@@ -30,8 +31,11 @@ namespace SilentNotes.Platforms
         private readonly ScrollView _scrollView;
         private readonly Editor _input;
         private readonly Button _sendButton;
+        private readonly Button _attachButton;
+        private readonly HorizontalStackLayout _attachmentChips;
         private readonly Label _statusLabel;
         private readonly Label _providerLabel;
+        private readonly List<(string Name, string Text)> _pendingAttachments = new List<(string Name, string Text)>();
         private AbroAiStoreModel _store;
         private AbroAiConversationModel _conversation;
         private AbroAiProviderModel _provider;
@@ -169,6 +173,19 @@ namespace SilentNotes.Platforms
             };
             _sendButton.Clicked += async (s, e) => await SendAsync().ConfigureAwait(true);
 
+            _attachButton = CreateIconButton("📎", 18);
+            _attachButton.WidthRequest = 44;
+            _attachButton.HeightRequest = 44;
+            _attachButton.VerticalOptions = LayoutOptions.End;
+            _attachButton.Clicked += async (s, e) => await AttachFileAsync().ConfigureAwait(true);
+
+            _attachmentChips = new HorizontalStackLayout
+            {
+                Spacing = 6,
+                Padding = new Thickness(8, 0, 8, 4),
+                IsVisible = false,
+            };
+
             var inputBar = new Grid
             {
                 BackgroundColor = Color.FromArgb("#1c1c1e"),
@@ -176,12 +193,21 @@ namespace SilentNotes.Platforms
                 ColumnSpacing = 8,
                 ColumnDefinitions =
                 {
+                    new ColumnDefinition(GridLength.Auto),
                     new ColumnDefinition(GridLength.Star),
                     new ColumnDefinition(GridLength.Auto),
                 },
             };
-            inputBar.Add(_input, 0, 0);
-            inputBar.Add(_sendButton, 1, 0);
+            inputBar.Add(_attachButton, 0, 0);
+            inputBar.Add(_input, 1, 0);
+            inputBar.Add(_sendButton, 2, 0);
+
+            var composer = new VerticalStackLayout
+            {
+                Spacing = 0,
+                BackgroundColor = Color.FromArgb("#1c1c1e"),
+                Children = { _attachmentChips, inputBar },
+            };
 
             var root = new Grid
             {
@@ -196,11 +222,121 @@ namespace SilentNotes.Platforms
             root.Add(header, 0, 0);
             root.Add(_scrollView, 0, 1);
             root.Add(_statusLabel, 0, 2);
-            root.Add(inputBar, 0, 3);
-            Content = root;
+            root.Add(composer, 0, 3);
+
+            var shell = new Grid();
+            shell.Add(root);
+            shell.Add(CreateScrollJumpOverlay());
+            Content = shell;
 
             RebuildMessages();
             Persist(scheduleSync: false);
+        }
+
+        private View CreateScrollJumpOverlay()
+        {
+            Button up = CreateIconButton("↑", 18);
+            up.BackgroundColor = Color.FromArgb("#CC141414");
+            up.WidthRequest = 36;
+            up.HeightRequest = 36;
+            up.Clicked += async (s, e) =>
+            {
+                try { await _scrollView.ScrollToAsync(0, 0, true).ConfigureAwait(true); }
+                catch { }
+            };
+
+            Button down = CreateIconButton("↓", 18);
+            down.BackgroundColor = Color.FromArgb("#CC141414");
+            down.WidthRequest = 36;
+            down.HeightRequest = 36;
+            down.Clicked += async (s, e) => await ScrollToEndAsync().ConfigureAwait(true);
+
+            var stack = new VerticalStackLayout
+            {
+                Spacing = 4,
+                HorizontalOptions = LayoutOptions.Start,
+                VerticalOptions = LayoutOptions.End,
+                Margin = new Thickness(10, 0, 0, 120),
+                Children = { up, down },
+            };
+            return stack;
+        }
+
+        private void RefreshAttachmentChips()
+        {
+            _attachmentChips.Children.Clear();
+            _attachmentChips.IsVisible = _pendingAttachments.Count > 0;
+            for (int i = 0; i < _pendingAttachments.Count; i++)
+            {
+                int index = i;
+                string name = _pendingAttachments[i].Name;
+                var chip = new Button
+                {
+                    Text = "✕ " + Truncate(name, 28),
+                    FontSize = 12,
+                    TextColor = Color.FromArgb("#38bdf8"),
+                    BackgroundColor = Color.FromArgb("#101010"),
+                    BorderColor = Color.FromArgb("#2b2b2b"),
+                    BorderWidth = 1,
+                    CornerRadius = 8,
+                    Padding = new Thickness(10, 4),
+                    HeightRequest = 32,
+                };
+                chip.Clicked += (s, e) =>
+                {
+                    if (index >= 0 && index < _pendingAttachments.Count)
+                    {
+                        _pendingAttachments.RemoveAt(index);
+                        RefreshAttachmentChips();
+                    }
+                };
+                _attachmentChips.Children.Add(chip);
+            }
+        }
+
+        private async Task AttachFileAsync()
+        {
+            if (_busy)
+                return;
+
+            IFilePickerService picker;
+            try
+            {
+                picker = Ioc.Instance.GetService<IFilePickerService>();
+            }
+            catch
+            {
+                picker = null;
+            }
+
+            if (picker == null)
+            {
+                SetStatus("File picker unavailable.");
+                return;
+            }
+
+            bool picked = await picker.PickFile(null, "*/*").ConfigureAwait(true);
+            if (!picked)
+                return;
+
+            try
+            {
+                byte[] bytes = await picker.ReadPickedFile().ConfigureAwait(true);
+                string name = picker.GetPickedFileName() ?? "attachment";
+                string text;
+                if (!AbroAiAskText.TryDecodeText(bytes, out text))
+                {
+                    text = "Binary file (" + (bytes?.Length ?? 0) + " bytes). Content is not text; describe what you need help with.";
+                }
+
+                _pendingAttachments.Add((name, text ?? string.Empty));
+                RefreshAttachmentChips();
+                SetStatus("Attached " + Truncate(name, 40));
+            }
+            catch (Exception ex)
+            {
+                SetStatus("Attach failed: " + ex.Message);
+            }
         }
 
         private static AbroAiProviderModel ResolveProvider(AbroAiStoreModel store, AbroAiConversationModel conversation)
@@ -479,7 +615,7 @@ namespace SilentNotes.Platforms
                 return;
 
             string text = (_input.Text ?? string.Empty).Trim();
-            if (string.IsNullOrEmpty(text))
+            if (string.IsNullOrEmpty(text) && _pendingAttachments.Count == 0)
                 return;
 
             if (_provider == null
@@ -490,8 +626,32 @@ namespace SilentNotes.Platforms
                 return;
             }
 
+            if (_pendingAttachments.Count > 0)
+            {
+                var builder = new StringBuilder();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    builder.Append(text);
+                    builder.Append("\n\n");
+                }
+
+                for (int i = 0; i < _pendingAttachments.Count; i++)
+                {
+                    if (i > 0)
+                        builder.Append("\n\n");
+                    builder.Append(AbroAiAskText.FormatAttachedFile(
+                        _pendingAttachments[i].Name,
+                        _pendingAttachments[i].Text));
+                }
+
+                text = builder.ToString().Trim();
+                _pendingAttachments.Clear();
+                RefreshAttachmentChips();
+            }
+
             _busy = true;
             _sendButton.IsEnabled = false;
+            _attachButton.IsEnabled = false;
             _input.Text = string.Empty;
             SetStatus("Thinking…");
 
@@ -547,6 +707,7 @@ namespace SilentNotes.Platforms
             {
                 _busy = false;
                 _sendButton.IsEnabled = true;
+                _attachButton.IsEnabled = true;
             }
         }
 

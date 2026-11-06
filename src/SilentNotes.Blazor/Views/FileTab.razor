@@ -1,8 +1,11 @@
 @using MudBlazor
 @using SilentNotes.Services
 @using SilentNotes.ViewModels
+@using SilentNotes.Workers
 
 @inject ILanguageService LanguageService
+@inject IAbroAiChatLauncher AiChatLauncher
+@inject IFeedbackService FeedbackService
 
 <style type="text/css">
 	.file-root {
@@ -202,7 +205,10 @@
 
 				@if (!item.IsDirectory)
 				{
-					<AskAiButton Subject="@item.Name" ContextText="@($"{ViewModel.CurrentPathDisplay}/{item.Name}\n{item.MetaText}")" />
+					<span @onclick:stopPropagation="true">
+						<MudIconButton Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small"
+							OnClick="() => AskAiAboutFileAsync(item)" title="@LanguageService["ask_ai"]" />
+					</span>
 					<MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small"
 						OnClick="() => DownloadFileAsync(item)" title="@LanguageService["file_download"]" />
 					<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small"
@@ -280,6 +286,35 @@
 	{
 		await ViewModel.DownloadFileToDeviceAsync(item);
 		StateHasChanged();
+	}
+
+	private async Task AskAiAboutFileAsync(WebdavFileItemViewModel item)
+	{
+		if (item == null || item.IsDirectory)
+			return;
+
+		if (!AiChatLauncher.IsSupported)
+		{
+			FeedbackService.ShowToast(LanguageService["ask_ai_unavailable"]);
+			return;
+		}
+
+		FeedbackService.ShowToast(LanguageService["ask_ai_file_loading"]);
+		try
+		{
+			string fileText = await ViewModel.ReadFileTextForAiAsync(item);
+			string pathHint = $"{ViewModel.CurrentPathDisplay}/{item.Name}\n{item.MetaText}";
+			string context = string.IsNullOrWhiteSpace(fileText)
+				? pathHint
+				: pathHint + "\n\n" + fileText;
+			await AiChatLauncher.AskAiAboutAsync(item.Name, context);
+		}
+		catch (Exception ex)
+		{
+			FeedbackService.ShowToast(
+				LanguageService["ask_ai_file_failed"] + " — " + ex.Message,
+				FeedbackSeverity.Warning);
+		}
 	}
 
 	private async Task ShareFileAsync(WebdavFileItemViewModel item)

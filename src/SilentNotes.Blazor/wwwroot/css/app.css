@@ -43,6 +43,40 @@ td { word-wrap: anywhere; } /* table should not exceed device width */
 	bottom: 2em;
 }
 
+.scroll-jump {
+	position: fixed;
+	left: 0.7rem;
+	bottom: 2rem;
+	z-index: 1250;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	pointer-events: none;
+}
+
+.scroll-jump-btn {
+	pointer-events: auto;
+	width: 36px;
+	height: 36px;
+	border-radius: 10px;
+	border: 1px solid rgba(255, 255, 255, 0.18);
+	background: rgba(20, 20, 20, 0.82);
+	color: #ffffff;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	cursor: pointer;
+	backdrop-filter: blur(6px);
+	-webkit-backdrop-filter: blur(6px);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+	touch-action: manipulation;
+}
+
+.scroll-jump-btn:active {
+	background: rgba(48, 48, 48, 0.92);
+}
+
 .filter-input, .filter-input:hover, .filter-input:before, .filter-input:after, .filter-input:focus, .filter-input:focus-within {
 	border-bottom-style: none !important;
 }
