@@ -9,6 +9,9 @@ export const TabHandler = Extension.create({
   addKeyboardShortcuts() {
     return {
       Tab: ({ editor }) => {
+        if (editor.isActive('table')) {
+          return false;
+        }
         // Lists are indented with the tab key, so we handle tabs only when outside of a list.
         let isInsideList : boolean = (editor.isActive('bulletList') || editor.isActive('orderedList'));
         if (!isInsideList) {

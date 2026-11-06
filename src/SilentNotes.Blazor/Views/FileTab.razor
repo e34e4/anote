@@ -202,6 +202,7 @@
 
 				@if (!item.IsDirectory)
 				{
+					<AskAiButton Subject="@item.Name" ContextText="@($"{ViewModel.CurrentPathDisplay}/{item.Name}\n{item.MetaText}")" />
 					<MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small"
 						OnClick="() => DownloadFileAsync(item)" title="@LanguageService["file_download"]" />
 					<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small"

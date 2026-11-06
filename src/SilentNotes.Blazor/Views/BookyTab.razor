@@ -102,6 +102,7 @@
 				<MudText Typo="Typo.caption" Class="booky-host mud-text-secondary mt-1">@bookmark.Url</MudText>
 			</div>
 			<MudStack Row="true" Spacing="0" Class="flex-shrink-0">
+				<AskAiButton Subject="@bookmark.Title" ContextText="@($"{bookmark.Title}\n{bookmark.Url}\n{bookmark.Quote}")" />
 				<MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" OnClick="@(() => ViewModel.OpenCommand.Execute(bookmark))" title="@LanguageService["booky_open"]" />
 				<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ViewModel.DeleteCommand.Execute(bookmark))" title="@LanguageService["booky_delete"]" />
 			</MudStack>

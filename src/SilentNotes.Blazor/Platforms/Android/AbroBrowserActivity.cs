@@ -18,10 +18,19 @@ namespace SilentNotes.Platforms
     [Activity(
         Label = "Abro",
         Theme = "@style/Maui.SplashTheme",
-        Exported = false,
+        Exported = true,
         LaunchMode = LaunchMode.SingleTask,
         TaskAffinity = "app.anote.abro",
         ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation)]
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataSchemes = new[] { "http", "https" })]
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataSchemes = new[] { "http", "https" },
+        DataMimeTypes = new[] { "text/html", "text/plain", "application/xhtml+xml" })]
     public class AbroBrowserActivity : MauiAppCompatActivity
     {
         /// <summary>Intent extra: optional URL to open.</summary>
@@ -33,6 +42,7 @@ namespace SilentNotes.Platforms
         /// <inheritdoc/>
         protected override void OnCreate(Bundle savedInstanceState)
         {
+            AbroBrowserPage.EnsureUrlExtraFromIntentData(Intent);
             base.OnCreate(savedInstanceState);
         }
 
@@ -41,6 +51,7 @@ namespace SilentNotes.Platforms
         {
             base.OnNewIntent(intent);
             Intent = intent;
+            AbroBrowserPage.EnsureUrlExtraFromIntentData(intent);
             AbroBrowserPage.HandleIncomingIntent(intent);
         }
 

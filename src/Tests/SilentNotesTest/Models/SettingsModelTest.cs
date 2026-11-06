@@ -1,4 +1,6 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+﻿using System.Collections.Generic;
+using System.Linq;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SilentNotes.Models;
 
 namespace SilentNotesTest.Models
@@ -32,6 +34,41 @@ namespace SilentNotesTest.Models
             Assert.AreEqual(2, model.TransferCodeHistory.Count);
             Assert.AreEqual("b", model.TransferCodeHistory[0]);
             Assert.AreEqual("a", model.TransferCodeHistory[1]);
+        }
+
+        [TestMethod]
+        public void GetEffectiveMainTabOrderUsesDefaultWhenUnset()
+        {
+            SettingsModel model = new SettingsModel();
+            CollectionAssert.AreEqual(SettingsModel.GetDefaultMainTabOrder(), model.GetEffectiveMainTabOrder());
+        }
+
+        [TestMethod]
+        public void GetEffectiveMainTabOrderUsesCustomOrderWhenValid()
+        {
+            SettingsModel model = new SettingsModel();
+            List<int> reversed = SettingsModel.GetDefaultMainTabOrder();
+            reversed.Reverse();
+            model.MainTabOrder = reversed;
+
+            CollectionAssert.AreEqual(reversed, model.GetEffectiveMainTabOrder());
+        }
+
+        [TestMethod]
+        public void GetEffectiveMainTabOrderFallsBackWhenInvalid()
+        {
+            SettingsModel model = new SettingsModel();
+            model.MainTabOrder = new List<int> { 0, 1, 2 };
+
+            CollectionAssert.AreEqual(SettingsModel.GetDefaultMainTabOrder(), model.GetEffectiveMainTabOrder());
+        }
+
+        [TestMethod]
+        public void GetDefaultMainTabOrderContainsAllMainTabsOnce()
+        {
+            List<int> order = SettingsModel.GetDefaultMainTabOrder();
+            Assert.AreEqual(MainViewTabCatalog.TabCount, order.Count);
+            Assert.AreEqual(MainViewTabCatalog.TabCount, order.Distinct().Count());
         }
 
         [TestMethod]

@@ -117,6 +117,10 @@ namespace SilentNotes.ViewModels
             SetDefaultSmsAppCommand = new AsyncRelayCommand(SetDefaultSmsApp);
             SetDefaultPhoneAppCommand = new AsyncRelayCommand(SetDefaultPhoneApp);
             SetDefaultBrowserAppCommand = new AsyncRelayCommand(SetDefaultBrowserApp);
+            MoveMainTabUpCommand = new RelayCommand<int>(displayIndex => MoveMainTab(displayIndex, -1));
+            MoveMainTabDownCommand = new RelayCommand<int>(displayIndex => MoveMainTab(displayIndex, 1));
+            ResetMainTabOrderCommand = new RelayCommand(ResetMainTabOrder);
+            RebuildMainTabOrderDisplayItems();
         }
 
         /// <summary>
@@ -258,6 +262,8 @@ namespace SilentNotes.ViewModels
                 string.GetHashCode(settings.AbroHistorySyncRemotePath),
                 string.GetHashCode(settings.BookySyncUsername),
                 string.GetHashCode(settings.BookySyncPassword),
+                string.GetHashCode(settings.VirusTotalApiKey),
+                settings.VirusTotalAutoScan.GetHashCode(),
                 string.GetHashCode(settings.FloatingGestureSwipeUp),
                 string.GetHashCode(settings.FloatingGestureSwipeDown),
                 string.GetHashCode(settings.FloatingGestureSwipeLeft),
@@ -268,7 +274,19 @@ namespace SilentNotes.ViewModels
                 settings.ScreenshotQuality.GetHashCode(),
                 string.GetHashCode(settings.ScreenshotEditorPackageName),
                 (settings.Credentials == null).GetHashCode(),
+                GetMainTabOrderFingerprint(settings.MainTabOrder),
             });
+        }
+
+        private static long GetMainTabOrderFingerprint(IList<int> mainTabOrder)
+        {
+            if (mainTabOrder == null || mainTabOrder.Count == 0)
+                return 0;
+
+            long hash = mainTabOrder.Count.GetHashCode();
+            foreach (int tabIndex in mainTabOrder)
+                hash = ModificationDetector.CombineHashCodes(hash, tabIndex.GetHashCode());
+            return hash;
         }
 
         /// <inheritdoc/>
@@ -667,22 +685,12 @@ namespace SilentNotes.ViewModels
             options.Add(new DropdownItemViewModel { Value = ":open_anote", Description = "📝 " + Language["gui_floating_gesture_open_anote"] });
             options.Add(new DropdownItemViewModel { Value = ":show_menu", Description = "🎛️ " + Language["gui_floating_gesture_show_menu"] });
 
-            (int Index, string Key)[] tabs = new[]
-            {
-                (0, "tab_notes"), (1, "tab_clipboard"), (2, "tab_booky"), (3, "tab_phone"),
-                (RssViewModel.TabIndex, "tab_rss"),
-                (4, "tab_calc"), (5, "tab_cald"), (6, "tab_clock"), (7, "tab_sms"),
-                (8, "tab_qr"), (9, "tab_rec"), (10, "tab_file"), (11, "tab_dialer"),
-                (12, "tab_camera"), (13, "tab_mail"), (14, "tab_player"), (15, "tab_reader"),
-                (16, "tab_password"), (17, "tab_tg"),
-                (AbroViewModel.TabIndex, "tab_abro"),
-            };
-            foreach (var tab in tabs)
+            foreach (MainViewTabCatalog.TabDescriptor tab in MainViewTabCatalog.AllTabs)
             {
                 options.Add(new DropdownItemViewModel
                 {
                     Value = ":tab:" + tab.Index,
-                    Description = "aNote → " + Language[tab.Key],
+                    Description = "aNote → " + Language[tab.LanguageKey],
                 });
             }
 
@@ -990,6 +998,50 @@ namespace SilentNotes.ViewModels
         }
 
         /// <summary>
+        /// Gets or sets the VirusTotal API key for URLCheck scans.
+        /// </summary>
+        public string VirusTotalApiKey
+        {
+            get { return Model.VirusTotalApiKey; }
+            set { SetProperty(Model.VirusTotalApiKey, value, (string v) => Model.VirusTotalApiKey = v); }
+        }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether URLCheck auto-scans with VirusTotal.
+        /// </summary>
+        public bool VirusTotalAutoScan
+        {
+            get { return Model.VirusTotalAutoScan; }
+            set { SetProperty(Model.VirusTotalAutoScan, value, (bool v) => Model.VirusTotalAutoScan = v); }
+        }
+
+        /// <summary>Gets or sets a value indicating whether Abro AI store sync is enabled.</summary>
+        public bool AbroAiSyncEnabled
+        {
+            get { return Model.AbroAiSyncEnabled; }
+            set { SetProperty(Model.AbroAiSyncEnabled, value, (bool v) => Model.AbroAiSyncEnabled = v); }
+        }
+
+        /// <summary>Gets or sets the remote WebDAV path for the Abro AI store JSON file.</summary>
+        public string AbroAiSyncRemotePath
+        {
+            get
+            {
+                return string.IsNullOrWhiteSpace(Model.AbroAiSyncRemotePath)
+                    ? "abro/ai.json"
+                    : Model.AbroAiSyncRemotePath;
+            }
+            set
+            {
+                string normalized = string.IsNullOrWhiteSpace(value) ? "abro/ai.json" : value.Trim().TrimStart('/');
+                SetProperty(
+                    string.IsNullOrWhiteSpace(Model.AbroAiSyncRemotePath) ? "abro/ai.json" : Model.AbroAiSyncRemotePath,
+                    normalized,
+                    (string v) => Model.AbroAiSyncRemotePath = v);
+            }
+        }
+
+        /// <summary>
         /// Gets a value indicating whether the Booky sync can be run with the current settings.
         /// </summary>
         public bool CanSyncBooky
@@ -1219,5 +1271,79 @@ namespace SilentNotes.ViewModels
         /// Gets the wrapped model.
         /// </summary>
         internal SettingsModel Model { get; }
+
+        /// <summary>Gets main view tabs in current display order for the settings page.</summary>
+        public IReadOnlyList<MainTabOrderItemViewModel> MainTabOrderDisplayItems { get; private set; }
+
+        /// <summary>Gets the command to move a tab one position up in the main view header.</summary>
+        public ICommand MoveMainTabUpCommand { get; }
+
+        /// <summary>Gets the command to move a tab one position down in the main view header.</summary>
+        public ICommand MoveMainTabDownCommand { get; }
+
+        /// <summary>Gets the command to reset main tab order to the default.</summary>
+        public ICommand ResetMainTabOrderCommand { get; }
+
+        private void RebuildMainTabOrderDisplayItems()
+        {
+            var items = new List<MainTabOrderItemViewModel>();
+            foreach (int tabIndex in Model.GetEffectiveMainTabOrder())
+            {
+                if (!MainViewTabCatalog.TryGetTab(tabIndex, out MainViewTabCatalog.TabDescriptor tab))
+                    continue;
+                items.Add(new MainTabOrderItemViewModel
+                {
+                    TabIndex = tabIndex,
+                    Emoji = tab.Emoji,
+                    Title = Language[tab.LanguageKey],
+                });
+            }
+
+            MainTabOrderDisplayItems = items;
+        }
+
+        private void EnsureMainTabOrderMaterialized()
+        {
+            if (!SettingsModel.IsValidMainTabOrder(Model.MainTabOrder))
+                Model.MainTabOrder = SettingsModel.GetDefaultMainTabOrder();
+        }
+
+        private void MoveMainTab(int displayIndex, int direction)
+        {
+            EnsureMainTabOrderMaterialized();
+            int newIndex = displayIndex + direction;
+            if (newIndex < 0 || newIndex >= Model.MainTabOrder.Count)
+                return;
+
+            int tabIndex = Model.MainTabOrder[displayIndex];
+            Model.MainTabOrder[displayIndex] = Model.MainTabOrder[newIndex];
+            Model.MainTabOrder[newIndex] = tabIndex;
+            _settingsService.TrySaveSettingsToLocalDevice(Model);
+            _messengerService.Send(new RedrawCurrentPageMessage());
+            RebuildMainTabOrderDisplayItems();
+            OnPropertyChanged(nameof(MainTabOrderDisplayItems));
+        }
+
+        private void ResetMainTabOrder()
+        {
+            Model.MainTabOrder = null;
+            _settingsService.TrySaveSettingsToLocalDevice(Model);
+            _messengerService.Send(new RedrawCurrentPageMessage());
+            RebuildMainTabOrderDisplayItems();
+            OnPropertyChanged(nameof(MainTabOrderDisplayItems));
+        }
+    }
+
+    /// <summary>One row in the main tab order settings list.</summary>
+    public sealed class MainTabOrderItemViewModel
+    {
+        /// <summary>Gets or sets the stable tab index.</summary>
+        public int TabIndex { get; set; }
+
+        /// <summary>Gets or sets the emoji label.</summary>
+        public string Emoji { get; set; }
+
+        /// <summary>Gets or sets the localized tab title.</summary>
+        public string Title { get; set; }
     }
 }

@@ -1,0 +1,39 @@
+@using MudBlazor
+@using SilentNotes.Services
+
+@inject IAbroAiChatLauncher AiChatLauncher
+@inject IFeedbackService FeedbackService
+@inject ILanguageService LanguageService
+
+<MudIconButton Icon="@Icons.Material.Filled.AutoAwesome" Size="@Size" Color="@Color"
+	@onclick:stopPropagation="true"
+	@onclick="AskAsync"
+	title="@(string.IsNullOrWhiteSpace(Title) ? LanguageService["ask_ai"] : Title)" />
+
+@code {
+	[Parameter]
+	public Size Size { get; set; } = Size.Small;
+
+	[Parameter]
+	public Color Color { get; set; } = Color.Default;
+
+	[Parameter]
+	public string Title { get; set; }
+
+	[Parameter]
+	public string Subject { get; set; }
+
+	[Parameter]
+	public string ContextText { get; set; }
+
+	private async Task AskAsync()
+	{
+		if (!AiChatLauncher.IsSupported)
+		{
+			FeedbackService.ShowToast(LanguageService["ask_ai_unavailable"]);
+			return;
+		}
+
+		await AiChatLauncher.AskAiAboutAsync(Subject, ContextText);
+	}
+}

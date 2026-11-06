@@ -5,9 +5,11 @@
 
 @using CommunityToolkit.Mvvm.Input
 @using MudBlazor
+@using SilentNotes
 @using SilentNotes.Models
 @using SilentNotes.Services
 @using SilentNotes.ViewModels
+@using SilentNotes.Workers
 
 @inject ILanguageService LanguageService
 @inject ISvgIconService IconService
@@ -119,6 +121,12 @@
 	.note-dark .note-viewer.over-view.checklist p::before { content: @(IconService.LoadIconAsCssUrl(IconNames.CheckboxBlankOutline, new[] { new KeyValuePair<string, string>("fill", "#FFFFFF") })) }
 	.note-dark .note-viewer.over-view.checklist p.done::before { content: @(IconService.LoadIconAsCssUrl(IconNames.CheckboxOutline, new[] { new KeyValuePair<string, string>("fill", "#FFFFFF") })) }
 	.note-dark .note-viewer.over-view.checklist p.disabled::before { content: @(IconService.LoadIconAsCssUrl(IconNames.CheckboxBlankOutline, new[] { new KeyValuePair<string, string>("fill", "#FFFFFF") })) }
+	.note-handle-open-link {
+		left: var(--note-handle-mx);
+		right: auto;
+		top: auto;
+		bottom: var(--note-handle-my);
+	}
 </style>
 
 @* Two row header: the filter controls on the first row, the tab buttons on the second row *@
@@ -403,34 +411,22 @@
 	</MudPopover>
 	</div>
 
-	<div class="app-header-row app-header-tabs">
-		<MudButton Class="@GetTabButtonClass(0)" OnClick="@(() => SetActiveTab(0))" Variant="Variant.Text" title="@LanguageService["tab_notes"]">📝</MudButton>
-		<MudButton Class="@GetTabButtonClass(1)" OnClick="@(() => SetActiveTab(1))" Variant="Variant.Text" title="@LanguageService["tab_clipboard"]">📋</MudButton>
-		<MudButton Class="@GetTabButtonClass(2)" OnClick="@(() => SetActiveTab(2))" Variant="Variant.Text" title="@LanguageService["tab_booky"]">🔖</MudButton>
-		<MudButton Class="@GetTabButtonClass(3)" OnClick="@(() => SetActiveTab(3))" Variant="Variant.Text" title="@LanguageService["tab_phone"]">👤</MudButton>
-		<MudButton Class="@GetTabButtonClass(RssViewModel.TabIndex)" OnClick="@(() => SetActiveTab(RssViewModel.TabIndex))" Variant="Variant.Text" title="@LanguageService["tab_rss"]">📰</MudButton>
-	</div>
-	<div class="app-header-row app-header-tabs">
-		<MudButton Class="@GetTabButtonClass(4)" OnClick="@(() => SetActiveTab(4))" Variant="Variant.Text" title="@LanguageService["tab_calc"]">🧮</MudButton>
-		<MudButton Class="@GetTabButtonClass(5)" OnClick="@(() => SetActiveTab(5))" Variant="Variant.Text" title="@LanguageService["tab_cald"]">📅</MudButton>
-		<MudButton Class="@GetTabButtonClass(6)" OnClick="@(() => SetActiveTab(6))" Variant="Variant.Text" title="@LanguageService["tab_clock"]">⏰</MudButton>
-		<MudButton Class="@GetTabButtonClass(7)" OnClick="@(() => SetActiveTab(7))" Variant="Variant.Text" title="@LanguageService["tab_sms"]">💬</MudButton>
-		<MudButton Class="@GetTabButtonClass(8)" OnClick="@(() => SetActiveTab(8))" Variant="Variant.Text" title="@LanguageService["tab_qr"]">🔳</MudButton>
-	</div>
-	<div class="app-header-row app-header-tabs">
-		<MudButton Class="@GetTabButtonClass(9)" OnClick="@(() => SetActiveTab(9))" Variant="Variant.Text" title="@LanguageService["tab_rec"]">🎙️</MudButton>
-		<MudButton Class="@GetTabButtonClass(10)" OnClick="@(() => SetActiveTab(10))" Variant="Variant.Text" title="@LanguageService["tab_file"]">📁</MudButton>
-		<MudButton Class="@GetTabButtonClass(11)" OnClick="@(() => SetActiveTab(11))" Variant="Variant.Text" title="@LanguageService["tab_dialer"]">📞</MudButton>
-		<MudButton Class="@GetTabButtonClass(12)" OnClick="@(() => SetActiveTab(12))" Variant="Variant.Text" title="@LanguageService["tab_camera"]">📷</MudButton>
-		<MudButton Class="@GetTabButtonClass(13)" OnClick="@(() => SetActiveTab(13))" Variant="Variant.Text" title="@LanguageService["tab_mail"]">✉️</MudButton>
-	</div>
-	<div class="app-header-row app-header-tabs">
-		<MudButton Class="@GetTabButtonClass(14)" OnClick="@(() => SetActiveTab(14))" Variant="Variant.Text" title="@LanguageService["tab_player"]">▶️</MudButton>
-		<MudButton Class="@GetTabButtonClass(15)" OnClick="@(() => SetActiveTab(15))" Variant="Variant.Text" title="@LanguageService["tab_reader"]">📖</MudButton>
-		<MudButton Class="@GetTabButtonClass(16)" OnClick="@(() => SetActiveTab(16))" Variant="Variant.Text" title="@LanguageService["tab_password"]">🔑</MudButton>
-		<MudButton Class="@GetTabButtonClass(17)" OnClick="@(() => SetActiveTab(17))" Variant="Variant.Text" title="@LanguageService["tab_tg"]">✈</MudButton>
-		<MudButton Class="@GetTabButtonClass(AbroViewModel.TabIndex)" OnClick="@(() => SetActiveTab(AbroViewModel.TabIndex))" Variant="Variant.Text" title="@LanguageService["tab_abro"]">🌐</MudButton>
-	</div>
+	@{
+		const int tabsPerRow = 5;
+		for (int rowStart = 0; rowStart < _mainTabDisplayOrder.Count; rowStart += tabsPerRow)
+		{
+			<div class="app-header-row app-header-tabs">
+				@for (int i = rowStart; i < rowStart + tabsPerRow && i < _mainTabDisplayOrder.Count; i++)
+				{
+					int tabIndex = _mainTabDisplayOrder[i];
+					if (MainViewTabCatalog.TryGetTab(tabIndex, out MainViewTabCatalog.TabDescriptor tab))
+					{
+						<MudButton Class="@GetTabButtonClass(tabIndex)" OnClick="@(() => SetActiveTab(tabIndex))" Variant="Variant.Text" title="@LanguageService[tab.LanguageKey]">@tab.Emoji</MudButton>
+					}
+				}
+			</div>
+		}
+	}
 </div>
 
 @if (_activeTab == 0)
@@ -506,6 +502,15 @@
 							<div class="note-handle note-handle-top @Css.BuildClass(new CssClassIf("bluish-highlighted", note == ViewModel.SelectedOrderNote))" @onmousedown="() => ViewModel.SelectOrderNote(note)" @onclick:stopPropagation="true">@IconService.EmbedSvgLink(IconNames.ArrowAll, 22)</div>
 							@if(!note.IsLocked)
 							{
+								@if (UrlActionHelpers.ContainsOpenableUrl(note.UnlockedHtmlContent))
+								{
+									<div class="note-handle note-handle-open-link" @onclick:stopPropagation="true">
+										<OpenLinkButton Text="@note.UnlockedHtmlContent" Title="@LanguageService["note_open_link"]" />
+									</div>
+								}
+								<div class="note-handle note-handle-open-link" @onclick:stopPropagation="true">
+									<AskAiButton Subject="@LanguageService["tab_notes"]" ContextText="@RssFeedParser.StripHtml(note.UnlockedHtmlContent)" />
+								</div>
 								<div class="note-handle note-handle-bottom" @onclick="() => ViewModel.DeleteNoteCommand.Execute(note.Id)" @onclick:stopPropagation="true">@IconService.EmbedSvgLink(IconNames.Delete, 19)</div>
 							}
 							@if (ViewModel.IsAnySafeOpen && !note.IsLocked)
@@ -672,6 +677,7 @@
 	/// <summary>Remembers the active tab across page reloads (e.g. after closing the image/video viewer).</summary>
 	private static int _persistedActiveTab = 0;
 	private int _activeTab = _persistedActiveTab;
+	private List<int> _mainTabDisplayOrder = SettingsModel.GetDefaultMainTabOrder();
 	private ClipboardViewModel _clipboardViewModel;
 	private BookyViewModel _bookyViewModel;
 	private ContactsViewModel _contactsViewModel;
@@ -718,6 +724,7 @@
 		);
 		await ViewModel.InitializeTagTree();
 		_tagsRootNode = new MudTreeItemWrapper(ViewModel.TagsRootNode, null);
+		ReloadMainTabDisplayOrder();
 
 		_clipboardViewModel = new ClipboardViewModel(
 			ClipboardHistoryService,
@@ -946,6 +953,8 @@
 			this, (recipient, message) => OnTelegramLinkIntent());
 		MessengerService.Register<ScreenRecordIntentMessage>(
 			this, (recipient, message) => OnScreenRecordIntent());
+		MessengerService.Register<RedrawCurrentPageMessage>(
+			this, (recipient, message) => OnMainViewSettingsRedraw());
 
 		if (loadResult == RepositoryStorageLoadResult.InvalidRepository)
 			throw new Exception("Invalid repository");
@@ -954,6 +963,7 @@
 	/// <inheritdoc/>
 	protected override void OnParametersSet()
 	{
+		ReloadMainTabDisplayOrder();
 		if (!string.IsNullOrEmpty(BringToViewNoteId))
 		{
 			_pendingScrollIntoView = new BringNoteIntoViewMessage(Guid.Parse(BringToViewNoteId), false);
@@ -1416,6 +1426,17 @@
 	private string GetTagsTooltip()
 	{
 		return string.Join(", ", ViewModel.GetFilterTags());
+	}
+
+	private void ReloadMainTabDisplayOrder()
+	{
+		_mainTabDisplayOrder = SettingsService.LoadSettingsOrDefault().GetEffectiveMainTabOrder();
+	}
+
+	private void OnMainViewSettingsRedraw()
+	{
+		ReloadMainTabDisplayOrder();
+		InvokeAsync(StateHasChanged);
 	}
 
 	/// <summary>

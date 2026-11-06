@@ -9,6 +9,9 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Xamarin.Google.MLKit.Vision.BarCode;
+using Xamarin.Google.MLKit.Vision.Barcode.Common;
+using MlKitBarcodeScanning = Xamarin.Google.MLKit.Vision.BarCode.BarcodeScanning;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
@@ -24,6 +27,7 @@ using Android.Views;
 using Android.Widget;
 using AndroidX.Core.Content;
 using Microsoft.Maui.ApplicationModel;
+using SilentNotes;
 using SilentNotes.Models;
 using SilentNotes.Services;
 using Color = Android.Graphics.Color;
@@ -50,13 +54,19 @@ namespace SilentNotes.Platforms.Services
 
         private readonly IAppContextService _appContext;
         private readonly IActivityResultAwaiter _activityResultAwaiter;
+        private readonly IQrService _qrService;
+        private readonly IQrHistoryService _qrHistoryService;
 
         public CameraService(
             IAppContextService appContextService,
-            IActivityResultAwaiter activityResultAwaiter)
+            IActivityResultAwaiter activityResultAwaiter,
+            IQrService qrService = null,
+            IQrHistoryService qrHistoryService = null)
         {
             _appContext = appContextService;
             _activityResultAwaiter = activityResultAwaiter;
+            _qrService = qrService;
+            _qrHistoryService = qrHistoryService;
         }
 
         /// <inheritdoc/>
@@ -119,6 +129,8 @@ namespace SilentNotes.Platforms.Services
                         clampedQuality,
                         useFrontCamera,
                         flashMode,
+                        _qrService,
+                        _qrHistoryService,
                         tcs);
                     dialog.Show();
                 }
@@ -832,6 +844,23 @@ namespace SilentNotes.Platforms.Services
             return new string(chars).Trim();
         }
 
+        private static bool CanUseMlKitForLiveScan(Context context)
+        {
+            try
+            {
+                MainApplication.EnsureMlKitInitialized(context);
+                using IBarcodeScanner scanner = MlKitBarcodeScanning.GetClient(
+                    new BarcodeScannerOptions.Builder()
+                        .SetBarcodeFormats(Barcode.FormatAllFormats)
+                        .Build());
+                return scanner != null;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         private class CapturedRawResult
         {
             public Bitmap Bitmap { get; set; }
@@ -880,12 +909,30 @@ namespace SilentNotes.Platforms.Services
             private bool _isCapturingStill;
             private bool _isCompleted;
 
+            private readonly IQrService _qrService;
+            private readonly IQrHistoryService _qrHistoryService;
+            private readonly bool _liveBarcodeEnabled;
+            private LinearLayout _barcodeBanner;
+            private TextView _barcodeValueText;
+            private TextView _barcodeOpenButton;
+            private string _shownBarcodeText;
+            private string _pendingBarcodeText;
+            private int _barcodeMissStreak;
+            private bool _barcodeScanInFlight;
+            private bool _barcodeBannerDismissed;
+            private long _lastBarcodeScanMs;
+            private const int BarcodeScanIntervalMs = 550;
+            private const int BarcodeHideAfterMisses = 4;
+            private const int BarcodePreviewMaxSide = 720;
+
             public LiveCameraDialog(
                 Activity activity,
                 string initialFormat,
                 int initialQuality,
                 bool useFrontCamera,
                 string flashMode,
+                IQrService qrService,
+                IQrHistoryService qrHistoryService,
                 TaskCompletionSource<CapturedRawResult> tcs)
                 : base(activity, global::Android.Resource.Style.ThemeBlackNoTitleBarFullScreen)
             {
@@ -894,6 +941,9 @@ namespace SilentNotes.Platforms.Services
                 _selectedQuality = Math.Clamp(initialQuality, 1, 100);
                 _useFrontCamera = useFrontCamera;
                 _flashMode = string.IsNullOrEmpty(flashMode) ? "auto" : flashMode;
+                _qrService = qrService;
+                _qrHistoryService = qrHistoryService;
+                _liveBarcodeEnabled = _qrService != null && CanUseMlKitForLiveScan(activity);
                 _tcs = tcs;
 
                 float density = activity.Resources.DisplayMetrics.Density;
@@ -1062,6 +1112,16 @@ namespace SilentNotes.Platforms.Services
                     ViewGroup.LayoutParams.WrapContent,
                     GravityFlags.Bottom));
 
+                if (_liveBarcodeEnabled)
+                {
+                    _barcodeBanner = CreateBarcodeBanner(activity, density, pad);
+                    _barcodeBanner.Visibility = ViewStates.Gone;
+                    root.AddView(_barcodeBanner, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MatchParent,
+                        ViewGroup.LayoutParams.WrapContent,
+                        GravityFlags.Center));
+                }
+
                 SetContentView(root);
                 SetCanceledOnTouchOutside(false);
             }
@@ -1105,6 +1165,15 @@ namespace SilentNotes.Platforms.Services
 
             public void OnSurfaceTextureUpdated(SurfaceTexture surface)
             {
+                if (!_liveBarcodeEnabled || _isCompleted || _isCapturingStill)
+                    return;
+
+                long now = SystemClock.ElapsedRealtime();
+                if (_barcodeScanInFlight || (now - _lastBarcodeScanMs) < BarcodeScanIntervalMs)
+                    return;
+
+                _lastBarcodeScanMs = now;
+                ScheduleLiveBarcodeScan();
             }
 
             private void CycleFormat()
@@ -1257,6 +1326,9 @@ namespace SilentNotes.Platforms.Services
                     Java.Nio.ByteBuffer buffer = planes[0].Buffer;
                     byte[] bytes = new byte[buffer.Remaining()];
                     buffer.Get(bytes);
+
+                    if (_liveBarcodeEnabled)
+                        _ = TryDecodeBarcodeFromJpegAsync(bytes, showToastIfNew: true);
 
                     int fallbackRot = GetJpegOrientation();
                     bool mirror = _useFrontCamera;
@@ -1627,6 +1699,294 @@ namespace SilentNotes.Platforms.Services
                 }
                 _backgroundThread = null;
                 _backgroundHandler = null;
+            }
+
+            private LinearLayout CreateBarcodeBanner(Activity activity, float density, int pad)
+            {
+                var container = new LinearLayout(activity)
+                {
+                    Orientation = Orientation.Vertical,
+                };
+                container.SetBackgroundColor(Color.ParseColor("#DD1A1A1A"));
+                container.SetPadding(pad, pad, pad, pad);
+
+                var bg = new GradientDrawable();
+                bg.SetCornerRadius(12 * density);
+                bg.SetColor(Color.ParseColor("#DD1A1A1A"));
+                bg.SetStroke((int)(1 * density), Color.ParseColor("#66FFFFFF"));
+                container.Background = bg;
+
+                _barcodeValueText = new TextView(activity)
+                {
+                    TextSize = 13f,
+                    MaxLines = 2,
+                };
+                _barcodeValueText.SetTextColor(Color.White);
+                container.AddView(_barcodeValueText, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent,
+                    ViewGroup.LayoutParams.WrapContent));
+
+                var actions = new LinearLayout(activity)
+                {
+                    Orientation = Orientation.Horizontal,
+                };
+                actions.SetGravity(GravityFlags.CenterVertical);
+                actions.SetPadding(0, (int)(8 * density), 0, 0);
+
+                _barcodeOpenButton = CreateHudPill(activity, "Open", density);
+                _barcodeOpenButton.Click += (s, e) => TryOpenBarcodeUrl(_shownBarcodeText);
+                actions.AddView(_barcodeOpenButton);
+
+                actions.AddView(CreateSpacer(activity));
+
+                TextView copyBtn = CreateHudPill(activity, "Copy", density);
+                copyBtn.Click += (s, e) => CopyBarcodeText(_shownBarcodeText);
+                actions.AddView(copyBtn);
+
+                actions.AddView(CreateSpacer(activity));
+
+                TextView historyBtn = CreateHudPill(activity, "QR history", density);
+                historyBtn.Click += (s, e) => SaveBarcodeToHistory(_shownBarcodeText);
+                actions.AddView(historyBtn);
+
+                actions.AddView(CreateSpacer(activity));
+
+                TextView dismissBtn = CreateHudPill(activity, "✕", density);
+                dismissBtn.Click += (s, e) =>
+                {
+                    _barcodeBannerDismissed = true;
+                    HideBarcodeBanner();
+                };
+                actions.AddView(dismissBtn);
+
+                container.AddView(actions, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent,
+                    ViewGroup.LayoutParams.WrapContent));
+
+                int margin = (int)(16 * density);
+                container.LayoutParameters = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent,
+                    ViewGroup.LayoutParams.WrapContent)
+                {
+                    LeftMargin = margin,
+                    RightMargin = margin,
+                };
+
+                return container;
+            }
+
+            private void ScheduleLiveBarcodeScan()
+            {
+                if (_barcodeScanInFlight || !_textureView.IsAvailable)
+                    return;
+
+                int viewW = _textureView.Width;
+                int viewH = _textureView.Height;
+                if (viewW <= 0 || viewH <= 0)
+                    return;
+
+                _barcodeScanInFlight = true;
+                float scale = Math.Min(1f, BarcodePreviewMaxSide / (float)Math.Max(viewW, viewH));
+                int bmpW = Math.Max(1, (int)(viewW * scale));
+                int bmpH = Math.Max(1, (int)(viewH * scale));
+
+                Bitmap preview = null;
+                try
+                {
+                    preview = _textureView.GetBitmap(bmpW, bmpH);
+                }
+                catch (Exception)
+                {
+                    _barcodeScanInFlight = false;
+                    return;
+                }
+
+                if (preview == null)
+                {
+                    _barcodeScanInFlight = false;
+                    return;
+                }
+
+                Bitmap captured = preview;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        string decoded = await EncodeBitmapAndDecodeAsync(captured);
+                        captured?.Recycle();
+                        _activity.RunOnUiThread(() => ApplyLiveBarcodeResult(decoded));
+                    }
+                    catch (Exception)
+                    {
+                        captured?.Recycle();
+                        _activity.RunOnUiThread(() => ApplyLiveBarcodeResult(null));
+                    }
+                    finally
+                    {
+                        _barcodeScanInFlight = false;
+                    }
+                });
+            }
+
+            private async Task TryDecodeBarcodeFromJpegAsync(byte[] jpegBytes, bool showToastIfNew)
+            {
+                if (jpegBytes == null || jpegBytes.Length == 0 || _qrService == null)
+                    return;
+
+                try
+                {
+                    string decoded = await _qrService.DecodeImageAsync(jpegBytes);
+                    if (string.IsNullOrWhiteSpace(decoded))
+                        return;
+
+                    _activity.RunOnUiThread(() =>
+                    {
+                        ApplyLiveBarcodeResult(decoded);
+                        if (showToastIfNew && !string.Equals(decoded, _shownBarcodeText, StringComparison.Ordinal))
+                        {
+                            Toast.MakeText(
+                                _activity,
+                                TruncateForDisplay(decoded, 80),
+                                ToastLength.Short)?.Show();
+                        }
+                    });
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            private async Task<string> EncodeBitmapAndDecodeAsync(Bitmap bitmap)
+            {
+                if (bitmap == null || _qrService == null)
+                    return null;
+
+                using (var ms = new MemoryStream())
+                {
+                    if (!bitmap.Compress(Bitmap.CompressFormat.Jpeg, 72, ms))
+                        return null;
+                    return await _qrService.DecodeImageAsync(ms.ToArray());
+                }
+            }
+
+            private void ApplyLiveBarcodeResult(string decoded)
+            {
+                if (_isCompleted || _barcodeBanner == null)
+                    return;
+
+                if (string.IsNullOrWhiteSpace(decoded))
+                {
+                    _barcodeMissStreak++;
+                    if (_barcodeMissStreak >= BarcodeHideAfterMisses)
+                        HideBarcodeBanner();
+                    return;
+                }
+
+                _barcodeMissStreak = 0;
+                _pendingBarcodeText = decoded.Trim();
+                if (_barcodeBannerDismissed
+                    && string.Equals(_pendingBarcodeText, _shownBarcodeText, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                if (!string.Equals(_pendingBarcodeText, _shownBarcodeText, StringComparison.Ordinal))
+                    _barcodeBannerDismissed = false;
+
+                ShowBarcodeBanner(_pendingBarcodeText);
+            }
+
+            private void ShowBarcodeBanner(string text)
+            {
+                if (_barcodeBanner == null || string.IsNullOrWhiteSpace(text))
+                    return;
+
+                _shownBarcodeText = text;
+                _barcodeValueText.Text = TruncateForDisplay(text, 160);
+                if (_barcodeOpenButton != null)
+                {
+                    _barcodeOpenButton.Visibility = LooksLikeHttpUrl(text.Trim())
+                        ? ViewStates.Visible
+                        : ViewStates.Gone;
+                }
+                _barcodeBanner.Visibility = ViewStates.Visible;
+            }
+
+            private void HideBarcodeBanner()
+            {
+                if (_barcodeBanner == null)
+                    return;
+                _barcodeBanner.Visibility = ViewStates.Gone;
+                _shownBarcodeText = null;
+                _pendingBarcodeText = null;
+            }
+
+            private void CopyBarcodeText(string text)
+            {
+                if (string.IsNullOrWhiteSpace(text))
+                    return;
+
+                try
+                {
+                    var clipboard = (ClipboardManager)_activity.GetSystemService(Context.ClipboardService);
+                    clipboard.PrimaryClip = ClipData.NewPlainText("barcode", text);
+                    Toast.MakeText(_activity, "Copied", ToastLength.Short)?.Show();
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            private void SaveBarcodeToHistory(string text)
+            {
+                if (string.IsNullOrWhiteSpace(text) || _qrHistoryService == null)
+                    return;
+
+                try
+                {
+                    _qrHistoryService.AddText(text, QrHistoryModel.MaxHistoryItems);
+                    Toast.MakeText(_activity, "Saved to QR history", ToastLength.Short)?.Show();
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            private void TryOpenBarcodeUrl(string text)
+            {
+                if (string.IsNullOrWhiteSpace(text))
+                    return;
+
+                string trimmed = text.Trim();
+                if (!LooksLikeHttpUrl(trimmed))
+                {
+                    CopyBarcodeText(trimmed);
+                    return;
+                }
+
+                try
+                {
+                    var intent = new Intent(Intent.ActionView, global::Android.Net.Uri.Parse(trimmed));
+                    intent.AddFlags(ActivityFlags.NewTask);
+                    _activity.StartActivity(intent);
+                }
+                catch (Exception)
+                {
+                    Toast.MakeText(_activity, "Could not open link", ToastLength.Short)?.Show();
+                }
+            }
+
+            private static bool LooksLikeHttpUrl(string text)
+            {
+                return Uri.TryCreate(text, UriKind.Absolute, out Uri uri)
+                    && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+            }
+
+            private static string TruncateForDisplay(string text, int maxLen)
+            {
+                if (string.IsNullOrEmpty(text) || text.Length <= maxLen)
+                    return text;
+                return text.Substring(0, maxLen - 1) + "…";
             }
 
             private static TextView CreateHudPill(Context context, string text, float density)

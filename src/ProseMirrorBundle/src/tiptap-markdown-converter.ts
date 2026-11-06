@@ -15,6 +15,7 @@ import Text from '@tiptap/extension-text'
 import { TextStyleKit } from '@tiptap/extension-text-style'
 import Underline from '@tiptap/extension-underline'
 import { BulletList, OrderedList, ListItem } from '@tiptap/extension-list'
+import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import { Markdown } from '@tiptap/markdown'
 
 export class TiptapMarkdownConverter {
@@ -71,6 +72,10 @@ export class TiptapMarkdownConverter {
           OrderedList,
           Paragraph,
           Strike,
+          Table,
+          TableRow,
+          TableHeader,
+          TableCell,
           Text,
           TextStyleKit,
           Underline,

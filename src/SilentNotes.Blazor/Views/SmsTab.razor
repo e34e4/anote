@@ -220,6 +220,8 @@
 						@if (!ViewModel.IsSelectionMode)
 						{
 							<div class="sms-message-actions">
+								<AskAiButton Subject="@ViewModel.ConversationTitle" ContextText="@message.Body" />
+								<OpenLinkButton Text="@message.Body" Title="@LanguageService["note_open_link"]" />
 								<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small"
 									OnClick="() => SaveMessageToWebdavAsync(message)" title="@LanguageService["webdav_quick_save"]" />
 								<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small"
@@ -279,6 +281,8 @@
 							<div class="sms-unread mt-1">@thread.Model.UnreadCount</div>
 						}
 					</div>
+					<AskAiButton Subject="@thread.Title" ContextText="@thread.Snippet" />
+					<OpenLinkButton Text="@thread.Snippet" Title="@LanguageService["note_open_link"]" />
 					<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => DeleteThread(thread)" title="@LanguageService["sms_delete"]" />
 				</div>
 			}

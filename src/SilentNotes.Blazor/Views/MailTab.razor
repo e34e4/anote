@@ -315,6 +315,8 @@
 				</button>
 				<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small"
 					OnClick="() => SaveMessageToWebdavAsync(msg)" title="@LanguageService["webdav_quick_save"]" />
+				<AskAiButton Subject="@msg.SubjectDisplay" ContextText="@($"{msg.SubjectDisplay}\nFrom: {msg.Model.From}\n\n{msg.PlainBodyForDisplay}")" />
+				<OpenLinkButton Text="@msg.PlainBodyForDisplay" Title="@LanguageService["note_open_link"]" />
 				<button class="mail-btn" @onclick="() => ViewModel.DeleteOrTrashMessage(msg)" title="@LanguageService["delete"]">
 					<MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" />
 				</button>
@@ -403,6 +405,8 @@
 						@onclick="() => ViewModel.ToggleStar(item)" title="Star">
 						@(item.Model.IsStarred ? "★" : "☆")
 					</button>
+					<AskAiButton Subject="@item.SubjectDisplay" ContextText="@($"{item.SubjectDisplay}\n{item.SenderDisplay}\n{item.SnippetDisplay}")" />
+					<OpenLinkButton Text="@item.SnippetDisplay" Title="@LanguageService["note_open_link"]" />
 					<MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small"
 						OnClick="() => ViewModel.DeleteOrTrashMessage(item)" title="@LanguageService["delete"]" />
 				</div>

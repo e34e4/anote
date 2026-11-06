@@ -307,6 +307,7 @@
 							</div>
 						</div>
 
+						<AskAiButton Subject="@item.DisplayTitle" ContextText="@($"{item.DisplayTitle}\n{item.FormatBadge} {item.QualityText}\n{item.DimensionsText}\n{item.SizeText}\n{item.DateText}")" />
 						<MudIconButton Icon="@Icons.Material.Filled.Transform" Size="Size.Small" OnClick="() => ReencodePhotoAsync(item)" title="@LanguageService["camera_reencode"]" />
 						<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => ViewModel.StartRenameCommand.Execute(item)" title="@LanguageService["camera_rename"]" />
 						<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="() => SaveToGalleryAsync(item)" title="@LanguageService["camera_save_gallery"]" />

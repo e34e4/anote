@@ -61,6 +61,11 @@
 								<MudText Typo="Typo.caption" Class="mud-text-secondary mt-1">@item.CreatedUtc.ToLocalTime().ToString("g")</MudText>
 							</div>
 							<MudStack Row="true" Spacing="0" Class="flex-shrink-0">
+								@if (!item.IsImage)
+								{
+									<OpenLinkButton Text="@item.Model.Text" Title="@LanguageService["note_open_link"]" />
+									<AskAiButton Subject="@LanguageService["tab_clipboard"]" ContextText="@item.Model.Text" />
+								}
 								<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="@(() => ViewModel.CopyCommand.Execute(item))" title="@LanguageService["clipboard_copy"]" />
 								@if (item.IsImage && ViewModel.CanHandleImages)
 								{
@@ -97,6 +102,11 @@
 									<MudText Typo="Typo.caption" Class="mud-text-secondary mt-1">@item.CreatedUtc.ToLocalTime().ToString("g")</MudText>
 								</div>
 								<MudStack Row="true" Spacing="0" Class="flex-shrink-0">
+									@if (!item.IsImage)
+									{
+										<OpenLinkButton Text="@item.Model.Text" Title="@LanguageService["note_open_link"]" />
+										<AskAiButton Subject="@LanguageService["tab_clipboard"]" ContextText="@item.Model.Text" />
+									}
 									<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="@(() => ViewModel.CopyCommand.Execute(item))" title="@LanguageService["clipboard_copy"]" />
 									@if (item.IsImage && ViewModel.CanHandleImages)
 									{

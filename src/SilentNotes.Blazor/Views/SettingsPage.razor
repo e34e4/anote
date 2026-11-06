@@ -269,6 +269,16 @@
 						Label="@LanguageService["gui_hide_closed_safe_notes"]" Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()"/>
 				</div>
 
+				@* Main tab order *@
+				<div><MudIcon Icon="@Icons.Material.Filled.ViewList" Color="Color.Secondary" /></div>
+				<div>
+					<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.SwapVert"
+						OnClick="@(() => Navigation.NavigateTo(RouteNames.MainTabOrder))">
+						@LanguageService["gui_main_tab_order"]
+					</MudButton>
+					<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["gui_main_tab_order_desc"]</MudText>
+				</div>
+
 				@* Keep screen on *@
 				@if (ViewModel.CanKeepScreenOn)
 				{
@@ -549,10 +559,10 @@
 				</div>
 			}
 
+			<h2 class="h-colored mt-10">@LanguageService["gui_browser"]</h2>
+
 			@if (ViewModel.CanSetDefaultBrowser)
 			{
-				<h2 class="h-colored mt-10">@LanguageService["gui_browser"]</h2>
-
 				<div class="css-grid">
 					<div><MudIcon Icon="@Icons.Material.Filled.Public" Color="Color.Secondary" /></div>
 					<div>
@@ -567,6 +577,36 @@
 					</div>
 				</div>
 			}
+
+			<div class="css-grid">
+				<div><MudIcon Icon="@Icons.Material.Filled.BugReport" Color="Color.Secondary" /></div>
+				<div>
+					<label for="VirusTotalApiKey">VirusTotal API key (URLCheck)</label>
+					<MudTextField id="VirusTotalApiKey" @bind-Value="@ViewModel.VirusTotalApiKey" Variant="Variant.Outlined" InputType="InputType.Password" />
+					<MudSwitch @bind-Value="@ViewModel.VirusTotalAutoScan" Class="mt-2"
+						Label="Auto-scan links in URLCheck" Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
+					<MudText Typo="Typo.caption" Class="mud-text-secondary">Get a free key at virustotal.com. Stored locally with your settings.</MudText>
+				</div>
+			</div>
+
+			<div class="css-grid">
+				<div><MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Color="Color.Secondary" /></div>
+				<div>
+					<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Psychology"
+						OnClick="@(() => Navigation.NavigateTo(RouteNames.AiProviders))">
+						@LanguageService["ai_providers_manage"]
+					</MudButton>
+					<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["ai_providers_manage_hint"]</MudText>
+				</div>
+				<div></div>
+				<div>
+					<MudSwitch @bind-Value="@ViewModel.AbroAiSyncEnabled"
+						Label="@LanguageService["ai_sync_enabled"]" Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
+					<label for="AbroAiSyncRemotePath">@LanguageService["ai_sync_remote_path"]</label>
+					<MudTextField id="AbroAiSyncRemotePath" @bind-Value="@ViewModel.AbroAiSyncRemotePath" Variant="Variant.Outlined" Placeholder="abro/ai.json" />
+					<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["ai_sync_desc"]</MudText>
+				</div>
+			</div>
 
 
 			<h2 class="h-colored mt-10">@LanguageService["security"]</h2>

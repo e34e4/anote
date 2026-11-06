@@ -35,6 +35,7 @@ namespace SilentNotes.Models
         private List<string> _transferCodeHistory;
         private List<NotificationTriggerModel> _notificationTriggers;
         private List<string> _filterTags;
+        private List<int> _mainTabOrder;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SettingsModel"/> class.
@@ -89,6 +90,8 @@ namespace SilentNotes.Models
             PhoneAutoBlockSpam = false;
             PhoneSkipContactsWhenBlocking = true;
             PhoneCustomSpamUrl = string.Empty;
+            VirusTotalApiKey = string.Empty;
+            VirusTotalAutoScan = false;
             CameraPhotoFormat = "jpg";
             CameraPhotoQuality = 25;
             CalculatorHistory = new List<CalculatorHistoryEntryModel>();
@@ -610,6 +613,18 @@ namespace SilentNotes.Models
         public string PhoneCustomSpamUrl { get; set; }
 
         /// <summary>
+        /// Gets or sets the VirusTotal API key used by URLCheck scans (v3).
+        /// </summary>
+        [XmlElement("virustotal_api_key")]
+        public string VirusTotalApiKey { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether URLCheck should scan URLs with VirusTotal automatically.
+        /// </summary>
+        [XmlElement("virustotal_auto_scan")]
+        public bool VirusTotalAutoScan { get; set; }
+
+        /// <summary>
         /// Gets or sets the calculator history entries (newest first).
         /// </summary>
         [XmlArray("calc_history")]
@@ -802,6 +817,61 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlIgnore]
         public string Filter { get; set; }
+
+        /// <summary>
+        /// Gets or sets the visual order of main view tab buttons as stable tab indices.
+        /// Empty or null means use <see cref="GetDefaultMainTabOrder"/>.
+        /// </summary>
+        [XmlArray("main_tab_order")]
+        [XmlArrayItem("tab_index")]
+        public List<int> MainTabOrder
+        {
+            get { return _mainTabOrder; }
+            set { _mainTabOrder = value; }
+        }
+
+        /// <summary>
+        /// Gets the hardcoded default visual order of main view tab buttons.
+        /// </summary>
+        /// <returns>Stable tab indices in default order.</returns>
+        public static List<int> GetDefaultMainTabOrder()
+        {
+            var result = new List<int>(MainViewTabCatalog.TabCount);
+            foreach (MainViewTabCatalog.TabDescriptor tab in MainViewTabCatalog.AllTabs)
+                result.Add(tab.Index);
+            return result;
+        }
+
+        /// <summary>
+        /// Gets the configured main tab order if valid, otherwise the default order.
+        /// </summary>
+        /// <returns>Stable tab indices in effective display order.</returns>
+        public List<int> GetEffectiveMainTabOrder()
+        {
+            if (IsValidMainTabOrder(MainTabOrder))
+                return new List<int>(MainTabOrder);
+            return GetDefaultMainTabOrder();
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether <paramref name="order"/> is a complete permutation of all main tabs.
+        /// </summary>
+        internal static bool IsValidMainTabOrder(IList<int> order)
+        {
+            if (order == null || order.Count != MainViewTabCatalog.TabCount)
+                return false;
+
+            var seen = new HashSet<int>();
+            foreach (int tabIndex in order)
+            {
+                if (!MainViewTabCatalog.TryGetTab(tabIndex, out _))
+                    return false;
+                if (!seen.Add(tabIndex))
+                    return false;
+            }
+
+            return seen.Count == MainViewTabCatalog.TabCount;
+        }
     }
 
     /// <summary>

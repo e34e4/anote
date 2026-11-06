@@ -45,6 +45,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\SafeListModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\SafeModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\SafeOpenResult.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\MainViewTabCatalog.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\SettingsModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\ThemeMode.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\WallpaperModel.cs" />
@@ -151,6 +152,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\OpenSafeViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\RecycleBinViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\SettingsViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\AiProvidersSettingsViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\SliderStepConverter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\SynchronizationStory\TransferCodePromptViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\TagTreeItemViewModel.cs" />
@@ -267,6 +269,8 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\ICameraService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\CameraViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\UrlCheckUtils.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\UrlActionHelpers.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\VirusTotalUrlChecker.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\MailModels.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IMailService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\MailServiceBase.cs" />
@@ -275,12 +279,14 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\MediaIntentRequest.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IMediaPlayerService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroBrowserService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroAiChatLauncher.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\AbroLaunchGate.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiProviderModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiMessageModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiConversationModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiStoreModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroAiStoreFormat.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroAiAskText.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroAiMarkdown.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroAiStoreService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\AbroAiStoreService.cs" />

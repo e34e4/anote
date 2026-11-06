@@ -16,6 +16,7 @@ import Text from '@tiptap/extension-text'
 import { TextStyleKit } from '@tiptap/extension-text-style'
 import Underline from '@tiptap/extension-underline'
 import { BulletList, OrderedList, ListItem } from '@tiptap/extension-list'
+import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 
 import { CustomHeading } from "./custom-heading-extension";
 import { CustomLink } from "./custom-link-extension";
@@ -75,6 +76,12 @@ export function initializeEditor(editorElement: HTMLElement): any {
         OrderedList,
         Paragraph,
         Strike,
+        Table.configure({
+          resizable: true,
+        }),
+        TableRow,
+        TableHeader,
+        TableCell,
         Text,
         TextStyleKit,
         Underline,

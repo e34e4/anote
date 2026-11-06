@@ -1,0 +1,49 @@
+@using MudBlazor
+@using SilentNotes.Services
+@using SilentNotes.Workers
+
+@inject INativeBrowserService NativeBrowserService
+@inject ILanguageService LanguageService
+
+@if (HasOpenableUrl)
+{
+	<span @onclick:stopPropagation="true">
+		<MudIconButton Icon="@Icons.Material.Filled.OpenInBrowser"
+			Size="@Size"
+			Color="@Color"
+			Class="@Class"
+			title="@Tooltip"
+			OnClick="@OpenLink" />
+	</span>
+}
+
+@code {
+	[Parameter]
+	public string Text { get; set; }
+
+	[Parameter]
+	public string Url { get; set; }
+
+	[Parameter]
+	public Size Size { get; set; } = Size.Small;
+
+	[Parameter]
+	public Color Color { get; set; } = Color.Default;
+
+	[Parameter]
+	public string Class { get; set; }
+
+	[Parameter]
+	public string Title { get; set; }
+
+	private string SourceText => !string.IsNullOrEmpty(Url) ? Url : Text;
+
+	private bool HasOpenableUrl => UrlActionHelpers.ContainsOpenableUrl(SourceText);
+
+	private string Tooltip => string.IsNullOrEmpty(Title) ? LanguageService["note_open_link"] : Title;
+
+	private void OpenLink()
+	{
+		UrlActionHelpers.OpenFirstUrl(NativeBrowserService, SourceText);
+	}
+}

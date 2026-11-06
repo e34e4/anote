@@ -1333,7 +1333,7 @@ namespace SilentNotes.Platforms
 
         private async Task ShowSettingsMenuAsync()
         {
-            const string providers = "AI providers";
+            const string providers = "AI providers (aNote Settings)";
             const string sync = "AI sync";
             const string adBlocking = "Ad blocking";
             const string search = "Search";
@@ -1352,7 +1352,7 @@ namespace SilentNotes.Platforms
             switch (choice)
             {
                 case providers:
-                    await ShowAiProvidersMenuAsync().ConfigureAwait(true);
+                    await ShowAiProvidersManagedInAnoteAsync().ConfigureAwait(true);
                     break;
                 case sync:
                     await ShowAiSyncMenuAsync().ConfigureAwait(true);
@@ -1384,147 +1384,12 @@ namespace SilentNotes.Platforms
             }
         }
 
-        private async Task ShowAiProvidersMenuAsync()
+        private async Task ShowAiProvidersManagedInAnoteAsync()
         {
-            IAbroAiStoreService storeService = TryGetAiStoreService();
-            if (storeService == null)
-            {
-                ShowToast("AI store unavailable");
-                return;
-            }
-
-            while (true)
-            {
-                AbroAiStoreModel store = storeService.LoadOrDefault();
-                var buttons = new List<string> { "Add provider" };
-                foreach (AbroAiProviderModel provider in store.Providers)
-                {
-                    bool isDefault = store.GetDefaultProvider()?.Id == provider.Id;
-                    string label = (isDefault ? "★ " : string.Empty) + (provider.Name ?? "Provider");
-                    buttons.Add(label);
-                }
-
-                string choice = await DisplayActionSheetAsync("AI providers", "Back", null, buttons.ToArray()).ConfigureAwait(true);
-                if (string.IsNullOrEmpty(choice) || choice == "Back")
-                    return;
-
-                if (choice == "Add provider")
-                {
-                    await EditProviderAsync(storeService, null).ConfigureAwait(true);
-                    continue;
-                }
-
-                int index = buttons.IndexOf(choice) - 1;
-                if (index < 0 || index >= store.Providers.Count)
-                    continue;
-
-                await ShowProviderActionsAsync(storeService, store.Providers[index].Id).ConfigureAwait(true);
-            }
-        }
-
-        private async Task ShowProviderActionsAsync(IAbroAiStoreService storeService, Guid providerId)
-        {
-            const string edit = "Edit";
-            const string setDefault = "Set as default";
-            const string delete = "Delete";
-            string choice = await DisplayActionSheetAsync("Provider", "Back", delete, edit, setDefault).ConfigureAwait(true);
-            AbroAiStoreModel store = storeService.LoadOrDefault();
-            AbroAiProviderModel provider = store.Providers.Find(p => p.Id == providerId);
-            if (provider == null)
-                return;
-
-            switch (choice)
-            {
-                case edit:
-                    await EditProviderAsync(storeService, provider).ConfigureAwait(true);
-                    break;
-                case setDefault:
-                    store.DefaultProviderId = provider.Id;
-                    provider.ModifiedAt = DateTime.UtcNow;
-                    storeService.TrySave(store);
-                    ScheduleAiSync();
-                    ShowToast("Default provider set");
-                    break;
-                case delete:
-                    store.Providers.RemoveAll(p => p.Id == providerId);
-                    if (store.DefaultProviderId == providerId)
-                        store.DefaultProviderId = store.Providers.FirstOrDefault()?.Id;
-                    storeService.TrySave(store);
-                    ScheduleAiSync();
-                    ShowToast("Provider deleted");
-                    break;
-            }
-        }
-
-        private async Task EditProviderAsync(IAbroAiStoreService storeService, AbroAiProviderModel existing)
-        {
-            string name = await DisplayPromptAsync(
-                "Provider name",
-                "Display name",
-                "Next",
-                "Cancel",
-                existing?.Name ?? "Command Code",
-                -1,
-                Keyboard.Text,
-                existing?.Name ?? string.Empty).ConfigureAwait(true);
-            if (name == null)
-                return;
-
-            string url = await DisplayPromptAsync(
-                "API URL",
-                "Base URL ending with /v1",
-                "Next",
-                "Cancel",
-                "https://api.commandcode.ai/provider/v1",
-                -1,
-                Keyboard.Url,
-                existing?.Url ?? string.Empty).ConfigureAwait(true);
-            if (url == null)
-                return;
-
-            string modelId = await DisplayPromptAsync(
-                "Model ID",
-                "Model sent to the API",
-                "Next",
-                "Cancel",
-                "deepseek/deepseek-v4.1-flash",
-                -1,
-                Keyboard.Text,
-                existing?.ModelId ?? string.Empty).ConfigureAwait(true);
-            if (modelId == null)
-                return;
-
-            string apiKey = await DisplayPromptAsync(
-                "API key",
-                "Bearer token (stored in AI sync file)",
-                "Save",
-                "Cancel",
-                string.Empty,
-                -1,
-                Keyboard.Text,
-                existing?.ApiKey ?? string.Empty).ConfigureAwait(true);
-            if (apiKey == null)
-                return;
-
-            AbroAiStoreModel store = storeService.LoadOrDefault();
-            AbroAiProviderModel provider = existing == null
-                ? new AbroAiProviderModel()
-                : store.Providers.Find(p => p.Id == existing.Id) ?? existing;
-            provider.Name = name.Trim();
-            provider.Url = url.Trim();
-            provider.ModelId = modelId.Trim();
-            provider.ApiKey = apiKey.Trim();
-            provider.ModifiedAt = DateTime.UtcNow;
-            if (existing == null)
-            {
-                store.Providers.Add(provider);
-                if (!store.DefaultProviderId.HasValue)
-                    store.DefaultProviderId = provider.Id;
-            }
-
-            storeService.TrySave(store);
-            ScheduleAiSync();
-            ShowToast(existing == null ? "Provider added" : "Provider saved");
+            await DisplayAlertAsync(
+                "AI providers",
+                "OpenAI-compatible providers are managed in aNote → Settings → Browser → AI providers. Abro still uses the same local store.",
+                "OK").ConfigureAwait(true);
         }
 
         private async Task ShowAiSyncMenuAsync()
@@ -2794,9 +2659,38 @@ namespace SilentNotes.Platforms
         /// <summary>
         /// Builds a page for a freshly started <see cref="AbroBrowserActivity"/>.
         /// </summary>
+        /// <summary>
+        /// When Abro is opened via ACTION_VIEW, copies <see cref="Intent.DataString"/> into
+        /// <see cref="AbroBrowserActivity.ExtraUrl"/> if the extra is missing.
+        /// </summary>
+        internal static void EnsureUrlExtraFromIntentData(Intent intent)
+        {
+            if (intent == null)
+                return;
+            if (!string.IsNullOrWhiteSpace(intent.GetStringExtra(AbroBrowserActivity.ExtraUrl)))
+                return;
+
+            string dataUrl = intent.DataString;
+            if (string.IsNullOrWhiteSpace(dataUrl))
+                return;
+
+            dataUrl = dataUrl.Trim();
+            if (dataUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || dataUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                intent.PutExtra(AbroBrowserActivity.ExtraUrl, dataUrl);
+            }
+        }
+
+        private static string ResolveUrlFromIntent(Intent intent)
+        {
+            EnsureUrlExtraFromIntentData(intent);
+            return intent?.GetStringExtra(AbroBrowserActivity.ExtraUrl);
+        }
+
         public static AbroBrowserPage CreateFromIntent(Intent intent)
         {
-            string url = intent?.GetStringExtra(AbroBrowserActivity.ExtraUrl);
+            string url = ResolveUrlFromIntent(intent);
             AbroStartAction action = AbroStartAction.None;
             if (intent != null && intent.HasExtra(AbroBrowserActivity.ExtraStartAction))
             {
@@ -2833,7 +2727,7 @@ namespace SilentNotes.Platforms
             if (_liveInstance == null || !_liveInstance.TryGetTarget(out AbroBrowserPage page) || page == null)
                 return;
 
-            string url = intent.GetStringExtra(AbroBrowserActivity.ExtraUrl);
+            string url = ResolveUrlFromIntent(intent);
             AbroStartAction action = AbroStartAction.None;
             if (intent.HasExtra(AbroBrowserActivity.ExtraStartAction))
             {

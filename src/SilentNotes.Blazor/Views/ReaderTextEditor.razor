@@ -13,6 +13,7 @@
 @inject IDocumentReaderService DocumentReaderService
 @inject ILanguageService LanguageService
 @inject IFeedbackService FeedbackService
+@inject INativeBrowserService NativeBrowserService
 
 <style type="text/css">
 	.rte-root {
@@ -258,6 +259,10 @@
 	<div @ref="_statsRef" class="rte-stats" title="@_statsText">@_statsText</div>
 
 	<div class="rte-toolbar">
+		@if (_contentHasOpenableUrl)
+		{
+			@ToolbarButton("openlink", Icons.Material.Filled.OpenInBrowser, LanguageService["note_open_link"], OpenFirstLinkAsync)
+		}
 		@ToolbarButton("copy", Icons.Material.Filled.ContentCopy, LanguageService["reader_editor_copy"], CopyAsync)
 		@ToolbarButton("paste", Icons.Material.Filled.ContentPaste, LanguageService["reader_editor_paste"], PasteAsync)
 		@ToolbarButton("cut", Icons.Material.Filled.ContentCut, LanguageService["reader_editor_cut"], CutAsync)
@@ -373,6 +378,7 @@
 	private bool _showFind;
 	private bool _showReplace;
 	private bool _showGoToLine;
+	private bool _contentHasOpenableUrl;
 	private string _findQuery = string.Empty;
 	private bool _findRegex;
 	private string _replaceFind = string.Empty;
@@ -461,6 +467,7 @@
 			ClearHistory();
 			PushHistory(_text);
 			RefreshHighlightImmediate();
+			RefreshContentHasOpenableUrl();
 			_showFind = false;
 			_showReplace = false;
 			_showGoToLine = false;
@@ -704,6 +711,7 @@
 		// Do not RequestRender here: re-rendering the empty <textarea> resets caret/value.
 		_text = args?.Value?.ToString() ?? string.Empty;
 		_dirty = true;
+		RefreshContentHasOpenableUrl(requestRender: true);
 		RefreshStats();
 		_ = PushStatsAsync();
 		ScheduleHighlight();
@@ -917,6 +925,22 @@
 		catch
 		{
 		}
+	}
+
+	private void RefreshContentHasOpenableUrl(bool requestRender = false)
+	{
+		bool next = UrlActionHelpers.ContainsOpenableUrl(_text);
+		if (next == _contentHasOpenableUrl)
+			return;
+		_contentHasOpenableUrl = next;
+		if (requestRender)
+			_ = RequestRenderAsync();
+	}
+
+	private Task OpenFirstLinkAsync()
+	{
+		UrlActionHelpers.OpenFirstUrl(NativeBrowserService, _text);
+		return Task.CompletedTask;
 	}
 
 	private async Task CopyAsync()
@@ -1250,6 +1274,7 @@
 		_dirty = true;
 		if (pushHistory)
 			PushHistory(_text);
+		RefreshContentHasOpenableUrl(requestRender: true);
 		RefreshHighlightImmediate();
 		await PushOverlayAsync();
 		await PushStatsAsync();

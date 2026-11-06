@@ -197,6 +197,46 @@ td { word-wrap: anywhere; } /* table should not exceed device width */
 	outline: 2px solid rgba(128, 128, 128, 0.6);
 }
 
+.note-viewer table {
+	border-collapse: collapse;
+	margin: 0.5em 0;
+	width: 100%;
+	table-layout: fixed;
+}
+.note-viewer th,
+.note-viewer td {
+	border: 1px solid rgba(128, 128, 128, 0.45);
+	padding: 0.35em 0.5em;
+	vertical-align: top;
+	position: relative;
+}
+.note-viewer th {
+	font-weight: bold;
+}
+.note-viewer .selectedCell:after {
+	background: rgba(128, 128, 128, 0.15);
+	content: "";
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	pointer-events: none;
+	position: absolute;
+	z-index: 2;
+}
+.note-viewer .column-resize-handle {
+	background-color: rgba(70, 130, 180, 0.8);
+	bottom: -2px;
+	pointer-events: none;
+	position: absolute;
+	right: -2px;
+	top: 0;
+	width: 4px;
+}
+.note-viewer.resize-cursor {
+	cursor: col-resize;
+}
+
 /* Checklist in overview. The svg content: url() is set in view with the IconService. */
 
 .note-viewer.over-view.checklist p {

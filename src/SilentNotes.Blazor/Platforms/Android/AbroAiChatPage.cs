@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using SilentNotes.Models;
@@ -35,13 +36,28 @@ namespace SilentNotes.Platforms
         private AbroAiProviderModel _provider;
         private bool _busy;
         private CancellationTokenSource _sendCts;
+        private readonly Page _previousRootPage;
+        private readonly TaskCompletionSource _closedSource;
+        private readonly bool _rootPresentation;
 
         /// <summary>
         /// Opens a new or existing conversation. When <paramref name="initialUserText"/> is set,
         /// it is placed into the input (or sent as the first message draft).
         /// </summary>
         public AbroAiChatPage(Guid? conversationId = null, string initialUserText = null)
+            : this(conversationId, initialUserText, null, null)
         {
+        }
+
+        private AbroAiChatPage(
+            Guid? conversationId,
+            string initialUserText,
+            Page previousRootPage,
+            TaskCompletionSource closedSource)
+        {
+            _previousRootPage = previousRootPage;
+            _closedSource = closedSource;
+            _rootPresentation = previousRootPage != null && closedSource != null;
             BackgroundColor = Colors.Black;
             _storeService = Ioc.Instance.GetService<IAbroAiStoreService>();
             _syncService = Ioc.Instance.GetService<IAbroAiSyncService>();
@@ -599,12 +615,58 @@ namespace SilentNotes.Platforms
         {
             _sendCts?.Cancel();
             Persist(scheduleSync: true);
+            if (_rootPresentation)
+            {
+                try
+                {
+                    await MainThread.InvokeOnMainThreadAsync(() =>
+                    {
+                        if (MauiApplication.Current?.Windows != null
+                            && MauiApplication.Current.Windows.Count > 0
+                            && ReferenceEquals(MauiApplication.Current.Windows[0].Page, this)
+                            && _previousRootPage != null)
+                        {
+                            MauiApplication.Current.Windows[0].Page = _previousRootPage;
+                        }
+                    }).ConfigureAwait(true);
+                }
+                catch
+                {
+                }
+
+                _closedSource?.TrySetResult();
+                return;
+            }
+
             try
             {
                 await Navigation.PopModalAsync(false).ConfigureAwait(true);
             }
             catch
             {
+            }
+        }
+
+        /// <summary>
+        /// Presents AI chat on top of the aNote root page. Must run on the UI thread.
+        /// </summary>
+        internal static Task PresentFromAnoteAsync(string initialUserText)
+        {
+            if (MauiApplication.Current?.Windows == null || MauiApplication.Current.Windows.Count == 0)
+                return Task.CompletedTask;
+
+            try
+            {
+                Window window = MauiApplication.Current.Windows[0];
+                Page previousPage = window.Page;
+                var closedSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                var page = new AbroAiChatPage(null, initialUserText, previousPage, closedSource);
+                window.Page = page;
+                return closedSource.Task;
+            }
+            catch
+            {
+                return Task.CompletedTask;
             }
         }
 

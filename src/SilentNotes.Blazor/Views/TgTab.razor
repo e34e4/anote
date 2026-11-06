@@ -634,6 +634,8 @@
 							@LanguageService["tg_reactions"]: @msg.ReactionCount
 						</div>
 						<div class="tg-msg-actions">
+							<AskAiButton Subject="@LanguageService["tab_tg"]" ContextText="@msg.Text" />
+							<OpenLinkButton Text="@msg.Text" Title="@LanguageService["note_open_link"]" />
 							<button class="tg-format-btn" @onclick="() => ViewModel.BeginReply(msg)">@LanguageService["tg_reply"]</button>
 							<button class="tg-format-btn" @onclick="() => ViewModel.BeginForward(msg, dropAuthor: true)">@LanguageService["tg_fwd_no_quote"]</button>
 							<button class="tg-format-btn" @onclick="() => ViewModel.BeginForward(msg, dropAuthor: false)">@LanguageService["tg_fwd_normal"]</button>
@@ -878,6 +880,7 @@
 								</button>
 							}
 						</div>
+						<OpenLinkButton Text="@chat.LastMessagePreview" Title="@LanguageService["note_open_link"]" />
 					</div>
 				}
 			}

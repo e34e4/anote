@@ -107,9 +107,19 @@
 		Class="@Css.BuildClass(new CssClassIf(CssClasses.ButtonToggled, _searchToolbarOpen))"
 		title="@LanguageService["search"]" Edge="Edge.End" />
 
+	@if (_noteHasOpenableUrl)
+	{
+		<MudIconButton OnClick="@OpenFirstLinkFromNoteAsync"
+			Icon="@Icons.Material.Filled.OpenInBrowser" Color="Color.Inherit"
+			title="@LanguageService["note_open_link"]" Edge="Edge.End" />
+	}
+
 	<MudIconButton OnClick="SaveNoteToWebdavAsync"
 		Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success"
 		title="@LanguageService["webdav_quick_save"]" Edge="Edge.End" />
+
+	<AskAiButton Size="Size.Medium" Color="Color.Inherit" Subject="@LanguageService["tab_notes"]"
+		ContextText="@RssFeedParser.StripHtml(ViewModel.UnlockedHtmlContent)" />
 
 	@* Overflow menu *@
 	<MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" PopoverClass="overflow-menu" @bind-Open="_isOverflowMenuOpen">
@@ -169,6 +179,30 @@
 			<MudMenuItem OnClick="@(() => InsertHorizontalRule())"
 				Icon="@IconService.GetSvgLink(IconNames.Minus)"
 				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_horizontal_rule"]</MudMenuItem>
+
+			<MudMenuItem OnClick="@(async () => await InvokeTableCommand("insertTable"))"
+				Icon="@Icons.Material.Filled.TableChart"
+				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_table_insert"]</MudMenuItem>
+
+			<MudMenuItem OnClick="@(async () => await InvokeTableCommand("addTableRowAfter"))"
+				Icon="@Icons.Material.Filled.TableRows"
+				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_table_add_row"]</MudMenuItem>
+
+			<MudMenuItem OnClick="@(async () => await InvokeTableCommand("deleteTableRow"))"
+				Icon="@Icons.Material.Outlined.TableRows"
+				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_table_delete_row"]</MudMenuItem>
+
+			<MudMenuItem OnClick="@(async () => await InvokeTableCommand("addTableColumnAfter"))"
+				Icon="@Icons.Material.Filled.ViewColumn"
+				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_table_add_column"]</MudMenuItem>
+
+			<MudMenuItem OnClick="@(async () => await InvokeTableCommand("deleteTableColumn"))"
+				Icon="@Icons.Material.Outlined.ViewColumn"
+				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_table_delete_column"]</MudMenuItem>
+
+			<MudMenuItem OnClick="@(async () => await InvokeTableCommand("deleteTable"))"
+				Icon="@Icons.Material.Filled.TableBar"
+				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_table_delete"]</MudMenuItem>
 
 			<MudMenuItem OnClick="@(() => InsertImage())"
 				Icon="@IconService.GetSvgLink(IconNames.ImagePlus)"
@@ -381,6 +415,7 @@
 		"#b2ebf2", "#bbdefb", "#e1bee7", "#f8bbd0", "#424242", "#cfd8dc",
 	};
 	private bool _allowNoteContentChanges;
+	private bool _noteHasOpenableUrl;
 	private bool _isPickingFile;
 	private readonly System.Text.StringBuilder _contentChunks = new System.Text.StringBuilder();
 	private int _receivedContentChunks;
@@ -430,6 +465,8 @@
 		if (ViewModel.Model == NoteModel.NotFound)
 			// Redirect to home if note was not found
 			NavigationService.NavigateTo(RouteNames.NoteRepository);
+
+		_noteHasOpenableUrl = UrlActionHelpers.ContainsOpenableUrl(ViewModel.UnlockedHtmlContent);
 	}
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -639,6 +676,11 @@
 	private async Task InsertHorizontalRule()
 	{
 		await _jsModule.InvokeVoidAsync("callInsertHorizontalRule");
+	}
+
+	private async Task InvokeTableCommand(string commandName)
+	{
+		await _jsModule.InvokeVoidAsync(commandName);
 	}
 
 	private async Task OpenTextColorDialog()
@@ -888,5 +930,33 @@
 		if (!_allowNoteContentChanges)
 			return;
 		ViewModel.UnlockedHtmlContent = content;
+		RefreshNoteOpenableUrl(content);
+	}
+
+	private void RefreshNoteOpenableUrl(string content)
+	{
+		bool next = UrlActionHelpers.ContainsOpenableUrl(content);
+		if (next == _noteHasOpenableUrl)
+			return;
+		_noteHasOpenableUrl = next;
+		_ = InvokeAsync(StateHasChanged);
+	}
+
+	private async Task OpenFirstLinkFromNoteAsync()
+	{
+		string plainText = null;
+		try
+		{
+			if (_jsModule != null)
+				plainText = await _jsModule.InvokeAsync<string>("getAsPlainText");
+		}
+		catch (Exception)
+		{
+		}
+
+		if (!UrlActionHelpers.TryGetFirstOpenableUrl(plainText, out _))
+			UrlActionHelpers.OpenFirstUrl(NativeBrowserService, ViewModel.UnlockedHtmlContent);
+		else
+			UrlActionHelpers.OpenFirstUrl(NativeBrowserService, plainText);
 	}
 }

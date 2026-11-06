@@ -56,6 +56,8 @@ namespace SilentNotes
     {
         private EditText _urlInput;
         private TextView _domainStatusView;
+        private TextView _virusTotalStatusView;
+        private TextView _virusTotalBtn;
         private TextView _cleanBtn;
         private TextView _unshortenBtn;
         private TextView _httpsBtn;
@@ -140,8 +142,16 @@ namespace SilentNotes
             {
                 TextSize = 12.5f,
             };
-            _domainStatusView.SetPadding(0, (int)(6 * _density), 0, (int)(6 * _density));
+            _domainStatusView.SetPadding(0, (int)(6 * _density), 0, (int)(2 * _density));
             card.AddView(_domainStatusView);
+
+            _virusTotalStatusView = new TextView(this)
+            {
+                TextSize = 11.5f,
+                Visibility = ViewStates.Gone,
+            };
+            _virusTotalStatusView.SetPadding(0, 0, 0, (int)(6 * _density));
+            card.AddView(_virusTotalStatusView);
 
             // Editable URL field
             _urlInput = new EditText(this)
@@ -212,6 +222,19 @@ namespace SilentNotes
             card.AddView(toolsRow2, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
 
+            var toolsRow3 = new LinearLayout(this)
+            {
+                Orientation = Orientation.Horizontal,
+            };
+            toolsRow3.SetPadding(0, 0, 0, (int)(10 * _density));
+
+            _virusTotalBtn = CreateActionChip("🦠 VirusTotal", "#1E293B", "#F472B6");
+            _virusTotalBtn.Click += async (s, e) => await OnVirusTotalClickedAsync();
+            toolsRow3.AddView(_virusTotalBtn, CreateWeightedChipParams());
+
+            card.AddView(toolsRow3, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+
             // Section header: Open with installed browser
             var browsersHeader = new TextView(this)
             {
@@ -246,6 +269,7 @@ namespace SilentNotes
 
             RefreshUrlAnalysis();
             PopulateInstalledBrowsers();
+            TryAutoVirusTotalScan();
         }
 
         private string CurrentUrl => (_urlInput?.Text ?? string.Empty).Trim();
@@ -278,6 +302,80 @@ namespace SilentNotes
             {
                 Toast.MakeText(this, "No tracking parameters found", ToastLength.Short)?.Show();
             }
+        }
+
+        private void TryAutoVirusTotalScan()
+        {
+            try
+            {
+                SettingsModel settings = TryGetServiceProvider()?.GetService<ISettingsService>()?.LoadSettingsOrDefault();
+                if (settings == null || !settings.VirusTotalAutoScan || string.IsNullOrWhiteSpace(settings.VirusTotalApiKey))
+                    return;
+
+                _ = RunVirusTotalScanAsync(settings.VirusTotalApiKey.Trim());
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private async Task OnVirusTotalClickedAsync()
+        {
+            SettingsModel settings = TryGetServiceProvider()?.GetService<ISettingsService>()?.LoadSettingsOrDefault();
+            string apiKey = settings?.VirusTotalApiKey?.Trim();
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                Toast.MakeText(this, "Set VirusTotal API key in aNote Settings", ToastLength.Long)?.Show();
+                return;
+            }
+
+            await RunVirusTotalScanAsync(apiKey).ConfigureAwait(true);
+        }
+
+        private async Task RunVirusTotalScanAsync(string apiKey)
+        {
+            string url = CurrentUrl;
+            if (string.IsNullOrWhiteSpace(url))
+                return;
+
+            if (_virusTotalBtn != null)
+                _virusTotalBtn.Enabled = false;
+            ShowVirusTotalStatus("Scanning with VirusTotal…", Color.ParseColor("#94A3B8"));
+
+            try
+            {
+                VirusTotalUrlCheckResult result = await Task.Run(() =>
+                    VirusTotalUrlChecker.CheckUrlAsync(url, apiKey)).ConfigureAwait(true);
+
+                if (!string.IsNullOrEmpty(result.ErrorMessage))
+                {
+                    ShowVirusTotalStatus("VirusTotal: " + result.ErrorMessage, Color.ParseColor("#F87171"));
+                    Toast.MakeText(this, result.ErrorMessage, ToastLength.Long)?.Show();
+                    return;
+                }
+
+                string line = result.Summary ?? "Scan complete";
+                Color color = result.MaliciousCount > 0
+                    ? Color.ParseColor("#F87171")
+                    : result.SuspiciousCount > 0
+                        ? Color.ParseColor("#FBBF24")
+                        : Color.ParseColor("#4ADE80");
+                ShowVirusTotalStatus("🦠 " + line, color);
+            }
+            finally
+            {
+                if (_virusTotalBtn != null)
+                    _virusTotalBtn.Enabled = true;
+            }
+        }
+
+        private void ShowVirusTotalStatus(string text, Color color)
+        {
+            if (_virusTotalStatusView == null)
+                return;
+            _virusTotalStatusView.Visibility = ViewStates.Visible;
+            _virusTotalStatusView.Text = text;
+            _virusTotalStatusView.SetTextColor(color);
         }
 
         private async Task OnUnshortenClickedAsync()
@@ -490,15 +588,16 @@ namespace SilentNotes
         internal static List<BrowserTarget> QueryInstalledBrowsers(Context context)
         {
             var results = new List<BrowserTarget>();
-            var seenPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seenActivities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             try
             {
                 PackageManager pm = context.PackageManager;
                 if (pm == null)
-                    return results;
+                    return PrependAbroBrowser(context, results);
 
                 string selfPackage = context.PackageName;
+                string abroActivityName = TryGetAbroActivityName(context);
                 string[] probeUrls = new[] { "https://example.com", "http://example.com" };
 
                 foreach (string probeUrl in probeUrls)
@@ -528,14 +627,23 @@ namespace SilentNotes
                         ActivityInfo act = info?.ActivityInfo;
                         if (act == null || string.IsNullOrEmpty(act.PackageName) || string.IsNullOrEmpty(act.Name))
                             continue;
+
                         if (string.Equals(act.PackageName, selfPackage, StringComparison.OrdinalIgnoreCase))
-                            continue;
-                        if (!seenPackages.Add(act.PackageName))
+                        {
+                            if (!IsOwnPackageBrowserActivity(act.Name, abroActivityName))
+                                continue;
+                        }
+
+                        string activityKey = act.PackageName + "/" + act.Name;
+                        if (!seenActivities.Add(activityKey))
                             continue;
 
                         string label = info.LoadLabel(pm)?.ToString();
                         if (string.IsNullOrWhiteSpace(label))
                             label = act.PackageName;
+
+                        if (IsOwnPackageBrowserActivity(act.Name, abroActivityName))
+                            label = "Abro";
 
                         Drawable icon = null;
                         try
@@ -560,7 +668,86 @@ namespace SilentNotes
             {
             }
 
-            return results.OrderBy(b => b.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
+            results = results.OrderBy(b => b.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
+            return PrependAbroBrowser(context, results);
+        }
+
+        private static bool IsOwnPackageBrowserActivity(string activityClassName, string abroActivityName)
+        {
+            if (string.IsNullOrEmpty(activityClassName))
+                return false;
+            if (!string.IsNullOrEmpty(abroActivityName)
+                && string.Equals(activityClassName, abroActivityName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return activityClassName.EndsWith(".AbroBrowserActivity", StringComparison.OrdinalIgnoreCase)
+                || activityClassName.EndsWith("AbroBrowserActivity", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string TryGetAbroActivityName(Context context)
+        {
+            try
+            {
+                var component = new ComponentName(context, typeof(AbroBrowserActivity));
+                ActivityInfo info = context.PackageManager?.GetActivityInfo(component, 0);
+                return info?.Name;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private static List<BrowserTarget> PrependAbroBrowser(Context context, List<BrowserTarget> results)
+        {
+            results ??= new List<BrowserTarget>();
+            BrowserTarget abro = TryCreateAbroBrowserTarget(context);
+            if (abro == null)
+                return results;
+
+            results.RemoveAll(b =>
+                string.Equals(b.ActivityName, abro.ActivityName, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(b.Label, "Abro", StringComparison.OrdinalIgnoreCase));
+            results.Insert(0, abro);
+            return results;
+        }
+
+        private static BrowserTarget TryCreateAbroBrowserTarget(Context context)
+        {
+            try
+            {
+                PackageManager pm = context.PackageManager;
+                if (pm == null)
+                    return null;
+
+                var component = new ComponentName(context, typeof(AbroBrowserActivity));
+                ActivityInfo act = pm.GetActivityInfo(component, 0);
+                if (act == null)
+                    return null;
+
+                Drawable icon = null;
+                try
+                {
+                    icon = act.LoadIcon(pm);
+                }
+                catch (Exception)
+                {
+                }
+
+                return new BrowserTarget
+                {
+                    PackageName = act.PackageName,
+                    ActivityName = act.Name,
+                    Label = "Abro",
+                    Icon = icon,
+                };
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         private static string ExtractUrlFromIntent(Intent intent)

@@ -1,0 +1,7 @@
+• Register Abro as its own browser for link open-with / URLCheck
+• Open-in-browser buttons next to links in mail, SMS, clipboard, notes, editor, Telegram
+• VirusTotal URL scan in URLCheck (API key + optional auto-scan in Settings)
+• Tables in Notes editor (insert / rows / columns)
+• Settings: reorder main view tabs
+• Move AI providers to aNote Settings; Ask AI on notes, clips, RSS, SMS, files, camera, mail, Telegram
+• Live ML Kit barcode/QR detection overlay in main camera

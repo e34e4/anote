@@ -1,0 +1,93 @@
+@attribute [Route(RouteNames.MainTabOrder)]
+@inherits PageBase
+
+@using MudBlazor
+@using SilentNotes.Models
+@using SilentNotes.ViewModels
+@using SilentNotes.Services
+
+@inject ILanguageService LanguageService
+@inject ISvgIconService IconService
+@inject ISettingsService SettingsService
+@inject IEnvironmentService EnvironmentService
+@inject ISynchronizationService SynchronizationService
+@inject IThemeService ThemeService
+@inject IFeedbackService FeedbackService
+@inject IMessengerService MessengerService
+@inject IFontService FontService
+@inject ICloudStorageClientFactory CloudStorageClientFactory
+@inject IFilePickerService FilePickerService
+@inject IBookySyncService BookySyncService
+@inject IDeviceSmsService DeviceSmsService
+@inject IDevicePhoneService DevicePhoneService
+@inject INativeBrowserService NativeBrowserService
+@inject IPasswordVaultSyncService PasswordVaultSyncService
+@inject IClipboardWebdavSyncService ClipboardWebdavSyncService
+@inject IJSRuntime JSRuntime
+@inject INavigationService Navigation
+
+<MudAppBar Class="flex-none" Fixed="true" Dense="true" WrapContent="false">
+	<MudIconButton OnClick="@(() => Navigation.NavigateTo(BackRoute))" Icon="@IconService[IconNames.ArrowLeft]" Color="Color.Inherit" title="@LanguageService["back"]" Edge="Edge.Start" />
+</MudAppBar>
+
+<MudIcon Class="background-icon" Icon="@IconService[IconNames.Settings]" Style="@($"right:-128px; top:-154px;")" />
+
+<MudMainContent>
+	<MudContainer Class="ms-0" MaxWidth="MaxWidth.Small">
+		<div id="content" class="py-3">
+			<h2 class="h-colored">@LanguageService["gui_main_tab_order"]</h2>
+			<p class="mud-text-secondary">@LanguageService["gui_main_tab_order_desc"]</p>
+
+			<MudStack Spacing="1" Class="mt-4">
+				@for (int i = 0; i < ViewModel.MainTabOrderDisplayItems.Count; i++)
+				{
+					var displayIndex = i;
+					var item = ViewModel.MainTabOrderDisplayItems[displayIndex];
+					<MudPaper Class="px-3 py-2" Elevation="1">
+						<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+							<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+								<MudText Typo="Typo.h6" Class="mb-0">@item.Emoji</MudText>
+								<MudText>@item.Title</MudText>
+							</MudStack>
+							<MudStack Row="true" Spacing="0">
+								<MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Color="Color.Inherit"
+									Disabled="@(displayIndex == 0)"
+									title="@LanguageService["checklist_move_up"]"
+									OnClick="@(() => ViewModel.MoveMainTabUpCommand.Execute(displayIndex))" />
+								<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Inherit"
+									Disabled="@(displayIndex == ViewModel.MainTabOrderDisplayItems.Count - 1)"
+									title="@LanguageService["checklist_move_down"]"
+									OnClick="@(() => ViewModel.MoveMainTabDownCommand.Execute(displayIndex))" />
+							</MudStack>
+						</MudStack>
+					</MudPaper>
+				}
+			</MudStack>
+
+			<MudButton Class="mt-6" Variant="Variant.Filled" Color="Color.Default"
+				StartIcon="@Icons.Material.Filled.RestartAlt"
+				OnClick="@(() => ViewModel.ResetMainTabOrderCommand.Execute(null))">
+				@LanguageService["gui_main_tab_order_reset"]
+			</MudButton>
+		</div>
+	</MudContainer>
+</MudMainContent>
+
+@code {
+	protected override void OnInitialized()
+	{
+		BackRoute = RouteNames.Settings;
+		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService, NativeBrowserService, PasswordVaultSyncService, ClipboardWebdavSyncService);
+	}
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (firstRender)
+		{
+			await KeyboardShortcuts.InitializeAsync(JSRuntime);
+			KeyboardShortcuts.AddShortcut(new SnKeyboardShortcut(SnKey.Escape), () => Navigation.NavigateTo(BackRoute));
+		}
+	}
+
+	private SettingsViewModel ViewModel { get; set; }
+}

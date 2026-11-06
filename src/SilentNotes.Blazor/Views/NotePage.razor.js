@@ -84,6 +84,42 @@ export function callInsertHorizontalRule() {
     TiptapHelper.insertHorizontalRule(_page.editor);
 }
 
+export function insertTable() {
+    if (!IsInitialized()) return;
+
+    _page.editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+}
+
+export function addTableRowAfter() {
+    if (!IsInitialized()) return;
+
+    _page.editor.chain().focus().addRowAfter().run();
+}
+
+export function deleteTableRow() {
+    if (!IsInitialized()) return;
+
+    _page.editor.chain().focus().deleteRow().run();
+}
+
+export function addTableColumnAfter() {
+    if (!IsInitialized()) return;
+
+    _page.editor.chain().focus().addColumnAfter().run();
+}
+
+export function deleteTableColumn() {
+    if (!IsInitialized()) return;
+
+    _page.editor.chain().focus().deleteColumn().run();
+}
+
+export function deleteTable() {
+    if (!IsInitialized()) return;
+
+    _page.editor.chain().focus().deleteTable().run();
+}
+
 export function rememberSelectionForColor() {
     if (!IsInitialized()) return;
 

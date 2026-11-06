@@ -223,6 +223,7 @@ public static class MauiProgram
             serviceProvider.GetService<ICloudStorageClientFactory>()));
         services.AddSingleton<IMediaPlayerService>((serviceProvider) => new MediaPlayerService());
         services.AddSingleton<IAbroBrowserService>((serviceProvider) => new AbroBrowserService());
+        services.AddSingleton<IAbroAiChatLauncher>((serviceProvider) => new AbroAiChatLauncher());
         services.AddSingleton<IDocumentReaderService>((serviceProvider) => new DocumentReaderService());
         services.AddSingleton<ITelegramService>((serviceProvider) => new TelegramService(
             serviceProvider.GetService<IXmlFileService>(),
@@ -306,7 +307,9 @@ public static class MauiProgram
             serviceProvider.GetService<IActivityResultAwaiter>()));
         services.AddSingleton<ICameraService>((serviceProvider) => new CameraService(
             serviceProvider.GetService<IAppContextService>(),
-            serviceProvider.GetService<IActivityResultAwaiter>()));
+            serviceProvider.GetService<IActivityResultAwaiter>(),
+            serviceProvider.GetService<IQrService>(),
+            serviceProvider.GetService<IQrHistoryService>()));
         services.AddSingleton<IMailService>((serviceProvider) => new MailService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IXmlFileService>(),
@@ -316,6 +319,7 @@ public static class MauiProgram
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IActivityResultAwaiter>()));
         services.AddSingleton<IAbroBrowserService>((serviceProvider) => new AbroBrowserService());
+        services.AddSingleton<IAbroAiChatLauncher>((serviceProvider) => new AbroAiChatLauncher());
         services.AddSingleton<IDocumentReaderService>((serviceProvider) => new DocumentReaderService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IActivityResultAwaiter>()));
