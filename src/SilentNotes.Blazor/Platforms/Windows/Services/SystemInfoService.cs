@@ -85,5 +85,56 @@ namespace SilentNotes.Platforms.Services
                 Notes = "System diagnostics are available on Android only.",
             });
         }
+
+        /// <inheritdoc/>
+        public Task<SystemLiveCounters> GetLiveCountersAsync()
+        {
+            return Task.FromResult(new SystemLiveCounters
+            {
+                Notes = "System diagnostics are available on Android only.",
+            });
+        }
+
+        /// <inheritdoc/>
+        public Task<bool> SetNetworkOutboundLoggingAsync(bool enabled)
+        {
+            return Task.FromResult(false);
+        }
+
+        /// <inheritdoc/>
+        public Task<bool> IsNetworkOutboundLoggingEnabledAsync()
+        {
+            return Task.FromResult(false);
+        }
+
+        /// <inheritdoc/>
+        public Task<SystemNetworkLogEntry[]> GetNetworkOutboundLogsAsync(int maxCount = 200)
+        {
+            return Task.FromResult(Array.Empty<SystemNetworkLogEntry>());
+        }
+
+        /// <inheritdoc/>
+        public Task<SystemSavedIpEntry[]> GetSavedIpsAsync()
+        {
+            return Task.FromResult(Array.Empty<SystemSavedIpEntry>());
+        }
+
+        /// <inheritdoc/>
+        public Task<SystemSavedIpEntry> SaveIpFromLogAsync(SystemNetworkLogEntry entry)
+        {
+            return Task.FromResult<SystemSavedIpEntry>(null);
+        }
+
+        /// <inheritdoc/>
+        public Task RemoveSavedIpAsync(string id)
+        {
+            return Task.CompletedTask;
+        }
+
+        /// <inheritdoc/>
+        public Task<int> ResolveSavedIpsAsync()
+        {
+            return Task.FromResult(0);
+        }
     }
 }

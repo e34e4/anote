@@ -258,6 +258,14 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Message to inform MainLayout that a Blazor route should be opened (e.g. System from the
+    /// floating button quick menu).
+    /// </summary>
+    public class RouteIntentMessage
+    {
+    }
+
+    /// <summary>
     /// Message to inform the main page that a media VIEW/SEND intent was received, so the Player
     /// tab can open and play the file.
     /// </summary>

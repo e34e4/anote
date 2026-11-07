@@ -11,6 +11,8 @@
 @inject INavigationService Navigation
 @inject ISystemInfoService SystemInfoService
 @inject IFeedbackService FeedbackService
+@inject IClipboardService ClipboardService
+@inject ISharingService SharingService
 @inject IJSRuntime JSRuntime
 
 <style type="text/css">
@@ -22,6 +24,10 @@
 		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 		font-size: 0.85rem;
 		word-break: break-word;
+	}
+	.system-counters td, .system-counters th {
+		padding: 2px 8px;
+		white-space: nowrap;
 	}
 </style>
 
@@ -160,22 +166,66 @@
 
 			<MudTabPanel Text="@LanguageService["system_tab_processes"]">
 				<div class="system-scroll pa-1">
-					<MudStack Row="true" Class="mb-2">
+					<MudPaper Class="pa-2 mb-2" Elevation="0">
+						<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
+							<MudCheckBox T="bool" Dense="true" Value="_countersEnabled" ValueChanged="OnCountersEnableChanged" Label="@LanguageService["system_counters_enable"]" />
+							<MudCheckBox T="bool" Dense="true" Value="@(!_countersEnabled)" ValueChanged="OnCountersDisableChanged" Label="@LanguageService["system_counters_disable"]" />
+						</MudStack>
+						<MudSimpleTable Dense="true" Elevation="0" Class="system-counters">
+							<thead>
+								<tr>
+									<th></th>
+									<th>@LanguageService["system_counter_min"]</th>
+									<th>@LanguageService["system_counter_max"]</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr><th>@LanguageService["system_counter_cpu"]</th><td>@FormatCounterPercent(_cpuMin)</td><td>@FormatCounterPercent(_cpuMax)</td></tr>
+								<tr><th>@LanguageService["system_counter_temp"]</th><td>@FormatCounterTemp(_tempMin)</td><td>@FormatCounterTemp(_tempMax)</td></tr>
+								<tr><th>@LanguageService["system_counter_mem"]</th><td>@FormatCounterBytes(_memMin)</td><td>@FormatCounterBytes(_memMax)</td></tr>
+								<tr><th>@LanguageService["system_counter_freq"]</th><td>@FormatCounterFreq(_freqMin)</td><td>@FormatCounterFreq(_freqMax)</td></tr>
+							</tbody>
+						</MudSimpleTable>
+					</MudPaper>
+
+					<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="1">
 						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshProcessesAsync">@LanguageService["system_refresh"]</MudButton>
+						<MudSelect T="SystemProcessSortMode" Dense="true" Margin="Margin.Dense" Label="@LanguageService["system_process_sort"]" Value="_processSort" ValueChanged="OnProcessSortChanged" Style="max-width:160px">
+							<MudSelectItem T="SystemProcessSortMode" Value="@SystemProcessSortMode.Importance">@LanguageService["system_process_sort_importance"]</MudSelectItem>
+							<MudSelectItem T="SystemProcessSortMode" Value="@SystemProcessSortMode.Pid">PID</MudSelectItem>
+							<MudSelectItem T="SystemProcessSortMode" Value="@SystemProcessSortMode.ProcessName">@LanguageService["system_process_sort_name"]</MudSelectItem>
+							<MudSelectItem T="SystemProcessSortMode" Value="@SystemProcessSortMode.Memory">@LanguageService["system_process_sort_memory"]</MudSelectItem>
+							<MudSelectItem T="SystemProcessSortMode" Value="@SystemProcessSortMode.Cpu">CPU</MudSelectItem>
+						</MudSelect>
+						<MudSelect T="SystemProcessFilterMode" Dense="true" Margin="Margin.Dense" Label="@LanguageService["system_process_filter"]" Value="_processFilter" ValueChanged="OnProcessFilterChanged" Style="max-width:140px">
+							<MudSelectItem T="SystemProcessFilterMode" Value="@SystemProcessFilterMode.All">@LanguageService["system_process_filter_all"]</MudSelectItem>
+							<MudSelectItem T="SystemProcessFilterMode" Value="@SystemProcessFilterMode.Apps">@LanguageService["system_process_filter_apps"]</MudSelectItem>
+							<MudSelectItem T="SystemProcessFilterMode" Value="@SystemProcessFilterMode.UserApps">@LanguageService["system_process_filter_user"]</MudSelectItem>
+						</MudSelect>
 					</MudStack>
 					@if (_processesSnapshot != null && !string.IsNullOrEmpty(_processesSnapshot.Notes))
 					{
 						<MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">@_processesSnapshot.Notes</MudAlert>
 					}
-					<MudText Typo="Typo.subtitle2" Class="mb-1">@LanguageService["system_running"] (@(_processesSnapshot?.Processes.Count ?? 0))</MudText>
-					@foreach (var proc in _processesSnapshot?.Processes ?? Enumerable.Empty<SystemProcessInfo>())
+					<MudText Typo="Typo.subtitle2" Class="mb-1">@LanguageService["system_running"] (@FilteredProcesses().Count())</MudText>
+					@foreach (var proc in FilteredProcesses())
 					{
 						<MudPaper Class="pa-2 mb-1" Elevation="1">
 							<div class="d-flex justify-space-between align-center">
 								<div>
 									<div>@proc.Label</div>
-									<div class="mud-text-secondary system-mono">pid @proc.Pid · @proc.ProcessName</div>
-									<div class="mud-text-secondary system-mono">@proc.Importance · PSS @FormatBytes(proc.PssKb * 1024)@(string.IsNullOrEmpty(proc.Source) ? "" : " · " + proc.Source)</div>
+									<div class="mud-text-secondary system-mono">pid @proc.Pid@(proc.Ppid > 0 ? " · ppid " + proc.Ppid : "") · @(proc.User ?? ("uid " + proc.Uid)) · @proc.ProcessName</div>
+									<div class="mud-text-secondary system-mono">
+										@proc.Importance
+										@if (!string.IsNullOrEmpty(proc.State)) { <text> · @proc.State</text> }
+										· CPU @proc.CpuPercent.ToString("0.0", CultureInfo.InvariantCulture)%
+										· RSS @FormatBytes(proc.RssBytes > 0 ? proc.RssBytes : proc.PssKb * 1024)
+										@(string.IsNullOrEmpty(proc.Source) ? "" : " · " + proc.Source)
+									</div>
+									@if (!string.IsNullOrEmpty(proc.Cmdline) && !string.Equals(proc.Cmdline, proc.ProcessName, StringComparison.Ordinal))
+									{
+										<div class="mud-text-secondary system-mono">@proc.Cmdline</div>
+									}
 								</div>
 								@if (proc.CanKill)
 								{
@@ -262,48 +312,122 @@
 
 			<MudTabPanel Text="@LanguageService["system_tab_network"]">
 				<div class="system-scroll pa-1">
-					<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="1">
-						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshNetworkAsync">@LanguageService["system_refresh"]</MudButton>
-						@if (_network != null && !_network.HasUsageAccess)
-						{
-							<MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="GrantUsageAccess">@LanguageService["system_grant_usage"]</MudButton>
-						}
-					</MudStack>
-					@if (_network != null)
-					{
-						<MudSimpleTable Dense="true" Elevation="0" Class="mb-3">
-							<tbody>
-								<tr><th>@LanguageService["system_connection"]</th><td>@_network.ActiveConnectionType (@YesNo(_network.IsConnected))</td></tr>
-								<tr><th>Metered</th><td>@YesNo(_network.IsMetered)</td></tr>
-								<tr><th>Wi‑Fi</th><td>@_network.WifiStatus @(_network.WifiSsid != null ? "· " + _network.WifiSsid : "") @(_network.WifiRssi.HasValue ? $"· {_network.WifiRssi} dBm" : "")</td></tr>
-								<tr><th>Cellular</th><td>@_network.CellularStatus · @_network.CellularNetworkType</td></tr>
-								<tr><th>VPN</th><td>@YesNo(_network.VpnActive)</td></tr>
-								<tr><th>Proxy</th><td>@(_network.ProxyHost ?? "—")</td></tr>
-								<tr><th>IP</th><td class="system-mono">@string.Join(", ", _network.IpAddresses)</td></tr>
-								<tr><th>DNS</th><td class="system-mono">@string.Join(", ", _network.DnsServers)</td></tr>
-							</tbody>
-						</MudSimpleTable>
-						@if (!string.IsNullOrEmpty(_network.Notes))
-						{
-							<MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">@_network.Notes</MudAlert>
-						}
-						@foreach (var app in _network.Apps)
-						{
-							<MudPaper Class="pa-2 mb-1" Elevation="1">
-								<div class="d-flex justify-space-between">
-									<div>
-										<div>@app.Label</div>
-										<div class="mud-text-secondary system-mono">@app.PackageName</div>
-									</div>
-									<div class="text-right system-mono">
-										<div>@FormatBytes(app.TotalBytes)</div>
-										<div class="mud-text-secondary">cell ↓@FormatBytes(app.MobileRxBytes) ↑@FormatBytes(app.MobileTxBytes)</div>
-										<div class="mud-text-secondary">wifi ↓@FormatBytes(app.WifiRxBytes) ↑@FormatBytes(app.WifiTxBytes)</div>
-									</div>
-								</div>
-							</MudPaper>
-						}
-					}
+					<MudTabs Elevation="0" Rounded="true" Dense="true" ActivePanelIndex="_networkSubTab" ActivePanelIndexChanged="OnNetworkSubTabChanged">
+						<MudTabPanel Text="@LanguageService["system_network_overview"]">
+							<div class="pa-1">
+								<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="1">
+									<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshNetworkAsync">@LanguageService["system_refresh"]</MudButton>
+									@if (_network != null && !_network.HasUsageAccess)
+									{
+										<MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="GrantUsageAccess">@LanguageService["system_grant_usage"]</MudButton>
+									}
+								</MudStack>
+								@if (_network != null)
+								{
+									<MudSimpleTable Dense="true" Elevation="0" Class="mb-3">
+										<tbody>
+											<tr><th>@LanguageService["system_connection"]</th><td>@_network.ActiveConnectionType (@YesNo(_network.IsConnected))</td></tr>
+											<tr><th>Metered</th><td>@YesNo(_network.IsMetered)</td></tr>
+											<tr><th>Wi‑Fi</th><td>@_network.WifiStatus @(_network.WifiSsid != null ? "· " + _network.WifiSsid : "") @(_network.WifiRssi.HasValue ? $"· {_network.WifiRssi} dBm" : "")</td></tr>
+											<tr><th>Cellular</th><td>@_network.CellularStatus · @_network.CellularNetworkType</td></tr>
+											<tr><th>VPN</th><td>@YesNo(_network.VpnActive)</td></tr>
+											<tr><th>Proxy</th><td>@(_network.ProxyHost ?? "—")</td></tr>
+											<tr><th>IP</th><td class="system-mono">@string.Join(", ", _network.IpAddresses)</td></tr>
+											<tr><th>DNS</th><td class="system-mono">@string.Join(", ", _network.DnsServers)</td></tr>
+										</tbody>
+									</MudSimpleTable>
+									@if (!string.IsNullOrEmpty(_network.Notes))
+									{
+										<MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">@_network.Notes</MudAlert>
+									}
+									@foreach (var app in _network.Apps)
+									{
+										<MudPaper Class="pa-2 mb-1" Elevation="1">
+											<div class="d-flex justify-space-between">
+												<div>
+													<div>@app.Label</div>
+													<div class="mud-text-secondary system-mono">@app.PackageName</div>
+												</div>
+												<div class="text-right system-mono">
+													<div>@FormatBytes(app.TotalBytes)</div>
+													<div class="mud-text-secondary">cell ↓@FormatBytes(app.MobileRxBytes) ↑@FormatBytes(app.MobileTxBytes)</div>
+													<div class="mud-text-secondary">wifi ↓@FormatBytes(app.WifiRxBytes) ↑@FormatBytes(app.WifiTxBytes)</div>
+												</div>
+											</div>
+										</MudPaper>
+									}
+								}
+							</div>
+						</MudTabPanel>
+
+						<MudTabPanel Text="@LanguageService["system_network_logs"]">
+							<div class="pa-1">
+								<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="2">
+									<MudCheckBox T="bool" Dense="true" Value="_netLogEnabled" ValueChanged="OnNetLogEnableChanged" Label="@LanguageService["system_netlog_enable"]" />
+									<MudCheckBox T="bool" Dense="true" Value="@(!_netLogEnabled)" ValueChanged="OnNetLogDisableChanged" Label="@LanguageService["system_netlog_disable"]" />
+									<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshNetworkLogsAsync">@LanguageService["system_refresh"]</MudButton>
+								</MudStack>
+								<MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">@LanguageService["system_netlog_hint"]</MudText>
+								@foreach (var log in _networkLogs)
+								{
+									<MudPaper Class="pa-2 mb-1" Elevation="1">
+										<div class="d-flex justify-space-between align-start gap-2">
+											<div class="system-mono" style="flex:1">@log.Raw</div>
+											<MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => SaveLogIpAsync(log))">@LanguageService["system_netlog_save"]</MudButton>
+										</div>
+									</MudPaper>
+								}
+								@if (_networkLogs.Length == 0)
+								{
+									<MudText Typo="Typo.body2" Class="mud-text-secondary">@LanguageService["system_netlog_empty"]</MudText>
+								}
+							</div>
+						</MudTabPanel>
+
+						<MudTabPanel Text="@LanguageService["system_network_ips"]">
+							<div class="pa-1">
+								<MudStack Row="true" Class="mb-2" Spacing="1">
+									<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="ResolveSavedIpsAsync">@LanguageService["system_ips_resolve"]</MudButton>
+									<MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_loading" OnClick="RefreshSavedIpsAsync">@LanguageService["system_refresh"]</MudButton>
+								</MudStack>
+								@foreach (var ip in _savedIps)
+								{
+									<MudPaper Class="pa-2 mb-1" Elevation="1">
+										<div class="d-flex justify-space-between align-start gap-2">
+											<div>
+												<div class="system-mono">@ip.IpAddress</div>
+												@if (!string.IsNullOrEmpty(ip.Hostname))
+												{
+													<div>@ip.Hostname</div>
+												}
+												else if (ip.IsResolved)
+												{
+													<div class="mud-text-secondary">@LanguageService["system_ips_resolved"]</div>
+												}
+												else
+												{
+													<div class="mud-text-secondary">@LanguageService["system_ips_unresolved"]</div>
+												}
+												@if (!string.IsNullOrEmpty(ip.PackageName) || ip.Uid.HasValue)
+												{
+													<div class="mud-text-secondary system-mono">@(ip.PackageName ?? ("uid " + ip.Uid))</div>
+												}
+											</div>
+											<MudStack Row="true" Spacing="1">
+												<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" title="@LanguageService["system_ips_copy"]" OnClick="@(() => CopyIpAsync(ip))" />
+												<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" title="@LanguageService["system_ips_share"]" OnClick="@(() => ShareIpAsync(ip))" />
+												<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" title="@LanguageService["system_ips_remove"]" OnClick="@(() => RemoveIpAsync(ip))" />
+											</MudStack>
+										</div>
+									</MudPaper>
+								}
+								@if (_savedIps.Length == 0)
+								{
+									<MudText Typo="Typo.body2" Class="mud-text-secondary">@LanguageService["system_ips_empty"]</MudText>
+								}
+							</div>
+						</MudTabPanel>
+					</MudTabs>
 				</div>
 			</MudTabPanel>
 		</MudTabs>
@@ -312,6 +436,7 @@
 
 @code {
 	private int _tabIndex;
+	private int _networkSubTab;
 	private bool _loading;
 	private bool[] _loaded = new bool[6];
 	private SystemBatterySortMode _batterySort = SystemBatterySortMode.ScreenTime;
@@ -321,6 +446,18 @@
 	private SystemProcessesSnapshot _processesSnapshot;
 	private SystemMemoryInfo _memory;
 	private SystemNetworkInfo _network;
+	private SystemNetworkLogEntry[] _networkLogs = Array.Empty<SystemNetworkLogEntry>();
+	private SystemSavedIpEntry[] _savedIps = Array.Empty<SystemSavedIpEntry>();
+	private bool _netLogEnabled;
+	private bool _networkExtrasLoaded;
+
+	private SystemProcessSortMode _processSort = SystemProcessSortMode.Importance;
+	private SystemProcessFilterMode _processFilter = SystemProcessFilterMode.All;
+
+	private bool _countersEnabled;
+	private CancellationTokenSource _countersCts;
+	private double? _cpuMin, _cpuMax, _tempMin, _tempMax, _freqMin, _freqMax;
+	private long? _memMin, _memMax;
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -337,9 +474,17 @@
 		}
 	}
 
+	protected override void OnClosingPage()
+	{
+		StopCounterSampling();
+		base.OnClosingPage();
+	}
+
 	private async Task OnTabChanged(int index)
 	{
 		_tabIndex = index;
+		if (index != 3)
+			StopCounterSampling();
 		if (_loaded[index])
 			return;
 		switch (index)
@@ -353,10 +498,38 @@
 		}
 	}
 
+	private async Task OnNetworkSubTabChanged(int index)
+	{
+		_networkSubTab = index;
+		if (!_networkExtrasLoaded && (index == 1 || index == 2))
+		{
+			_netLogEnabled = await SystemInfoService.IsNetworkOutboundLoggingEnabledAsync();
+			_savedIps = await SystemInfoService.GetSavedIpsAsync();
+			_networkExtrasLoaded = true;
+			StateHasChanged();
+		}
+		if (index == 2)
+			await RefreshSavedIpsAsync();
+	}
+
 	private async Task OnBatterySortChanged(SystemBatterySortMode mode)
 	{
 		_batterySort = mode;
 		await RefreshBatteryAsync();
+	}
+
+	private Task OnProcessSortChanged(SystemProcessSortMode mode)
+	{
+		_processSort = mode;
+		StateHasChanged();
+		return Task.CompletedTask;
+	}
+
+	private Task OnProcessFilterChanged(SystemProcessFilterMode mode)
+	{
+		_processFilter = mode;
+		StateHasChanged();
+		return Task.CompletedTask;
 	}
 
 	private void GrantUsageAccess()
@@ -421,6 +594,241 @@
 		await RefreshProcessesAsync();
 	}
 
+	private IEnumerable<SystemProcessInfo> FilteredProcesses()
+	{
+		IEnumerable<SystemProcessInfo> items = _processesSnapshot?.Processes ?? Enumerable.Empty<SystemProcessInfo>();
+		items = _processFilter switch
+		{
+			SystemProcessFilterMode.Apps => items.Where(p => p.IsApp),
+			SystemProcessFilterMode.UserApps => items.Where(p => p.IsUserApp),
+			_ => items,
+		};
+		return _processSort switch
+		{
+			SystemProcessSortMode.Pid => items.OrderBy(p => p.Pid),
+			SystemProcessSortMode.ProcessName => items.OrderBy(p => p.ProcessName, StringComparer.OrdinalIgnoreCase),
+			SystemProcessSortMode.Memory => items.OrderByDescending(p => p.RssBytes > 0 ? p.RssBytes : p.PssKb * 1024),
+			SystemProcessSortMode.Cpu => items.OrderByDescending(p => p.CpuPercent),
+			_ => items.OrderBy(p => p.SortRank).ThenByDescending(p => p.PssKb),
+		};
+	}
+
+	private async Task OnCountersEnableChanged(bool value)
+	{
+		if (value)
+			await StartCounterSamplingAsync();
+		else
+			StopCounterSampling();
+		StateHasChanged();
+	}
+
+	private async Task OnCountersDisableChanged(bool value)
+	{
+		if (value)
+			StopCounterSampling();
+		else
+			await StartCounterSamplingAsync();
+		StateHasChanged();
+	}
+
+	private async Task StartCounterSamplingAsync()
+	{
+		if (_countersEnabled && _countersCts != null)
+			return;
+		_countersEnabled = true;
+		_countersCts?.Cancel();
+		_countersCts = new CancellationTokenSource();
+		CancellationToken token = _countersCts.Token;
+		_ = SampleCountersLoopAsync(token);
+		await Task.CompletedTask;
+	}
+
+	private void StopCounterSampling()
+	{
+		_countersEnabled = false;
+		_countersCts?.Cancel();
+		_countersCts = null;
+	}
+
+	private async Task SampleCountersLoopAsync(CancellationToken token)
+	{
+		while (!token.IsCancellationRequested)
+		{
+			try
+			{
+				SystemLiveCounters sample = await SystemInfoService.GetLiveCountersAsync();
+				UpdateCounterExtremes(sample);
+				await InvokeAsync(StateHasChanged);
+				await Task.Delay(3000, token);
+			}
+			catch (OperationCanceledException)
+			{
+				break;
+			}
+			catch
+			{
+				try { await Task.Delay(3000, token); } catch { break; }
+			}
+		}
+	}
+
+	private void UpdateCounterExtremes(SystemLiveCounters sample)
+	{
+		if (sample == null)
+			return;
+		if (sample.CpuLoadPercent.HasValue)
+		{
+			_cpuMin = _cpuMin.HasValue ? Math.Min(_cpuMin.Value, sample.CpuLoadPercent.Value) : sample.CpuLoadPercent;
+			_cpuMax = _cpuMax.HasValue ? Math.Max(_cpuMax.Value, sample.CpuLoadPercent.Value) : sample.CpuLoadPercent;
+		}
+		if (sample.CpuTemperatureCelsius.HasValue)
+		{
+			_tempMin = _tempMin.HasValue ? Math.Min(_tempMin.Value, sample.CpuTemperatureCelsius.Value) : sample.CpuTemperatureCelsius;
+			_tempMax = _tempMax.HasValue ? Math.Max(_tempMax.Value, sample.CpuTemperatureCelsius.Value) : sample.CpuTemperatureCelsius;
+		}
+		if (sample.FreeMemoryBytes.HasValue)
+		{
+			_memMin = _memMin.HasValue ? Math.Min(_memMin.Value, sample.FreeMemoryBytes.Value) : sample.FreeMemoryBytes;
+			_memMax = _memMax.HasValue ? Math.Max(_memMax.Value, sample.FreeMemoryBytes.Value) : sample.FreeMemoryBytes;
+		}
+		if (sample.CpuFrequencyMhz.HasValue)
+		{
+			_freqMin = _freqMin.HasValue ? Math.Min(_freqMin.Value, sample.CpuFrequencyMhz.Value) : sample.CpuFrequencyMhz;
+			_freqMax = _freqMax.HasValue ? Math.Max(_freqMax.Value, sample.CpuFrequencyMhz.Value) : sample.CpuFrequencyMhz;
+		}
+	}
+
+	private async Task OnNetLogEnableChanged(bool value)
+	{
+		if (!value)
+		{
+			await DisableNetLogAsync();
+			return;
+		}
+		await EnableNetLogAsync();
+	}
+
+	private async Task OnNetLogDisableChanged(bool value)
+	{
+		if (value)
+			await DisableNetLogAsync();
+		else
+			await EnableNetLogAsync();
+	}
+
+	private async Task EnableNetLogAsync()
+	{
+		bool ok = await SystemInfoService.SetNetworkOutboundLoggingAsync(true);
+		_netLogEnabled = ok;
+		FeedbackService.ShowToast(ok
+			? LanguageService["system_netlog_enabled_ok"]
+			: LanguageService["system_netlog_root_fail"]);
+		StateHasChanged();
+	}
+
+	private async Task DisableNetLogAsync()
+	{
+		bool ok = await SystemInfoService.SetNetworkOutboundLoggingAsync(false);
+		if (ok)
+			_netLogEnabled = false;
+		FeedbackService.ShowToast(ok
+			? LanguageService["system_netlog_disabled_ok"]
+			: LanguageService["system_netlog_root_fail"]);
+		StateHasChanged();
+	}
+
+	private async Task RefreshNetworkLogsAsync()
+	{
+		_loading = true;
+		StateHasChanged();
+		try
+		{
+			_networkLogs = Array.Empty<SystemNetworkLogEntry>();
+			StateHasChanged();
+			_networkLogs = await SystemInfoService.GetNetworkOutboundLogsAsync(200);
+		}
+		catch (Exception ex)
+		{
+			FeedbackService.ShowToast(ex.Message);
+		}
+		finally
+		{
+			_loading = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task SaveLogIpAsync(SystemNetworkLogEntry entry)
+	{
+		SystemSavedIpEntry saved = await SystemInfoService.SaveIpFromLogAsync(entry);
+		if (saved == null)
+		{
+			FeedbackService.ShowToast(LanguageService["system_netlog_save_fail"]);
+			return;
+		}
+		_savedIps = await SystemInfoService.GetSavedIpsAsync();
+		FeedbackService.ShowToast(LanguageService["system_netlog_save_ok"]);
+	}
+
+	private async Task RefreshSavedIpsAsync()
+	{
+		_savedIps = await SystemInfoService.GetSavedIpsAsync();
+		StateHasChanged();
+	}
+
+	private async Task ResolveSavedIpsAsync()
+	{
+		_loading = true;
+		StateHasChanged();
+		try
+		{
+			int count = await SystemInfoService.ResolveSavedIpsAsync();
+			_savedIps = await SystemInfoService.GetSavedIpsAsync();
+			FeedbackService.ShowToast(string.Format(CultureInfo.InvariantCulture, LanguageService["system_ips_resolve_ok"], count));
+		}
+		catch (Exception ex)
+		{
+			FeedbackService.ShowToast(ex.Message);
+		}
+		finally
+		{
+			_loading = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task RemoveIpAsync(SystemSavedIpEntry entry)
+	{
+		if (entry == null)
+			return;
+		await SystemInfoService.RemoveSavedIpAsync(entry.Id);
+		_savedIps = await SystemInfoService.GetSavedIpsAsync();
+		StateHasChanged();
+	}
+
+	private async Task CopyIpAsync(SystemSavedIpEntry entry)
+	{
+		if (entry == null)
+			return;
+		string text = string.IsNullOrEmpty(entry.Hostname)
+			? entry.IpAddress
+			: entry.IpAddress + " " + entry.Hostname;
+		await ClipboardService.SetTextAsync(text);
+		FeedbackService.ShowToast(LanguageService["system_ips_copied"]);
+	}
+
+	private async Task ShareIpAsync(SystemSavedIpEntry entry)
+	{
+		if (entry == null)
+			return;
+		string text = string.IsNullOrEmpty(entry.Hostname)
+			? entry.IpAddress
+			: entry.IpAddress + " (" + entry.Hostname + ")";
+		if (!string.IsNullOrEmpty(entry.PackageName))
+			text += " · " + entry.PackageName;
+		await SharingService.ShareText(text);
+	}
+
 	private async Task RunLoad(int tab, Func<Task> action)
 	{
 		_loading = true;
@@ -453,6 +861,18 @@
 
 	private static string FormatDate(DateTime? value)
 		=> value.HasValue ? value.Value.ToString("g") : "—";
+
+	private static string FormatCounterPercent(double? value)
+		=> value.HasValue ? value.Value.ToString("0.0", CultureInfo.InvariantCulture) + "%" : "—";
+
+	private static string FormatCounterTemp(double? value)
+		=> value.HasValue ? value.Value.ToString("0.0", CultureInfo.InvariantCulture) + " °C" : "—";
+
+	private static string FormatCounterFreq(double? value)
+		=> value.HasValue ? value.Value.ToString("0", CultureInfo.InvariantCulture) + " MHz" : "—";
+
+	private static string FormatCounterBytes(long? value)
+		=> value.HasValue ? FormatBytes(value.Value) : "—";
 
 	private static string FormatDuration(TimeSpan span)
 	{

@@ -85,21 +85,80 @@ namespace SilentNotes.Models
         public long TotalBytes => AppBytes + DataBytes + CacheBytes;
     }
 
+    /// <summary>How the running-apps list is sorted (AppManager-style).</summary>
+    public enum SystemProcessSortMode
+    {
+        Importance = 0,
+        Pid = 1,
+        ProcessName = 2,
+        Memory = 3,
+        Cpu = 4,
+    }
+
+    /// <summary>How the running-apps list is filtered.</summary>
+    public enum SystemProcessFilterMode
+    {
+        All = 0,
+        Apps = 1,
+        UserApps = 2,
+    }
+
     /// <summary>Running process entry.</summary>
     public class SystemProcessInfo
     {
         public int Pid { get; set; }
+        public int Ppid { get; set; }
         public int Uid { get; set; }
+        public string User { get; set; }
         public string ProcessName { get; set; }
         public string PackageName { get; set; }
         public string Label { get; set; }
         public string Importance { get; set; }
+        public string State { get; set; }
+        public string Cmdline { get; set; }
         public long PssKb { get; set; }
+        public long RssBytes { get; set; }
+        public double CpuPercent { get; set; }
+        public bool IsApp { get; set; }
+        public bool IsUserApp { get; set; }
         public bool CanKill { get; set; }
         /// <summary>Source of the entry: activity-manager, service, or /proc.</summary>
         public string Source { get; set; }
         /// <summary>Lower sorts earlier (foreground first).</summary>
         public int SortRank { get; set; }
+    }
+
+    /// <summary>Single sample of live system counters (CPU / temp / memory / frequency).</summary>
+    public class SystemLiveCounters
+    {
+        public double? CpuLoadPercent { get; set; }
+        public double? CpuTemperatureCelsius { get; set; }
+        public long? FreeMemoryBytes { get; set; }
+        public double? CpuFrequencyMhz { get; set; }
+        public string Notes { get; set; }
+    }
+
+    /// <summary>One line from iptables NET_OUT dmesg logging.</summary>
+    public class SystemNetworkLogEntry
+    {
+        public string Raw { get; set; }
+        public string SourceIp { get; set; }
+        public string DestinationIp { get; set; }
+        public int? Uid { get; set; }
+        public string Interface { get; set; }
+    }
+
+    /// <summary>Saved IP from a network log line, optionally reverse-DNS resolved.</summary>
+    public class SystemSavedIpEntry
+    {
+        public string Id { get; set; }
+        public string IpAddress { get; set; }
+        public string Hostname { get; set; }
+        public int? Uid { get; set; }
+        public string PackageName { get; set; }
+        public string RawLog { get; set; }
+        public DateTime SavedUtc { get; set; }
+        public bool IsResolved { get; set; }
     }
 
     /// <summary>Processes tab payload including autostart / accessibility sections.</summary>

@@ -42,5 +42,29 @@ namespace SilentNotes.Services
 
         /// <summary>Reads networking status and per-app data usage.</summary>
         Task<SystemNetworkInfo> GetNetworkInfoAsync();
+
+        /// <summary>Reads a single sample of CPU load, temperature, free RAM and frequency.</summary>
+        Task<SystemLiveCounters> GetLiveCountersAsync();
+
+        /// <summary>Enables or disables iptables NEW-outbound LOG rule (requires root).</summary>
+        Task<bool> SetNetworkOutboundLoggingAsync(bool enabled);
+
+        /// <summary>Gets whether the NET_OUT iptables LOG rule is currently enabled.</summary>
+        Task<bool> IsNetworkOutboundLoggingEnabledAsync();
+
+        /// <summary>Fetches the latest NET_OUT lines from dmesg (clears previous UI list).</summary>
+        Task<SystemNetworkLogEntry[]> GetNetworkOutboundLogsAsync(int maxCount = 200);
+
+        /// <summary>Returns persisted IP records saved from network logs.</summary>
+        Task<SystemSavedIpEntry[]> GetSavedIpsAsync();
+
+        /// <summary>Adds a log line's destination IP to the saved IP list.</summary>
+        Task<SystemSavedIpEntry> SaveIpFromLogAsync(SystemNetworkLogEntry entry);
+
+        /// <summary>Removes one saved IP record by id.</summary>
+        Task RemoveSavedIpAsync(string id);
+
+        /// <summary>Reverse-DNS resolves saved IPs that are not resolved yet. Returns how many were newly resolved.</summary>
+        Task<int> ResolveSavedIpsAsync();
     }
 }

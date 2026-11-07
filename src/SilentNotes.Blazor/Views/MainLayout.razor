@@ -105,6 +105,16 @@
 					NavigationService.NavigateTo(RouteNames.NoteRepository, reload: false);
 			}));
 
+		MessengerService.Register<RouteIntentMessage>(
+			this, (recipient, message) => InvokeAsync(() =>
+			{
+				RouteIntentRequest request = RouteIntentRequest.Pending;
+				if (request == null || string.IsNullOrWhiteSpace(request.Route))
+					return;
+				RouteIntentRequest.Pending = null;
+				NavigationService.NavigateTo(request.Route, reload: false);
+			}));
+
 		SettingsModel settings = SettingsService.LoadSettingsOrDefault();
 		if (settings.AlwaysEnglish)
 			(LanguageService as ILanguageTestService)?.SetAlwaysEnglish(true);
@@ -124,6 +134,13 @@
 		if (firstRender)
 		{
 			MessengerService.Send(new MainLayoutReadyMessage());
+
+			RouteIntentRequest pendingRoute = RouteIntentRequest.Pending;
+			if (pendingRoute != null && !string.IsNullOrWhiteSpace(pendingRoute.Route))
+			{
+				RouteIntentRequest.Pending = null;
+				NavigationService.NavigateTo(pendingRoute.Route, reload: false);
+			}
 
 			// Make sure the clipboard monitor keeps running while the app is used, e.g. after the
 			// service was stopped by the operating system.

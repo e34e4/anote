@@ -64,6 +64,9 @@ namespace SilentNotes.Platforms
             // Check whether the app was started from the floating button menu to open a specific tab.
             ConsumeTabIntent(activity.Intent);
 
+            // Check whether the app was started from the quick menu to open a Blazor route (e.g. System).
+            ConsumeRouteIntent(activity.Intent);
+
             // Check whether the app was started to open/play an audio or video file.
             ConsumeMediaIntent(activity.Intent);
 
@@ -92,6 +95,7 @@ namespace SilentNotes.Platforms
             ConsumePhoneIntent(intent);
             ConsumeSmsIntent(intent);
             ConsumeTabIntent(intent);
+            ConsumeRouteIntent(intent);
             ConsumeMediaIntent(intent);
             ConsumeDocumentIntent(intent);
             ConsumeTelegramLinkIntent(intent);
@@ -352,6 +356,20 @@ namespace SilentNotes.Platforms
                 ScreenRecordIntentRequest.Pending = new ScreenRecordIntentRequest { Stop = false };
                 Ioc.Instance.GetService<IMessengerService>()?.Send(new ScreenRecordIntentMessage());
             }
+        }
+
+        private void ConsumeRouteIntent(Intent intent)
+        {
+            if (intent == null || !intent.HasExtra(FloatingButtonAccessibilityService.ExtraOpenRoute))
+                return;
+
+            string route = intent.GetStringExtra(FloatingButtonAccessibilityService.ExtraOpenRoute);
+            intent.RemoveExtra(FloatingButtonAccessibilityService.ExtraOpenRoute);
+            if (string.IsNullOrWhiteSpace(route))
+                return;
+
+            RouteIntentRequest.Pending = new RouteIntentRequest { Route = route };
+            Ioc.Instance.GetService<IMessengerService>()?.Send(new RouteIntentMessage());
         }
 
         private void ConsumePhoneIntent(Intent intent)
@@ -632,6 +650,7 @@ namespace SilentNotes.Platforms
             try
             {
                 ConsumeTabIntent(activity?.Intent);
+                ConsumeRouteIntent(activity?.Intent);
             }
             catch (Exception)
             {

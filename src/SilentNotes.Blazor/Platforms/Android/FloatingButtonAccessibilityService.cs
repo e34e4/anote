@@ -26,6 +26,7 @@ using SilentNotes.Platforms.Services;
 using SilentNotes.Services;
 using SilentNotes.ViewModels;
 using SilentNotes.Workers;
+using RouteNames = SilentNotes.RouteNames;
 using Color = Android.Graphics.Color;
 using Orientation = Android.Widget.Orientation;
 using Uri = Android.Net.Uri;
@@ -48,6 +49,9 @@ namespace SilentNotes.Platforms
     {
         /// <summary>Intent extra specifying which zero-based tab index to open in MainActivity.</summary>
         public const string ExtraOpenTab = "aNoteOpenTab";
+
+        /// <summary>Intent extra requesting navigation to a Blazor route (e.g. /system).</summary>
+        public const string ExtraOpenRoute = "aNoteOpenRoute";
 
         /// <summary>Intent extra requesting a screen-recording toggle (start or stop).</summary>
         public const string ExtraToggleScreenRecord = "aNoteToggleScreenRecord";
@@ -1229,6 +1233,16 @@ namespace SilentNotes.Platforms
                 _menuShowingApps = true;
                 RebuildMenuOverlay();
             }, true, null));
+
+            string systemLabel = language?["show_system"];
+            if (string.IsNullOrWhiteSpace(systemLabel) || systemLabel == "show_system")
+                systemLabel = "System";
+            allButtons.Add(("🖥", systemLabel, () =>
+            {
+                HideMenuOverlay();
+                OpenSystemPage();
+            }, true, null));
+
             allButtons.Add(("➕", "+ App", () => ShowAddAppDialog(), true, null));
             allButtons.Add(("➕", "+ Folder", () => ShowAddFolderDialog(), true, null));
 
@@ -2148,6 +2162,14 @@ namespace SilentNotes.Platforms
         {
             Intent intent = new Intent(this, typeof(MainActivity));
             intent.PutExtra(ExtraOpenTab, tabIndex);
+            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ReorderToFront);
+            StartActivity(intent);
+        }
+
+        private void OpenSystemPage()
+        {
+            Intent intent = new Intent(this, typeof(MainActivity));
+            intent.PutExtra(ExtraOpenRoute, RouteNames.System);
             intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ReorderToFront);
             StartActivity(intent);
         }

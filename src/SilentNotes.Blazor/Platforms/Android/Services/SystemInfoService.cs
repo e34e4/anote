@@ -55,7 +55,14 @@ namespace SilentNotes.Platforms.Services
     {
         private const string PrefsName = "anote_system_info";
         private const string PrefLastNearFull = "last_near_full_charge_utc_ticks";
+        private const string PrefNetLogEnabled = "net_out_log_enabled";
+        private const string PrefSavedIpsJson = "saved_ips_json";
+        private const string NetOutLogPrefix = "NET_OUT: ";
+        private const string IptablesLogRule =
+            "OUTPUT -m state --state NEW -j LOG --log-prefix \"NET_OUT: \" --log-uid";
         private readonly IAppContextService _appContext;
+        private long _prevCpuIdle;
+        private long _prevCpuTotal;
 
         public SystemInfoService(IAppContextService appContext)
         {
@@ -481,11 +488,14 @@ namespace SilentNotes.Platforms.Services
                             {
                                 Pid = proc.Pid,
                                 Uid = proc.Uid,
+                                User = FormatUidUser(proc.Uid),
                                 ProcessName = proc.ProcessName,
                                 PackageName = package,
                                 Label = SafeLabelByPackage(pm, package) ?? proc.ProcessName,
                                 Importance = FormatImportance(proc.Importance),
                                 PssKb = pssKb,
+                                IsApp = !string.IsNullOrEmpty(package) && package.Contains('.', StringComparison.Ordinal),
+                                IsUserApp = proc.Uid >= 10000,
                                 SortRank = rank,
                                 Source = "am",
                                 CanKill = !string.Equals(package, context.PackageName, StringComparison.Ordinal)
@@ -519,11 +529,14 @@ namespace SilentNotes.Platforms.Services
                             {
                                 Pid = svc.Pid,
                                 Uid = svc.Uid,
+                                User = FormatUidUser(svc.Uid),
                                 ProcessName = svc.Process ?? package,
                                 PackageName = package,
                                 Label = SafeLabelByPackage(pm, package) ?? package,
                                 Importance = svc.Foreground ? "Foreground service" : "Service",
                                 PssKb = TryGetPssKb(am, svc.Pid),
+                                IsApp = !string.IsNullOrEmpty(package) && package.Contains('.', StringComparison.Ordinal),
+                                IsUserApp = svc.Uid >= 10000,
                                 SortRank = svc.Foreground ? ImportanceToRank(Importance.Foreground) : ImportanceToRank(Importance.Service),
                                 Source = "service",
                                 CanKill = !string.Equals(package, context.PackageName, StringComparison.Ordinal),
@@ -579,15 +592,28 @@ namespace SilentNotes.Platforms.Services
                         if (string.IsNullOrEmpty(cmdline) && processName.StartsWith('[') && processName.EndsWith(']'))
                             continue;
 
+                        string state;
+                        int ppid;
+                        long rssKb;
+                        TryReadProcStatusExtras(dir, out state, out ppid, out rssKb);
+                        bool isApp = !string.IsNullOrEmpty(package) && package.Contains('.', StringComparison.Ordinal);
+                        bool isUserApp = uid >= 10000;
                         Upsert(new SystemProcessInfo
                         {
                             Pid = pid,
+                            Ppid = ppid,
                             Uid = uid,
+                            User = FormatUidUser(uid),
                             ProcessName = processName,
                             PackageName = package ?? processName,
                             Label = SafeLabelByPackage(pm, package) ?? processName,
                             Importance = "Background (/proc)",
+                            State = state,
+                            Cmdline = cmdline,
                             PssKb = TryGetPssKb(am, pid),
+                            RssBytes = rssKb > 0 ? rssKb * 1024 : 0,
+                            IsApp = isApp,
+                            IsUserApp = isUserApp,
                             SortRank = ImportanceToRank(Importance.Background),
                             Source = "proc",
                             CanKill = !string.IsNullOrEmpty(package)
@@ -601,6 +627,10 @@ namespace SilentNotes.Platforms.Services
                     // ignored
                 }
 
+                // Enrich AppManager-style fields (cmdline / state / RSS / app flags) and CPU %.
+                EnrichProcessDetails(byPid.Values, pm);
+                SampleProcessCpuPercents(byPid.Values);
+
                 var snapshot = new SystemProcessesSnapshot
                 {
                     Processes = byPid.Values
@@ -610,7 +640,7 @@ namespace SilentNotes.Platforms.Services
                         .ToList(),
                     AutostartApps = QueryAutostartApps(context, pm),
                     AccessibilityApps = QueryAccessibilityApps(context, pm),
-                    Notes = "Android hides most other apps from ActivityManager. Background rows also come from running services and /proc when readable.",
+                    Notes = "Running apps list merges ActivityManager, services and /proc (AppManager-style). Kill uses kill -9 via root when available.",
                 };
                 return snapshot;
             });
@@ -621,12 +651,24 @@ namespace SilentNotes.Platforms.Services
         {
             return Task.Run(() =>
             {
-                if (process == null || string.IsNullOrEmpty(process.PackageName))
+                if (process == null)
                     return false;
                 try
                 {
                     Context context = _appContext.Context;
-                    if (string.Equals(process.PackageName, context.PackageName, StringComparison.Ordinal))
+                    if (!string.IsNullOrEmpty(process.PackageName)
+                        && string.Equals(process.PackageName, context.PackageName, StringComparison.Ordinal))
+                        return false;
+
+                    // Prefer AppManager-style kill -9 (root). Fall back to KillBackgroundProcesses.
+                    if (process.Pid > 0)
+                    {
+                        string killOut = RunSuCommand("kill -9 " + process.Pid.ToString(CultureInfo.InvariantCulture));
+                        if (killOut != null)
+                            return true;
+                    }
+
+                    if (string.IsNullOrEmpty(process.PackageName))
                         return false;
                     var am = context.GetSystemService(Context.ActivityService) as ActivityManager;
                     am?.KillBackgroundProcesses(process.PackageName);
@@ -1489,6 +1531,646 @@ namespace SilentNotes.Platforms.Services
                 }
             }
             return 0;
+        }
+
+        /// <inheritdoc/>
+        public Task<SystemLiveCounters> GetLiveCountersAsync()
+        {
+            return Task.Run(() =>
+            {
+                var counters = new SystemLiveCounters();
+                try
+                {
+                    counters.CpuLoadPercent = ReadCpuLoadPercent();
+                    counters.CpuTemperatureCelsius = ReadCpuTemperatureCelsius();
+                    counters.FreeMemoryBytes = ReadFreeMemoryBytes();
+                    counters.CpuFrequencyMhz = ReadCpuFrequencyMhz();
+                }
+                catch (Exception ex)
+                {
+                    counters.Notes = ex.Message;
+                }
+                return counters;
+            });
+        }
+
+        /// <inheritdoc/>
+        public Task<bool> SetNetworkOutboundLoggingAsync(bool enabled)
+        {
+            return Task.Run(() =>
+            {
+                string command = enabled
+                    ? "iptables -C " + IptablesLogRule + " 2>/dev/null || iptables -A " + IptablesLogRule
+                    : "iptables -D " + IptablesLogRule + " 2>/dev/null; true";
+                string output = RunSuCommand(command);
+                bool ok = output != null;
+                if (ok)
+                {
+                    try
+                    {
+                        ISharedPreferences prefs = _appContext.Context.GetSharedPreferences(PrefsName, FileCreationMode.Private);
+                        prefs.Edit().PutBoolean(PrefNetLogEnabled, enabled).Apply();
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
+                }
+                return ok;
+            });
+        }
+
+        /// <inheritdoc/>
+        public Task<bool> IsNetworkOutboundLoggingEnabledAsync()
+        {
+            return Task.Run(() =>
+            {
+                try
+                {
+                    ISharedPreferences prefs = _appContext.Context.GetSharedPreferences(PrefsName, FileCreationMode.Private);
+                    return prefs.GetBoolean(PrefNetLogEnabled, false);
+                }
+                catch
+                {
+                    return false;
+                }
+            });
+        }
+
+        /// <inheritdoc/>
+        public Task<SystemNetworkLogEntry[]> GetNetworkOutboundLogsAsync(int maxCount = 200)
+        {
+            return Task.Run(() =>
+            {
+                if (maxCount <= 0)
+                    maxCount = 200;
+                string output = RunSuCommand("dmesg 2>/dev/null | grep \"NET_OUT\" | tail -n " + maxCount.ToString(CultureInfo.InvariantCulture));
+                if (output == null)
+                    output = RunShellCommand("dmesg 2>/dev/null | grep \"NET_OUT\" | tail -n " + maxCount.ToString(CultureInfo.InvariantCulture));
+                if (string.IsNullOrWhiteSpace(output))
+                    return Array.Empty<SystemNetworkLogEntry>();
+
+                var list = new List<SystemNetworkLogEntry>();
+                foreach (string line in output.Split('\n'))
+                {
+                    string trimmed = line.Trim();
+                    if (string.IsNullOrEmpty(trimmed) || !trimmed.Contains("NET_OUT", StringComparison.Ordinal))
+                        continue;
+                    list.Add(ParseNetworkLogLine(trimmed));
+                }
+                return list.ToArray();
+            });
+        }
+
+        /// <inheritdoc/>
+        public Task<SystemSavedIpEntry[]> GetSavedIpsAsync()
+        {
+            return Task.Run(() => LoadSavedIps().ToArray());
+        }
+
+        /// <inheritdoc/>
+        public Task<SystemSavedIpEntry> SaveIpFromLogAsync(SystemNetworkLogEntry entry)
+        {
+            return Task.Run(() =>
+            {
+                if (entry == null)
+                    return null;
+                string ip = entry.DestinationIp;
+                if (string.IsNullOrWhiteSpace(ip))
+                    ip = entry.SourceIp;
+                if (string.IsNullOrWhiteSpace(ip))
+                    return null;
+
+                List<SystemSavedIpEntry> saved = LoadSavedIps();
+                SystemSavedIpEntry existing = saved.FirstOrDefault(s =>
+                    string.Equals(s.IpAddress, ip, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(s.RawLog ?? string.Empty, entry.Raw ?? string.Empty, StringComparison.Ordinal));
+                if (existing != null)
+                    return existing;
+
+                string package = null;
+                if (entry.Uid.HasValue)
+                {
+                    try
+                    {
+                        string[] pkgs = _appContext.Context.PackageManager.GetPackagesForUid(entry.Uid.Value);
+                        if (pkgs != null && pkgs.Length > 0)
+                            package = pkgs[0];
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
+                }
+
+                var item = new SystemSavedIpEntry
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    IpAddress = ip,
+                    Uid = entry.Uid,
+                    PackageName = package,
+                    RawLog = entry.Raw,
+                    SavedUtc = DateTime.UtcNow,
+                    IsResolved = false,
+                };
+                saved.Insert(0, item);
+                PersistSavedIps(saved);
+                return item;
+            });
+        }
+
+        /// <inheritdoc/>
+        public Task RemoveSavedIpAsync(string id)
+        {
+            return Task.Run(() =>
+            {
+                if (string.IsNullOrEmpty(id))
+                    return;
+                List<SystemSavedIpEntry> saved = LoadSavedIps();
+                int removed = saved.RemoveAll(s => string.Equals(s.Id, id, StringComparison.Ordinal));
+                if (removed > 0)
+                    PersistSavedIps(saved);
+            });
+        }
+
+        /// <inheritdoc/>
+        public async Task<int> ResolveSavedIpsAsync()
+        {
+            List<SystemSavedIpEntry> saved = await Task.Run(LoadSavedIps).ConfigureAwait(false);
+            int resolved = 0;
+            foreach (SystemSavedIpEntry entry in saved)
+            {
+                if (entry == null || entry.IsResolved || string.IsNullOrWhiteSpace(entry.IpAddress))
+                    continue;
+                try
+                {
+                    IPHostEntry host = await Dns.GetHostEntryAsync(entry.IpAddress).ConfigureAwait(false);
+                    if (host != null && !string.IsNullOrWhiteSpace(host.HostName))
+                    {
+                        entry.Hostname = host.HostName;
+                        entry.IsResolved = true;
+                        resolved++;
+                    }
+                }
+                catch
+                {
+                    // leave unresolved
+                }
+            }
+            if (resolved > 0)
+                await Task.Run(() => PersistSavedIps(saved)).ConfigureAwait(false);
+            return resolved;
+        }
+
+        private double? ReadCpuLoadPercent()
+        {
+            try
+            {
+                if (!File.Exists("/proc/stat"))
+                    return null;
+                string line = File.ReadLines("/proc/stat").FirstOrDefault();
+                if (string.IsNullOrEmpty(line) || !line.StartsWith("cpu ", StringComparison.Ordinal))
+                    return null;
+                string[] parts = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 5)
+                    return null;
+                long user = long.Parse(parts[1], CultureInfo.InvariantCulture);
+                long nice = long.Parse(parts[2], CultureInfo.InvariantCulture);
+                long system = long.Parse(parts[3], CultureInfo.InvariantCulture);
+                long idle = long.Parse(parts[4], CultureInfo.InvariantCulture);
+                long iowait = parts.Length > 5 ? long.Parse(parts[5], CultureInfo.InvariantCulture) : 0;
+                long irq = parts.Length > 6 ? long.Parse(parts[6], CultureInfo.InvariantCulture) : 0;
+                long softirq = parts.Length > 7 ? long.Parse(parts[7], CultureInfo.InvariantCulture) : 0;
+                long steal = parts.Length > 8 ? long.Parse(parts[8], CultureInfo.InvariantCulture) : 0;
+                long total = user + nice + system + idle + iowait + irq + softirq + steal;
+                long idleAll = idle + iowait;
+
+                double? percent = null;
+                if (_prevCpuTotal > 0 && total > _prevCpuTotal)
+                {
+                    long totalDelta = total - _prevCpuTotal;
+                    long idleDelta = idleAll - _prevCpuIdle;
+                    if (totalDelta > 0)
+                        percent = Math.Max(0, Math.Min(100, (1.0 - ((double)idleDelta / totalDelta)) * 100.0));
+                }
+                _prevCpuIdle = idleAll;
+                _prevCpuTotal = total;
+                return percent;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static double? ReadCpuTemperatureCelsius()
+        {
+            string[] candidates =
+            {
+                "/sys/class/thermal/thermal_zone0/temp",
+                "/sys/devices/virtual/thermal/thermal_zone0/temp",
+                "/sys/class/thermal/thermal_zone1/temp",
+            };
+            foreach (string path in candidates)
+            {
+                try
+                {
+                    if (!File.Exists(path))
+                        continue;
+                    string text = File.ReadAllText(path).Trim();
+                    if (!long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long raw))
+                        continue;
+                    // Most Android thermal zones report millidegrees.
+                    double celsius = raw > 1000 ? raw / 1000.0 : raw;
+                    if (celsius > -40 && celsius < 150)
+                        return celsius;
+                }
+                catch
+                {
+                    // ignored
+                }
+            }
+
+            // Prefer zones whose type looks like CPU.
+            try
+            {
+                if (Directory.Exists("/sys/class/thermal"))
+                {
+                    foreach (string zoneDir in Directory.GetDirectories("/sys/class/thermal", "thermal_zone*"))
+                    {
+                        string typePath = Path.Combine(zoneDir, "type");
+                        string tempPath = Path.Combine(zoneDir, "temp");
+                        if (!File.Exists(typePath) || !File.Exists(tempPath))
+                            continue;
+                        string type = File.ReadAllText(typePath).Trim();
+                        if (type.IndexOf("cpu", StringComparison.OrdinalIgnoreCase) < 0
+                            && type.IndexOf("soc", StringComparison.OrdinalIgnoreCase) < 0)
+                            continue;
+                        string text = File.ReadAllText(tempPath).Trim();
+                        if (!long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long raw))
+                            continue;
+                        double celsius = raw > 1000 ? raw / 1000.0 : raw;
+                        if (celsius > -40 && celsius < 150)
+                            return celsius;
+                    }
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+            return null;
+        }
+
+        private long? ReadFreeMemoryBytes()
+        {
+            try
+            {
+                Context context = _appContext.Context;
+                var am = context.GetSystemService(Context.ActivityService) as ActivityManager;
+                if (am != null)
+                {
+                    var mem = new ActivityManager.MemoryInfo();
+                    am.GetMemoryInfo(mem);
+                    return mem.AvailMem;
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+            try
+            {
+                var meminfo = ParseMemInfo();
+                if (meminfo.TryGetValue("MemAvailable", out long availableKb))
+                    return availableKb * 1024;
+                if (meminfo.TryGetValue("MemFree", out long freeKb))
+                    return freeKb * 1024;
+            }
+            catch
+            {
+                // ignored
+            }
+            return null;
+        }
+
+        private static double? ReadCpuFrequencyMhz()
+        {
+            try
+            {
+                string[] cpuDirs = Directory.Exists("/sys/devices/system/cpu")
+                    ? Directory.GetDirectories("/sys/devices/system/cpu", "cpu*")
+                    : Array.Empty<string>();
+                long sumKhz = 0;
+                int count = 0;
+                foreach (string cpuDir in cpuDirs)
+                {
+                    string name = Path.GetFileName(cpuDir);
+                    if (name == null || name.Length < 4 || !char.IsDigit(name[3]))
+                        continue;
+                    string freqPath = Path.Combine(cpuDir, "cpufreq", "scaling_cur_freq");
+                    if (!File.Exists(freqPath))
+                        continue;
+                    string text = File.ReadAllText(freqPath).Trim();
+                    if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long khz) && khz > 0)
+                    {
+                        sumKhz += khz;
+                        count++;
+                    }
+                }
+                if (count == 0)
+                    return null;
+                return (sumKhz / (double)count) / 1000.0;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static void EnrichProcessDetails(IEnumerable<SystemProcessInfo> processes, PackageManager pm)
+        {
+            foreach (SystemProcessInfo proc in processes)
+            {
+                if (proc == null || proc.Pid <= 0)
+                    continue;
+                string dir = "/proc/" + proc.Pid.ToString(CultureInfo.InvariantCulture);
+                if (string.IsNullOrEmpty(proc.Cmdline))
+                    proc.Cmdline = TryReadProcCmdline(dir);
+                if (string.IsNullOrEmpty(proc.State) || proc.Ppid == 0 || proc.RssBytes == 0)
+                {
+                    TryReadProcStatusExtras(dir, out string state, out int ppid, out long rssKb);
+                    if (string.IsNullOrEmpty(proc.State))
+                        proc.State = state;
+                    if (proc.Ppid <= 0)
+                        proc.Ppid = ppid;
+                    if (proc.RssBytes <= 0 && rssKb > 0)
+                        proc.RssBytes = rssKb * 1024;
+                }
+                if (string.IsNullOrEmpty(proc.User))
+                    proc.User = FormatUidUser(proc.Uid);
+                if (!proc.IsApp)
+                {
+                    string package = proc.PackageName;
+                    proc.IsApp = !string.IsNullOrEmpty(package) && package.Contains('.', StringComparison.Ordinal)
+                        && SafeIsInstalledPackage(pm, package);
+                }
+                if (!proc.IsUserApp)
+                    proc.IsUserApp = proc.Uid >= 10000 && proc.IsApp;
+            }
+        }
+
+        private static void SampleProcessCpuPercents(IEnumerable<SystemProcessInfo> processes)
+        {
+            var list = processes?.Where(p => p != null && p.Pid > 0).ToList();
+            if (list == null || list.Count == 0)
+                return;
+
+            var first = new Dictionary<int, long>();
+            long firstTotal = ReadCpuTotalJiffies();
+            foreach (SystemProcessInfo proc in list)
+            {
+                long jiffies = TryReadProcCpuJiffies("/proc/" + proc.Pid.ToString(CultureInfo.InvariantCulture));
+                if (jiffies >= 0)
+                    first[proc.Pid] = jiffies;
+            }
+
+            try { System.Threading.Thread.Sleep(120); } catch { /* ignored */ }
+
+            long secondTotal = ReadCpuTotalJiffies();
+            long totalDelta = secondTotal - firstTotal;
+            if (totalDelta <= 0)
+                return;
+
+            foreach (SystemProcessInfo proc in list)
+            {
+                if (!first.TryGetValue(proc.Pid, out long firstJiffies))
+                    continue;
+                long secondJiffies = TryReadProcCpuJiffies("/proc/" + proc.Pid.ToString(CultureInfo.InvariantCulture));
+                if (secondJiffies < 0)
+                    continue;
+                long delta = secondJiffies - firstJiffies;
+                if (delta < 0)
+                    continue;
+                proc.CpuPercent = Math.Max(0, Math.Min(100, (delta * 100.0) / totalDelta));
+            }
+        }
+
+        private static long ReadCpuTotalJiffies()
+        {
+            try
+            {
+                if (!File.Exists("/proc/stat"))
+                    return 0;
+                string line = File.ReadLines("/proc/stat").FirstOrDefault();
+                if (string.IsNullOrEmpty(line))
+                    return 0;
+                string[] parts = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+                long total = 0;
+                for (int i = 1; i < parts.Length && i <= 8; i++)
+                {
+                    if (long.TryParse(parts[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out long v))
+                        total += v;
+                }
+                return total;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private static long TryReadProcCpuJiffies(string procDir)
+        {
+            try
+            {
+                string path = Path.Combine(procDir, "stat");
+                if (!File.Exists(path))
+                    return -1;
+                string text = File.ReadAllText(path);
+                int close = text.LastIndexOf(')');
+                if (close < 0 || close + 2 >= text.Length)
+                    return -1;
+                string[] parts = text.Substring(close + 2).Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+                // fields 12,13 after comm are utime,stime (0-based index 11,12 in full; after ') ' they are index 11-2? )
+                // After ") " the fields start at state(0), ppid(1), ... utime is field 14 overall = index 11 after state.
+                if (parts.Length < 15)
+                    return -1;
+                long utime = long.Parse(parts[11], CultureInfo.InvariantCulture);
+                long stime = long.Parse(parts[12], CultureInfo.InvariantCulture);
+                return utime + stime;
+            }
+            catch
+            {
+                return -1;
+            }
+        }
+
+        private static void TryReadProcStatusExtras(string procDir, out string state, out int ppid, out long rssKb)
+        {
+            state = null;
+            ppid = 0;
+            rssKb = 0;
+            try
+            {
+                string path = Path.Combine(procDir, "status");
+                if (!File.Exists(path))
+                    return;
+                foreach (string line in File.ReadLines(path))
+                {
+                    if (line.StartsWith("State:", StringComparison.Ordinal))
+                        state = line.Substring(6).Trim();
+                    else if (line.StartsWith("PPid:", StringComparison.Ordinal))
+                    {
+                        string[] parts = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length >= 2)
+                            int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out ppid);
+                    }
+                    else if (line.StartsWith("VmRSS:", StringComparison.Ordinal))
+                    {
+                        string[] parts = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length >= 2)
+                            long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out rssKb);
+                    }
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        private static string FormatUidUser(int uid)
+        {
+            if (uid <= 0)
+                return null;
+            if (uid == 0)
+                return "root";
+            if (uid == 1000)
+                return "system";
+            if (uid >= 10000)
+                return "u0_a" + (uid - 10000).ToString(CultureInfo.InvariantCulture);
+            return "uid:" + uid.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private static bool SafeIsInstalledPackage(PackageManager pm, string packageName)
+        {
+            if (pm == null || string.IsNullOrEmpty(packageName))
+                return false;
+            try
+            {
+                pm.GetApplicationInfo(packageName, 0);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static SystemNetworkLogEntry ParseNetworkLogLine(string line)
+        {
+            var entry = new SystemNetworkLogEntry { Raw = line };
+            entry.SourceIp = MatchToken(line, "SRC=");
+            entry.DestinationIp = MatchToken(line, "DST=");
+            entry.Interface = MatchToken(line, "OUT=");
+            if (string.IsNullOrEmpty(entry.Interface))
+                entry.Interface = MatchToken(line, "IN=");
+            string uidText = MatchToken(line, "UID=");
+            if (int.TryParse(uidText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int uid))
+                entry.Uid = uid;
+            return entry;
+        }
+
+        private static string MatchToken(string line, string key)
+        {
+            if (string.IsNullOrEmpty(line) || string.IsNullOrEmpty(key))
+                return null;
+            int idx = line.IndexOf(key, StringComparison.Ordinal);
+            if (idx < 0)
+                return null;
+            int start = idx + key.Length;
+            int end = start;
+            while (end < line.Length && !char.IsWhiteSpace(line[end]))
+                end++;
+            if (end <= start)
+                return null;
+            return line.Substring(start, end - start);
+        }
+
+        private List<SystemSavedIpEntry> LoadSavedIps()
+        {
+            try
+            {
+                ISharedPreferences prefs = _appContext.Context.GetSharedPreferences(PrefsName, FileCreationMode.Private);
+                string json = prefs.GetString(PrefSavedIpsJson, null);
+                if (string.IsNullOrWhiteSpace(json))
+                    return new List<SystemSavedIpEntry>();
+                var list = System.Text.Json.JsonSerializer.Deserialize<List<SystemSavedIpEntry>>(json);
+                return list ?? new List<SystemSavedIpEntry>();
+            }
+            catch
+            {
+                return new List<SystemSavedIpEntry>();
+            }
+        }
+
+        private void PersistSavedIps(List<SystemSavedIpEntry> entries)
+        {
+            try
+            {
+                string json = System.Text.Json.JsonSerializer.Serialize(entries ?? new List<SystemSavedIpEntry>());
+                ISharedPreferences prefs = _appContext.Context.GetSharedPreferences(PrefsName, FileCreationMode.Private);
+                prefs.Edit().PutString(PrefSavedIpsJson, json).Apply();
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        /// <summary>
+        /// Runs a shell command via <c>su -c</c>. Returns stdout on success (exit 0), otherwise null.
+        /// </summary>
+        private static string RunSuCommand(string command)
+        {
+            if (string.IsNullOrWhiteSpace(command))
+                return null;
+            try
+            {
+                using Java.Lang.Process process = Java.Lang.Runtime.GetRuntime().Exec(new[] { "su", "-c", command });
+                string stdout;
+                using (var reader = new StreamReader(process.InputStream))
+                    stdout = reader.ReadToEnd();
+                process.WaitFor();
+                int exit = process.ExitValue();
+                if (exit != 0)
+                    return null;
+                return stdout ?? string.Empty;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string RunShellCommand(string command)
+        {
+            if (string.IsNullOrWhiteSpace(command))
+                return null;
+            try
+            {
+                using Java.Lang.Process process = Java.Lang.Runtime.GetRuntime().Exec(new[] { "sh", "-c", command });
+                string stdout;
+                using (var reader = new StreamReader(process.InputStream))
+                    stdout = reader.ReadToEnd();
+                process.WaitFor();
+                return stdout ?? string.Empty;
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }
