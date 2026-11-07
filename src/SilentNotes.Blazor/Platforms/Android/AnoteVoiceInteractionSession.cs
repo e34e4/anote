@@ -273,7 +273,7 @@ namespace SilentNotes.Platforms
 
         // --- IRecognitionListener ---
 
-        public void OnReadyForSpeech(Bundle params)
+        public void OnReadyForSpeech(Bundle eventParams)
         {
             SetStatus("Listening… speak now");
         }
@@ -319,7 +319,7 @@ namespace SilentNotes.Platforms
                 SetStatus(partial);
         }
 
-        public void OnEvent(int eventType, Bundle params)
+        public void OnEvent(int eventType, Bundle eventParams)
         {
         }
 
