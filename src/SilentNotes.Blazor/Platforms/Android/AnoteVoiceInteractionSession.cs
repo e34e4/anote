@@ -13,9 +13,9 @@ using Android.Views;
 using Android.Widget;
 using Android.Service.Voice;
 using Bitmap = global::Android.Graphics.Bitmap;
-using Button = Android.Widget.Button;
+using Button = global::Android.Widget.Button;
 using Color = global::Android.Graphics.Color;
-using Orientation = Android.Widget.Orientation;
+using Orientation = global::Android.Widget.Orientation;
 
 namespace SilentNotes.Platforms
 {

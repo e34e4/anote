@@ -17,8 +17,9 @@ using Android.Views;
 using Android.Widget;
 using AndroidX.Core.App;
 using AndroidX.Core.Content;
-using Button = Android.Widget.Button;
+using Button = global::Android.Widget.Button;
 using Color = global::Android.Graphics.Color;
+using Orientation = global::Android.Widget.Orientation;
 
 namespace SilentNotes.Platforms
 {
@@ -67,7 +68,7 @@ namespace SilentNotes.Platforms
 
             var root = new LinearLayout(this)
             {
-                Orientation = Android.Widget.Orientation.Vertical,
+                Orientation = Orientation.Vertical,
             };
             root.SetPadding(48, 48, 48, 48);
             root.SetBackgroundColor(Color.Argb(245, 22, 22, 22));
@@ -91,7 +92,7 @@ namespace SilentNotes.Platforms
 
             var buttons = new LinearLayout(this)
             {
-                Orientation = Android.Widget.Orientation.Horizontal,
+                Orientation = Orientation.Horizontal,
             };
 
             _noButton = new Button(this) { Text = "No" };

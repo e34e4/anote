@@ -35,11 +35,11 @@ namespace SilentNotes.Platforms
             {
                 var shortcuts = new List<ShortcutInfoCompat>
                 {
-                    BuildShortcut(context, ActionVoice, "Voice", "Capture voice + screenshot", VoiceViewModel.TabIndex, '#', 0xFF4285F4),
-                    BuildShortcut(context, ActionNotes, "Notes", "Open notes", 0, 'N', 0xFFFBC02D),
-                    BuildShortcut(context, ActionClipboard, "Clipboard", "Open clipboard history", 1, 'C', 0xFF66BB6A),
-                    BuildShortcut(context, ActionRec, "Rec", "Open recorder", 9, 'R', 0xFFEF5350),
-                    BuildShortcut(context, ActionAbro, "Abro", "Open browser", AbroViewModel.TabIndex, 'A', 0xFF42A5F5),
+                    BuildShortcut(context, ActionVoice, "Voice", "Capture voice + screenshot", VoiceViewModel.TabIndex, '#', unchecked((int)0xFF4285F4)),
+                    BuildShortcut(context, ActionNotes, "Notes", "Open notes", 0, 'N', unchecked((int)0xFFFBC02D)),
+                    BuildShortcut(context, ActionClipboard, "Clipboard", "Open clipboard history", 1, 'C', unchecked((int)0xFF66BB6A)),
+                    BuildShortcut(context, ActionRec, "Rec", "Open recorder", 9, 'R', unchecked((int)0xFFEF5350)),
+                    BuildShortcut(context, ActionAbro, "Abro", "Open browser", AbroViewModel.TabIndex, 'A', unchecked((int)0xFF42A5F5)),
                 };
 
                 ShortcutManagerCompat.RemoveAllDynamicShortcuts(context);
