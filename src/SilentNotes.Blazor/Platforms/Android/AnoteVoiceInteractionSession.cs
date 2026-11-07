@@ -18,6 +18,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SilentNotes.Models;
 using SilentNotes.Services;
 using SilentNotes.Workers;
+using Color = Android.Graphics.Color;
 using Orientation = Android.Widget.Orientation;
 
 namespace SilentNotes.Platforms
