@@ -5,7 +5,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using Android.Content;
 using Android.Graphics;
 using Android.OS;
@@ -14,33 +13,32 @@ using Android.Util;
 using Android.Views;
 using Android.Widget;
 using Android.Service.Voice;
-using Microsoft.Extensions.DependencyInjection;
-using SilentNotes.Models;
-using SilentNotes.Services;
-using SilentNotes.Workers;
 using Color = Android.Graphics.Color;
 using Orientation = Android.Widget.Orientation;
 
 namespace SilentNotes.Platforms
 {
     /// <summary>
-    /// Assist-gesture session: listens for voice, receives a screenshot when available, and
-    /// prepends both to the pinned Voice note.
+    /// Assist-gesture session: asks "Recognize voice?", then listens, receives a screenshot when
+    /// available, and prepends both to the pinned Voice note.
     /// </summary>
     internal sealed class AnoteVoiceInteractionSession : VoiceInteractionSession, IRecognitionListener
     {
         private const string LogTag = "aNoteAssist";
-        private const int MaxScreenshotEdge = 1200;
-        private const int JpegQuality = 72;
 
         private readonly Context _context;
         private TextView _statusView;
+        private LinearLayout _confirmRow;
+        private Button _yesButton;
+        private Button _noButton;
         private SpeechRecognizer _speechRecognizer;
         private string _pendingScreenshotDataUrl;
         private string _pendingText;
         private bool _screenshotReceived;
         private bool _speechFinished;
         private bool _saved;
+        private bool _captureStarted;
+        private bool _userDeclined;
 
         public AnoteVoiceInteractionSession(Context context)
             : base(context)
@@ -68,13 +66,31 @@ namespace SilentNotes.Platforms
 
             _statusView = new TextView(_context)
             {
-                Text = "Listening… speak now",
+                Text = "Recognize voice?",
                 TextSize = 16f,
             };
             _statusView.SetTextColor(Color.LightGray);
-            _statusView.SetPadding(0, 24, 0, 0);
+            _statusView.SetPadding(0, 24, 0, 24);
             root.AddView(_statusView);
 
+            _confirmRow = new LinearLayout(_context)
+            {
+                Orientation = Orientation.Horizontal,
+            };
+
+            _noButton = new Button(_context) { Text = "No" };
+            _noButton.Click += (_, __) =>
+            {
+                _userDeclined = true;
+                Hide();
+            };
+            _confirmRow.AddView(_noButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+            _yesButton = new Button(_context) { Text = "Yes" };
+            _yesButton.Click += (_, __) => BeginCaptureAfterConfirm();
+            _confirmRow.AddView(_yesButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+            root.AddView(_confirmRow);
             return root;
         }
 
@@ -83,21 +99,21 @@ namespace SilentNotes.Platforms
         {
             base.OnShow(args, showFlags);
             _saved = false;
+            _captureStarted = false;
+            _userDeclined = false;
             _pendingText = null;
             _pendingScreenshotDataUrl = null;
             _screenshotReceived = false;
             _speechFinished = false;
-            SetStatus("Listening… speak now");
-            StartListening();
+            SetStatus("Recognize voice?");
+            ShowConfirmButtons(true);
 
-            // Assist may omit screenshots (user/policy). Don't block the capture forever.
+            // Keep collecting the assist screenshot even before the user confirms, so Yes can
+            // save it together with the transcript.
             new Handler(Looper.MainLooper).PostDelayed(() =>
             {
                 if (!_screenshotReceived)
-                {
                     _screenshotReceived = true;
-                    TryFinishCapture();
-                }
             }, 1800);
         }
 
@@ -107,7 +123,7 @@ namespace SilentNotes.Platforms
             try
             {
                 if (screenshot != null && !screenshot.IsRecycled)
-                    _pendingScreenshotDataUrl = BitmapToJpegDataUrl(screenshot);
+                    _pendingScreenshotDataUrl = VoiceCapturePersist.BitmapToJpegDataUrl(screenshot);
             }
             catch (Exception ex)
             {
@@ -132,6 +148,40 @@ namespace SilentNotes.Platforms
         {
             StopListening();
             base.OnDestroy();
+        }
+
+        private void BeginCaptureAfterConfirm()
+        {
+            if (_captureStarted || _userDeclined)
+                return;
+
+            _captureStarted = true;
+            ShowConfirmButtons(false);
+            SetStatus("Listening… speak now");
+            StartListening();
+
+            if (!_screenshotReceived)
+            {
+                new Handler(Looper.MainLooper).PostDelayed(() =>
+                {
+                    if (!_screenshotReceived)
+                    {
+                        _screenshotReceived = true;
+                        TryFinishCapture();
+                    }
+                }, 1800);
+            }
+        }
+
+        private void ShowConfirmButtons(bool visible)
+        {
+            if (_confirmRow == null)
+                return;
+            _confirmRow.Visibility = visible ? ViewStates.Visible : ViewStates.Gone;
+            if (_yesButton != null)
+                _yesButton.Enabled = visible;
+            if (_noButton != null)
+                _noButton.Enabled = visible;
         }
 
         private void StartListening()
@@ -184,55 +234,21 @@ namespace SilentNotes.Platforms
 
         private void TryFinishCapture()
         {
-            if (_saved || !_speechFinished || !_screenshotReceived)
+            if (!_captureStarted || _userDeclined || _saved || !_speechFinished || !_screenshotReceived)
                 return;
 
             _saved = true;
-            PersistCapture(_pendingText, _pendingScreenshotDataUrl);
-            SetStatus(string.IsNullOrWhiteSpace(_pendingText) && string.IsNullOrEmpty(_pendingScreenshotDataUrl)
-                ? "Nothing captured"
-                : "Saved to Voice note");
+            bool ok = VoiceCapturePersist.Save(_pendingText, _pendingScreenshotDataUrl);
+            SetStatus(ok
+                ? "Saved to Voice note"
+                : (string.IsNullOrWhiteSpace(_pendingText) && string.IsNullOrEmpty(_pendingScreenshotDataUrl)
+                    ? "Nothing captured"
+                    : "Could not save"));
 
-            // Close the assist UI shortly after saving.
             new Handler(Looper.MainLooper).PostDelayed(() =>
             {
                 try { Hide(); } catch { /* ignored */ }
             }, 900);
-        }
-
-        private void PersistCapture(string text, string screenshotDataUrl)
-        {
-            if (string.IsNullOrWhiteSpace(text) && string.IsNullOrEmpty(screenshotDataUrl))
-                return;
-
-            try
-            {
-                IRepositoryStorageService repo = Ioc.Instance.GetService<IRepositoryStorageService>();
-                if (repo == null)
-                {
-                    Log.Warn(LogTag, "Repository service unavailable");
-                    return;
-                }
-
-                repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
-                NoteModel voiceNote = VoiceNoteHelper.EnsureVoiceNote(model);
-                VoiceNoteHelper.PrependCapture(voiceNote, text, screenshotDataUrl, DateTime.UtcNow);
-                repo.TrySaveRepository(model);
-
-                try
-                {
-                    IMessengerService messenger = Ioc.Instance.GetService<IMessengerService>();
-                    messenger?.Send(new VoiceNoteChangedMessage());
-                }
-                catch
-                {
-                    // Messenger may be unavailable outside the Blazor UI.
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error(LogTag, "PersistCapture failed: " + ex);
-            }
         }
 
         private void SetStatus(string text)
@@ -242,60 +258,11 @@ namespace SilentNotes.Platforms
             _statusView.Post(() => _statusView.Text = text ?? string.Empty);
         }
 
-        private static string BitmapToJpegDataUrl(Bitmap source)
-        {
-            Bitmap scaled = source;
-            bool disposeScaled = false;
-            try
-            {
-                int maxEdge = Math.Max(source.Width, source.Height);
-                if (maxEdge > MaxScreenshotEdge)
-                {
-                    float scale = MaxScreenshotEdge / (float)maxEdge;
-                    int w = Math.Max(1, (int)(source.Width * scale));
-                    int h = Math.Max(1, (int)(source.Height * scale));
-                    scaled = Bitmap.CreateScaledBitmap(source, w, h, true);
-                    disposeScaled = !ReferenceEquals(scaled, source);
-                }
-
-                using var stream = new MemoryStream();
-                if (!scaled.Compress(Bitmap.CompressFormat.Jpeg, JpegQuality, stream))
-                    return null;
-
-                string b64 = Convert.ToBase64String(stream.ToArray());
-                return "data:image/jpeg;base64," + b64;
-            }
-            finally
-            {
-                if (disposeScaled && scaled != null && !scaled.IsRecycled)
-                    scaled.Recycle();
-            }
-        }
-
-        // --- IRecognitionListener ---
-
-        public void OnReadyForSpeech(Bundle eventParams)
-        {
-            SetStatus("Listening… speak now");
-        }
-
-        public void OnBeginningOfSpeech()
-        {
-            SetStatus("Hearing you…");
-        }
-
-        public void OnRmsChanged(float rmsdB)
-        {
-        }
-
-        public void OnBufferReceived(byte[] buffer)
-        {
-        }
-
-        public void OnEndOfSpeech()
-        {
-            SetStatus("Recognizing…");
-        }
+        public void OnReadyForSpeech(Bundle eventParams) => SetStatus("Listening… speak now");
+        public void OnBeginningOfSpeech() => SetStatus("Hearing you…");
+        public void OnRmsChanged(float rmsdB) { }
+        public void OnBufferReceived(byte[] buffer) { }
+        public void OnEndOfSpeech() => SetStatus("Recognizing…");
 
         public void OnError(SpeechRecognizerError error)
         {
@@ -320,9 +287,7 @@ namespace SilentNotes.Platforms
                 SetStatus(partial);
         }
 
-        public void OnEvent(int eventType, Bundle eventParams)
-        {
-        }
+        public void OnEvent(int eventType, Bundle eventParams) { }
 
         private static string FirstResult(Bundle results)
         {

@@ -13,7 +13,8 @@ using SilentNotes.Services;
 namespace SilentNotes.Platforms.Services
 {
     /// <summary>
-    /// Android implementation that requests <see cref="global::Android.App.Roles.RoleManager.RoleAssistant"/>.
+    /// Android implementation that requests <see cref="global::Android.App.Roles.RoleManager.RoleAssistant"/>,
+    /// opens assistant settings, and publishes launcher shortcuts.
     /// </summary>
     internal class AssistantService : IAssistantService
     {
@@ -73,19 +74,7 @@ namespace SilentNotes.Platforms.Services
                 if (roleManager == null
                     || !roleManager.IsRoleAvailable(global::Android.App.Roles.RoleManager.RoleAssistant))
                 {
-                    // Fallback: open voice-input / default-apps settings when the role API is unavailable.
-                    try
-                    {
-                        var settings = new Intent(global::Android.Provider.Settings.ActionVoiceInputSettings);
-                        settings.AddFlags(ActivityFlags.NewTask);
-                        context.StartActivity(settings);
-                    }
-                    catch (Exception)
-                    {
-                        var settings = new Intent(global::Android.Provider.Settings.ActionManageDefaultAppsSettings);
-                        settings.AddFlags(ActivityFlags.NewTask);
-                        context.StartActivity(settings);
-                    }
+                    OpenAssistantSettings();
                     return IsDefaultAssistant;
                 }
 
@@ -101,12 +90,60 @@ namespace SilentNotes.Platforms.Services
                     roleIntent.AddFlags(ActivityFlags.NewTask);
                     context.StartActivity(roleIntent);
                 }
+
+                // Also refresh launcher shortcuts after the role prompt.
+                PublishLauncherShortcuts();
             }
             catch (Exception)
             {
             }
 
             return IsDefaultAssistant;
+        }
+
+        /// <inheritdoc/>
+        public void OpenAssistantSettings()
+        {
+            Context context = _appContext.Context;
+            if (context == null)
+                return;
+
+            // Try the most specific screens first; CrDroid/Lineage may only honor some of them.
+            string[] actions =
+            {
+                global::Android.Provider.Settings.ActionVoiceInputSettings,
+                global::Android.Provider.Settings.ActionManageDefaultAppsSettings,
+                global::Android.Provider.Settings.ActionApplicationSettings,
+            };
+
+            foreach (string action in actions)
+            {
+                try
+                {
+                    var intent = new Intent(action);
+                    intent.AddFlags(ActivityFlags.NewTask);
+                    context.StartActivity(intent);
+                    return;
+                }
+                catch (Exception)
+                {
+                    // try next
+                }
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool PublishLauncherShortcuts()
+        {
+            try
+            {
+                Context context = _appContext.Context;
+                return Platforms.AppShortcutPublisher.Publish(context);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
     }
 }

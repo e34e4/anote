@@ -50,13 +50,26 @@
 					</MudText>
 					<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["assistant_default_desc"]</MudText>
 				</div>
-				<MudButton Color="Color.Primary" Variant="Variant.Filled"
-					Disabled="@ViewModel.IsDefaultAssistant"
-					StartIcon="@Icons.Material.Filled.RecordVoiceOver"
-					OnClick="@(() => ViewModel.SetDefaultAssistantCommand.Execute(null))">
-					@LanguageService["gui_assistant_set_default"]
-				</MudButton>
+				<MudStack Row="true" Style="flex-wrap:wrap;gap:8px;">
+					<MudButton Color="Color.Primary" Variant="Variant.Filled"
+						Disabled="@ViewModel.IsDefaultAssistant"
+						StartIcon="@Icons.Material.Filled.RecordVoiceOver"
+						OnClick="@(() => ViewModel.SetDefaultAssistantCommand.Execute(null))">
+						@LanguageService["gui_assistant_set_default"]
+					</MudButton>
+					<MudButton Color="Color.Primary" Variant="Variant.Outlined"
+						StartIcon="@Icons.Material.Filled.Settings"
+						OnClick="@(() => ViewModel.OpenAssistantSettingsCommand.Execute(null))">
+						@LanguageService["gui_assistant_open_settings"]
+					</MudButton>
+					<MudButton Color="Color.Primary" Variant="Variant.Outlined"
+						StartIcon="@Icons.Material.Filled.AddToHomeScreen"
+						OnClick="@(() => ViewModel.PublishLauncherShortcutsCommand.Execute(null))">
+						@LanguageService["gui_assistant_publish_shortcuts"]
+					</MudButton>
+				</MudStack>
 			</MudStack>
+			<MudText Typo="Typo.caption" Class="mud-text-secondary mt-2">@LanguageService["assistant_home_longpress_hint"]</MudText>
 		</MudPaper>
 	}
 

@@ -121,6 +121,8 @@ namespace SilentNotes.ViewModels
             SetDefaultPhoneAppCommand = new AsyncRelayCommand(SetDefaultPhoneApp);
             SetDefaultBrowserAppCommand = new AsyncRelayCommand(SetDefaultBrowserApp);
             SetDefaultAssistantAppCommand = new AsyncRelayCommand(SetDefaultAssistantApp);
+            OpenAssistantSettingsCommand = new RelayCommand(OpenAssistantSettings);
+            PublishLauncherShortcutsCommand = new RelayCommand(PublishLauncherShortcuts);
             MoveMainTabUpCommand = new RelayCommand<int>(displayIndex => MoveMainTab(displayIndex, -1));
             MoveMainTabDownCommand = new RelayCommand<int>(displayIndex => MoveMainTab(displayIndex, 1));
             ResetMainTabOrderCommand = new RelayCommand(ResetMainTabOrder);
@@ -170,12 +172,33 @@ namespace SilentNotes.ViewModels
         /// <summary>Gets the command which asks the system to make aNote the default assistant.</summary>
         public ICommand SetDefaultAssistantAppCommand { get; }
 
+        /// <summary>Gets the command which opens system assistant / voice-input settings (home long-press).</summary>
+        public ICommand OpenAssistantSettingsCommand { get; }
+
+        /// <summary>Gets the command which publishes launcher long-press shortcuts.</summary>
+        public ICommand PublishLauncherShortcutsCommand { get; }
+
         private async Task SetDefaultAssistantApp()
         {
             if (_assistantService == null)
                 return;
             await _assistantService.RequestDefaultAssistantAsync();
             OnPropertyChanged(nameof(IsDefaultAssistantApp), nameof(CanSetDefaultAssistant));
+        }
+
+        private void OpenAssistantSettings()
+        {
+            _assistantService?.OpenAssistantSettings();
+        }
+
+        private void PublishLauncherShortcuts()
+        {
+            if (_assistantService == null)
+                return;
+            bool ok = _assistantService.PublishLauncherShortcuts();
+            _feedbackService?.ShowToast(ok
+                ? Language["assistant_shortcuts_published"]
+                : Language["assistant_shortcuts_failed"]);
         }
 
         /// <summary>Gets the command to display the system keyboard switcher dialog.</summary>

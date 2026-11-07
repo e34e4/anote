@@ -21,5 +21,13 @@ namespace SilentNotes.Platforms.Services
 
         /// <inheritdoc/>
         public Task<bool> RequestDefaultAssistantAsync() => Task.FromResult(false);
+
+        /// <inheritdoc/>
+        public void OpenAssistantSettings()
+        {
+        }
+
+        /// <inheritdoc/>
+        public bool PublishLauncherShortcuts() => false;
     }
 }

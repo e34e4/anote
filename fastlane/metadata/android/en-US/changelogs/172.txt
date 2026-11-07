@@ -1,0 +1,4 @@
+• Fix Voice quick-menu opening Abro (tab index clamp)
+• Voice confirm “Recognize voice?” then record + recognize + screenshot
+• Launcher shortcuts (Voice/Notes/Clipboard/Rec/Abro) + ASSIST/VOICE_COMMAND entry
+• Settings: open assistant settings for home long-press binding

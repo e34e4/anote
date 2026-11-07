@@ -218,6 +218,7 @@ namespace SilentNotes
             _contentView.ViewTreeObserver.AddOnPreDrawListener(this);
 
             _applicationEventHandler.OnCreate(this);
+            Platforms.AppShortcutPublisher.Publish(this);
 
             _backPressedHandler = new BackPressedHandler(this);
             OnBackPressedDispatcher.AddCallback(this, _backPressedHandler);

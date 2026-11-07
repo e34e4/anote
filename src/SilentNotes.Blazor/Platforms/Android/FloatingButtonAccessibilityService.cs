@@ -1169,6 +1169,8 @@ namespace SilentNotes.Platforms
                     HideMenuOverlay();
                     if (tabIdx == AbroViewModel.TabIndex)
                         OpenAbroBrowser();
+                    else if (tabIdx == VoiceViewModel.TabIndex)
+                        OpenVoiceCapture();
                     else
                         OpenApplicationAtTab(tabIdx);
                 }, false, null));
@@ -1595,6 +1597,8 @@ namespace SilentNotes.Platforms
                     {
                         if (tabIdx == AbroViewModel.TabIndex)
                             OpenAbroBrowser();
+                        else if (tabIdx == VoiceViewModel.TabIndex)
+                            OpenVoiceCapture();
                         else
                             OpenApplicationAtTab(tabIdx);
                         return true;
@@ -2160,6 +2164,21 @@ namespace SilentNotes.Platforms
             {
                 global::Android.Util.Log.Error(LogTag, "Could not open Abro: " + ex);
                 OpenApplicationAtTab(AbroViewModel.TabIndex);
+            }
+        }
+
+        private void OpenVoiceCapture()
+        {
+            try
+            {
+                var intent = new Intent(this, typeof(VoiceCaptureActivity));
+                intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.ReorderToFront | ActivityFlags.SingleTop);
+                StartActivity(intent);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not open Voice capture: " + ex);
+                OpenApplicationAtTab(VoiceViewModel.TabIndex);
             }
         }
 

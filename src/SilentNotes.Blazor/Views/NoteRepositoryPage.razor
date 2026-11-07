@@ -906,7 +906,7 @@
 		if (pendingTabIntent != null)
 		{
 			TabIntentRequest.Pending = null;
-			SetActiveTab(Math.Clamp(pendingTabIntent.TabIndex, 0, AbroViewModel.TabIndex));
+			SetActiveTab(Math.Clamp(pendingTabIntent.TabIndex, 0, MainViewTabCatalog.MaxTabIndex));
 		}
 
 		// When the app was started by a media VIEW/SEND intent, open the Player tab.
@@ -1147,7 +1147,7 @@
 				return;
 
 			TabIntentRequest.Pending = null;
-			SetActiveTab(Math.Clamp(request.TabIndex, 0, AbroViewModel.TabIndex));
+			SetActiveTab(Math.Clamp(request.TabIndex, 0, MainViewTabCatalog.MaxTabIndex));
 			StateHasChanged();
 		});
 	}
@@ -1245,7 +1245,7 @@
 		if (pendingTab != null)
 		{
 			TabIntentRequest.Pending = null;
-			SetActiveTab(Math.Clamp(pendingTab.TabIndex, 0, AbroViewModel.TabIndex));
+			SetActiveTab(Math.Clamp(pendingTab.TabIndex, 0, MainViewTabCatalog.MaxTabIndex));
 			_passwordViewModel?.EnsureLoaded();
 			_telegramViewModel?.SyncFromService();
 			InvokeAsync(StateHasChanged);

@@ -48,9 +48,12 @@ namespace SilentNotes.ViewModels
 
             OpenVoiceNoteCommand = new RelayCommand(OpenVoiceNote);
             SetDefaultAssistantCommand = new AsyncRelayCommand(SetDefaultAssistantAsync);
+            OpenAssistantSettingsCommand = new RelayCommand(() => _assistantService?.OpenAssistantSettings());
+            PublishLauncherShortcutsCommand = new RelayCommand(PublishLauncherShortcuts);
             RefreshCommand = new RelayCommand(Refresh);
 
             Refresh();
+            _assistantService?.PublishLauncherShortcuts();
         }
 
         /// <summary>Gets the language service.</summary>
@@ -74,6 +77,12 @@ namespace SilentNotes.ViewModels
 
         /// <summary>Gets the command which requests the assistant role.</summary>
         public ICommand SetDefaultAssistantCommand { get; }
+
+        /// <summary>Gets the command which opens assistant / home long-press settings.</summary>
+        public ICommand OpenAssistantSettingsCommand { get; }
+
+        /// <summary>Gets the command which publishes launcher shortcuts including Voice.</summary>
+        public ICommand PublishLauncherShortcutsCommand { get; }
 
         /// <summary>Gets the command which reloads the Voice note preview.</summary>
         public ICommand RefreshCommand { get; }
@@ -106,6 +115,16 @@ namespace SilentNotes.ViewModels
             OnPropertyChanged(nameof(IsDefaultAssistant));
             if (ok)
                 _feedbackService?.ShowToast(Language["assistant_is_default"]);
+        }
+
+        private void PublishLauncherShortcuts()
+        {
+            if (_assistantService == null)
+                return;
+            bool ok = _assistantService.PublishLauncherShortcuts();
+            _feedbackService?.ShowToast(ok
+                ? Language["assistant_shortcuts_published"]
+                : Language["assistant_shortcuts_failed"]);
         }
     }
 }

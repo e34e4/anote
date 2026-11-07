@@ -64,6 +64,24 @@ namespace SilentNotes.Models
             get { return Tabs.Length; }
         }
 
+        /// <summary>
+        /// Gets the highest stable tab index (for clamping intents). Not the same as
+        /// <see cref="TabCount"/> - 1 because indices are sparse.
+        /// </summary>
+        public static int MaxTabIndex
+        {
+            get
+            {
+                int max = 0;
+                foreach (TabDescriptor tab in Tabs)
+                {
+                    if (tab.Index > max)
+                        max = tab.Index;
+                }
+                return max;
+            }
+        }
+
         /// <summary>Gets all tab descriptors in default visual order.</summary>
         public static IReadOnlyList<TabDescriptor> AllTabs
         {
