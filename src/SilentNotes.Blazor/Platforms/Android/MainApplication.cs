@@ -28,7 +28,7 @@ namespace SilentNotes
 		/// <summary>
 		/// ML Kit's InitProvider is merged into the APK, but on .NET Android it can fail to
 		/// initialize before the first barcode client is created. Manual init is idempotent via
-		/// <see cref="MlKitContext.InitializeIfNeeded"/>.
+		/// <see cref="MlKitContext.InitializeIfNeeded(Android.Content.Context)"/>.
 		/// </summary>
 		internal static void EnsureMlKitInitialized(Android.Content.Context context)
 		{
