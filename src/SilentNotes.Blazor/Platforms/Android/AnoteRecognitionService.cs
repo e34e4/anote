@@ -26,7 +26,7 @@ namespace SilentNotes.Platforms
         /// <inheritdoc/>
         protected override void OnStartListening(Intent recognizerIntent, Callback listener)
         {
-            listener?.Error((int)SpeechRecognizerError.Client);
+            listener?.Error(SpeechRecognizerError.Client);
         }
 
         /// <inheritdoc/>
