@@ -251,6 +251,9 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\IScreenRecorderService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\ICompassService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\ISystemInfoService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IAssistantService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\VoiceViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\VoiceNoteHelper.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\SystemInfoModels.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\ScreenRecordIntentRequest.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\UnitConverterEngine.cs" />

@@ -48,7 +48,7 @@ namespace SilentNotes.Platforms
         }
 
         /// <inheritdoc/>
-        public override View OnCreateContentView()
+        public override global::Android.Views.View OnCreateContentView()
         {
             var root = new LinearLayout(_context)
             {
