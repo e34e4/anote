@@ -57,12 +57,18 @@ namespace SilentNotes.Platforms.Services
         private const string PrefLastNearFull = "last_near_full_charge_utc_ticks";
         private const string PrefNetLogEnabled = "net_out_log_enabled";
         private const string PrefSavedIpsJson = "saved_ips_json";
-        private const string NetOutLogPrefix = "NET_OUT: ";
-        private const string IptablesLogRule =
+        private const string NetOutLogFile = "/data/local/tmp/anote_net_out.log";
+        private const string NetOutPidFile = "/data/local/tmp/anote_net_out.pid";
+        private const string NetOutScriptFile = "/data/local/tmp/anote_net_monitor.sh";
+        private const string IptablesLogRuleState =
             "OUTPUT -m state --state NEW -j LOG --log-prefix \"NET_OUT: \" --log-uid";
+        private const string IptablesLogRuleConntrack =
+            "OUTPUT -m conntrack --ctstate NEW -j LOG --log-prefix \"NET_OUT: \" --log-uid";
+        private const string IptablesNflogRule =
+            "OUTPUT -m conntrack --ctstate NEW -j NFLOG --nflog-group 5 --nflog-prefix NET_OUT";
+        private const string LogTag = "aNoteSystem";
         private readonly IAppContextService _appContext;
-        private long _prevCpuIdle;
-        private long _prevCpuTotal;
+        private readonly object _cpuSampleLock = new object();
 
         public SystemInfoService(IAppContextService appContext)
         {
@@ -1555,28 +1561,44 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
-        public Task<bool> SetNetworkOutboundLoggingAsync(bool enabled)
+        public Task<SystemActionResult> SetNetworkOutboundLoggingAsync(bool enabled)
         {
             return Task.Run(() =>
             {
-                string command = enabled
-                    ? "iptables -C " + IptablesLogRule + " 2>/dev/null || iptables -A " + IptablesLogRule
-                    : "iptables -D " + IptablesLogRule + " 2>/dev/null; true";
-                string output = RunSuCommand(command);
-                bool ok = output != null;
-                if (ok)
+                if (!TryEnsureRoot(out string rootError))
+                    return SystemActionResult.Fail(rootError);
+
+                if (enabled)
                 {
-                    try
+                    bool iptablesLogOk = TryAddIptablesLogRule(out string iptablesDetail);
+                    bool nflogOk = TryAddIptablesRule(IptablesNflogRule);
+                    bool monitorOk = StartConnectionMonitor(out string monitorError);
+
+                    if (!iptablesLogOk && !monitorOk)
                     {
-                        ISharedPreferences prefs = _appContext.Context.GetSharedPreferences(PrefsName, FileCreationMode.Private);
-                        prefs.Edit().PutBoolean(PrefNetLogEnabled, enabled).Apply();
+                        return SystemActionResult.Fail(
+                            "Could not enable logging. " +
+                            (iptablesDetail ?? string.Empty) + " " +
+                            (monitorError ?? string.Empty));
                     }
-                    catch
-                    {
-                        // ignored
-                    }
+
+                    SetNetLogPref(true);
+                    if (iptablesLogOk)
+                        return SystemActionResult.Ok("Outbound logging enabled (iptables LOG → dmesg).");
+                    if (monitorOk)
+                        return SystemActionResult.Ok(
+                            "Kernel has no iptables LOG target" +
+                            (nflogOk ? " (NFLOG ok)" : string.Empty) +
+                            ". Using ss connection monitor instead. Grant stayed; Refresh reads the log file.");
+                    return SystemActionResult.Ok("Outbound logging flag set.");
                 }
-                return ok;
+
+                StopConnectionMonitor();
+                TryDeleteIptablesRule(IptablesLogRuleState);
+                TryDeleteIptablesRule(IptablesLogRuleConntrack);
+                TryDeleteIptablesRule(IptablesNflogRule);
+                SetNetLogPref(false);
+                return SystemActionResult.Ok("Outbound logging disabled.");
             });
         }
 
@@ -1604,20 +1626,41 @@ namespace SilentNotes.Platforms.Services
             {
                 if (maxCount <= 0)
                     maxCount = 200;
-                string output = RunSuCommand("dmesg 2>/dev/null | grep \"NET_OUT\" | tail -n " + maxCount.ToString(CultureInfo.InvariantCulture));
-                if (output == null)
-                    output = RunShellCommand("dmesg 2>/dev/null | grep \"NET_OUT\" | tail -n " + maxCount.ToString(CultureInfo.InvariantCulture));
-                if (string.IsNullOrWhiteSpace(output))
-                    return Array.Empty<SystemNetworkLogEntry>();
 
                 var list = new List<SystemNetworkLogEntry>();
-                foreach (string line in output.Split('\n'))
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+
+                void AddLines(string output)
                 {
-                    string trimmed = line.Trim();
-                    if (string.IsNullOrEmpty(trimmed) || !trimmed.Contains("NET_OUT", StringComparison.Ordinal))
-                        continue;
-                    list.Add(ParseNetworkLogLine(trimmed));
+                    if (string.IsNullOrWhiteSpace(output))
+                        return;
+                    foreach (string line in output.Split('\n'))
+                    {
+                        string trimmed = line.Trim();
+                        if (string.IsNullOrEmpty(trimmed))
+                            continue;
+                        if (!trimmed.Contains("NET_OUT", StringComparison.Ordinal))
+                            trimmed = "NET_OUT: " + trimmed;
+                        if (!seen.Add(trimmed))
+                            continue;
+                        list.Add(ParseNetworkLogLine(trimmed));
+                    }
                 }
+
+                // Prefer file written by the ss monitor (works when iptables LOG is missing).
+                AddLines(RunSuCommand("tail -n " + maxCount.ToString(CultureInfo.InvariantCulture) + " " + NetOutLogFile + " 2>/dev/null"));
+
+                // Live snapshot so Refresh always shows something while logging is enabled.
+                AddLines(CaptureSsSnapshotAsNetOut());
+
+                // Classic dmesg path when kernel LOG target works.
+                string dmesg = RunSuCommand("dmesg 2>/dev/null | grep \"NET_OUT\" | tail -n " + maxCount.ToString(CultureInfo.InvariantCulture));
+                if (dmesg == null)
+                    dmesg = RunShellCommand("dmesg 2>/dev/null | grep \"NET_OUT\" | tail -n " + maxCount.ToString(CultureInfo.InvariantCulture));
+                AddLines(dmesg);
+
+                if (list.Count > maxCount)
+                    return list.Skip(list.Count - maxCount).ToArray();
                 return list.ToArray();
             });
         }
@@ -1648,7 +1691,7 @@ namespace SilentNotes.Platforms.Services
                 if (existing != null)
                     return existing;
 
-                string package = null;
+                string package = entry.ProcessName;
                 if (entry.Uid.HasValue)
                 {
                     try
@@ -1724,16 +1767,42 @@ namespace SilentNotes.Platforms.Services
 
         private double? ReadCpuLoadPercent()
         {
+            lock (_cpuSampleLock)
+            {
+                // Dual-sample so the first UI poll already has a value (single-shot delta was always empty).
+                if (!TryReadCpuTimes(out long idle1, out long total1))
+                    return ReadLoadAveragePercentFallback();
+
+                try { System.Threading.Thread.Sleep(220); }
+                catch { /* ignored */ }
+
+                if (!TryReadCpuTimes(out long idle2, out long total2))
+                    return ReadLoadAveragePercentFallback();
+
+                long totalDelta = total2 - total1;
+                long idleDelta = idle2 - idle1;
+                if (totalDelta <= 0)
+                    return ReadLoadAveragePercentFallback();
+
+                double percent = Math.Max(0, Math.Min(100, (1.0 - ((double)idleDelta / totalDelta)) * 100.0));
+                return percent;
+            }
+        }
+
+        private static bool TryReadCpuTimes(out long idleAll, out long total)
+        {
+            idleAll = 0;
+            total = 0;
             try
             {
                 if (!File.Exists("/proc/stat"))
-                    return null;
+                    return false;
                 string line = File.ReadLines("/proc/stat").FirstOrDefault();
                 if (string.IsNullOrEmpty(line) || !line.StartsWith("cpu ", StringComparison.Ordinal))
-                    return null;
+                    return false;
                 string[] parts = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length < 5)
-                    return null;
+                    return false;
                 long user = long.Parse(parts[1], CultureInfo.InvariantCulture);
                 long nice = long.Parse(parts[2], CultureInfo.InvariantCulture);
                 long system = long.Parse(parts[3], CultureInfo.InvariantCulture);
@@ -1742,20 +1811,30 @@ namespace SilentNotes.Platforms.Services
                 long irq = parts.Length > 6 ? long.Parse(parts[6], CultureInfo.InvariantCulture) : 0;
                 long softirq = parts.Length > 7 ? long.Parse(parts[7], CultureInfo.InvariantCulture) : 0;
                 long steal = parts.Length > 8 ? long.Parse(parts[8], CultureInfo.InvariantCulture) : 0;
-                long total = user + nice + system + idle + iowait + irq + softirq + steal;
-                long idleAll = idle + iowait;
+                idleAll = idle + iowait;
+                total = user + nice + system + idle + iowait + irq + softirq + steal;
+                return total > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
-                double? percent = null;
-                if (_prevCpuTotal > 0 && total > _prevCpuTotal)
-                {
-                    long totalDelta = total - _prevCpuTotal;
-                    long idleDelta = idleAll - _prevCpuIdle;
-                    if (totalDelta > 0)
-                        percent = Math.Max(0, Math.Min(100, (1.0 - ((double)idleDelta / totalDelta)) * 100.0));
-                }
-                _prevCpuIdle = idleAll;
-                _prevCpuTotal = total;
-                return percent;
+        private static double? ReadLoadAveragePercentFallback()
+        {
+            try
+            {
+                if (!File.Exists("/proc/loadavg"))
+                    return null;
+                string text = File.ReadAllText("/proc/loadavg").Trim();
+                string[] parts = text.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 0)
+                    return null;
+                if (!double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double load1))
+                    return null;
+                int cores = Math.Max(1, SysEnvironment.ProcessorCount);
+                return Math.Max(0, Math.Min(100, (load1 / cores) * 100.0));
             }
             catch
             {
@@ -2076,9 +2155,40 @@ namespace SilentNotes.Platforms.Services
             entry.Interface = MatchToken(line, "OUT=");
             if (string.IsNullOrEmpty(entry.Interface))
                 entry.Interface = MatchToken(line, "IN=");
+            entry.ProcessName = MatchToken(line, "PROC=");
             string uidText = MatchToken(line, "UID=");
             if (int.TryParse(uidText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int uid))
                 entry.Uid = uid;
+
+            // ss-monitor lines may look like: NET_OUT: 10.0.0.1:443 users:(("chrome",pid=1,fd=2))
+            if (string.IsNullOrEmpty(entry.DestinationIp))
+            {
+                foreach (string token in line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    int colon = token.LastIndexOf(':');
+                    if (colon <= 0 || colon + 1 >= token.Length)
+                        continue;
+                    string host = token.Substring(0, colon).Trim('[', ']');
+                    if (host == "0.0.0.0" || host == "*" || host == "::" || host.StartsWith("127.", StringComparison.Ordinal))
+                        continue;
+                    if (System.Net.IPAddress.TryParse(host, out _))
+                    {
+                        entry.DestinationIp = host;
+                        break;
+                    }
+                }
+            }
+            if (string.IsNullOrEmpty(entry.ProcessName))
+            {
+                int users = line.IndexOf("users:((\"", StringComparison.Ordinal);
+                if (users >= 0)
+                {
+                    int start = users + "users:((\"".Length;
+                    int end = line.IndexOf('"', start);
+                    if (end > start)
+                        entry.ProcessName = line.Substring(start, end - start);
+                }
+            }
             return entry;
         }
 
@@ -2129,28 +2239,177 @@ namespace SilentNotes.Platforms.Services
             }
         }
 
+        private void SetNetLogPref(bool enabled)
+        {
+            try
+            {
+                ISharedPreferences prefs = _appContext.Context.GetSharedPreferences(PrefsName, FileCreationMode.Private);
+                prefs.Edit().PutBoolean(PrefNetLogEnabled, enabled).Apply();
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        private static bool TryEnsureRoot(out string error)
+        {
+            error = null;
+            var result = RunSuDetailed("id");
+            if (result.ExitCode == 0 && result.Stdout != null &&
+                result.Stdout.IndexOf("uid=0", StringComparison.Ordinal) >= 0)
+            {
+                return true;
+            }
+
+            string detail = string.IsNullOrWhiteSpace(result.Stderr) ? result.Stdout : result.Stderr;
+            if (string.IsNullOrWhiteSpace(detail))
+                detail = "exit " + result.ExitCode;
+            global::Android.Util.Log.Warn(LogTag, "su failed: " + detail);
+            error = "Root denied for aNote. Open KernelSU/Magisk, grant root to app.anote, then tap Enable again. (" + detail.Trim() + ")";
+            return false;
+        }
+
+        private static bool TryAddIptablesLogRule(out string detail)
+        {
+            detail = null;
+            if (TryAddIptablesRule(IptablesLogRuleConntrack))
+                return true;
+            if (TryAddIptablesRule(IptablesLogRuleState))
+                return true;
+
+            var probe = RunSuDetailed("iptables -A " + IptablesLogRuleConntrack + " 2>&1");
+            detail = string.IsNullOrWhiteSpace(probe.Stdout) ? probe.Stderr : probe.Stdout;
+            if (string.IsNullOrWhiteSpace(detail))
+                detail = "iptables LOG target unavailable";
+            global::Android.Util.Log.Warn(LogTag, "iptables LOG failed: " + detail);
+            TryDeleteIptablesRule(IptablesLogRuleConntrack);
+            TryDeleteIptablesRule(IptablesLogRuleState);
+            return false;
+        }
+
+        private static bool TryAddIptablesRule(string rule)
+        {
+            // -C succeeds if present; otherwise -A. Both must be attempted without aborting the shell early wrongly.
+            var result = RunSuDetailed(
+                "iptables -C " + rule + " >/dev/null 2>&1 || iptables -A " + rule + " 2>&1");
+            return result.ExitCode == 0;
+        }
+
+        private static void TryDeleteIptablesRule(string rule)
+        {
+            RunSuDetailed("iptables -D " + rule + " >/dev/null 2>&1 || true");
+        }
+
+        private static bool StartConnectionMonitor(out string error)
+        {
+            error = null;
+            StopConnectionMonitor();
+
+            // Ash script: append unique peer addresses from ss every 2s as NET_OUT lines.
+            string script =
+                "#!/system/bin/sh\n" +
+                "LOG=" + NetOutLogFile + "\n" +
+                "SEEN=/data/local/tmp/anote_net_out.seen\n" +
+                ": > \"$LOG\"\n" +
+                ": > \"$SEEN\"\n" +
+                "chmod 666 \"$LOG\" 2>/dev/null\n" +
+                "while true; do\n" +
+                "  ss -H -tunap 2>/dev/null | while IFS= read -r line; do\n" +
+                "    case \"$line\" in\n" +
+                "      *ESTAB*|*SYN-SENT*|*SYN-RECV*) ;;\n" +
+                "      *) continue ;;\n" +
+                "    esac\n" +
+                "    case \"$line\" in\n" +
+                "      *127.0.0.1*|*\\[::1\\]*) continue ;;\n" +
+                "    esac\n" +
+                "    key=$(printf '%s' \"$line\" | tr -s ' ')\n" +
+                "    grep -Fqx \"$key\" \"$SEEN\" 2>/dev/null && continue\n" +
+                "    printf '%s\\n' \"$key\" >> \"$SEEN\"\n" +
+                "    printf 'NET_OUT: %s\\n' \"$key\" >> \"$LOG\"\n" +
+                "  done\n" +
+                "  tail -n 2000 \"$SEEN\" > \"$SEEN.tmp\" 2>/dev/null && mv \"$SEEN.tmp\" \"$SEEN\"\n" +
+                "  tail -n 2000 \"$LOG\" > \"$LOG.tmp\" 2>/dev/null && mv \"$LOG.tmp\" \"$LOG\"\n" +
+                "  sleep 2\n" +
+                "done\n";
+
+            string b64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(script));
+            var write = RunSuDetailed(
+                "echo " + b64 + " | base64 -d > " + NetOutScriptFile +
+                " && chmod 755 " + NetOutScriptFile +
+                " && (nohup " + NetOutScriptFile + " >/dev/null 2>&1 & echo $! > " + NetOutPidFile + ")");
+            if (write.ExitCode != 0)
+            {
+                error = "Failed to start ss monitor: " + (write.Stderr ?? write.Stdout ?? ("exit " + write.ExitCode));
+                global::Android.Util.Log.Warn(LogTag, error);
+                return false;
+            }
+
+            // Confirm pid file exists / process started.
+            var pidCheck = RunSuDetailed("test -s " + NetOutPidFile + " && kill -0 $(cat " + NetOutPidFile + ") 2>/dev/null");
+            if (pidCheck.ExitCode != 0)
+            {
+                // nohup timing — still treat as ok if script was written; Refresh can live-snapshot.
+                global::Android.Util.Log.Warn(LogTag, "monitor pid not confirmed yet");
+            }
+            return true;
+        }
+
+        private static void StopConnectionMonitor()
+        {
+            RunSuDetailed(
+                "if [ -f " + NetOutPidFile + " ]; then kill $(cat " + NetOutPidFile + ") 2>/dev/null; fi; " +
+                "pkill -f " + NetOutScriptFile + " 2>/dev/null; " +
+                "rm -f " + NetOutPidFile + " 2>/dev/null; true");
+        }
+
+        private static string CaptureSsSnapshotAsNetOut()
+        {
+            string output = RunSuCommand("ss -H -tunap 2>/dev/null | grep -E 'ESTAB|SYN-SENT|SYN-RECV'");
+            if (string.IsNullOrWhiteSpace(output))
+                return null;
+            var sb = new System.Text.StringBuilder();
+            foreach (string line in output.Split('\n'))
+            {
+                string trimmed = line.Trim();
+                if (string.IsNullOrEmpty(trimmed))
+                    continue;
+                if (trimmed.Contains("127.0.0.1", StringComparison.Ordinal) || trimmed.Contains("[::1]", StringComparison.Ordinal))
+                    continue;
+                sb.Append("NET_OUT: ").Append(trimmed).Append('\n');
+            }
+            return sb.ToString();
+        }
+
         /// <summary>
         /// Runs a shell command via <c>su -c</c>. Returns stdout on success (exit 0), otherwise null.
         /// </summary>
         private static string RunSuCommand(string command)
         {
+            var result = RunSuDetailed(command);
+            return result.ExitCode == 0 ? (result.Stdout ?? string.Empty) : null;
+        }
+
+        private static (int ExitCode, string Stdout, string Stderr) RunSuDetailed(string command)
+        {
             if (string.IsNullOrWhiteSpace(command))
-                return null;
+                return (-1, null, "empty command");
             try
             {
                 using Java.Lang.Process process = Java.Lang.Runtime.GetRuntime().Exec(new[] { "su", "-c", command });
                 string stdout;
+                string stderr;
                 using (var reader = new StreamReader(process.InputStream))
                     stdout = reader.ReadToEnd();
+                using (var reader = new StreamReader(process.ErrorStream))
+                    stderr = reader.ReadToEnd();
                 process.WaitFor();
-                int exit = process.ExitValue();
-                if (exit != 0)
-                    return null;
-                return stdout ?? string.Empty;
+                return (process.ExitValue(), stdout, stderr);
             }
-            catch
+            catch (Exception ex)
             {
-                return null;
+                global::Android.Util.Log.Warn(LogTag, "su exec failed: " + ex);
+                return (-1, null, ex.Message);
             }
         }
 

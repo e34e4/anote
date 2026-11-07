@@ -146,6 +146,7 @@ namespace SilentNotes.Models
         public string DestinationIp { get; set; }
         public int? Uid { get; set; }
         public string Interface { get; set; }
+        public string ProcessName { get; set; }
     }
 
     /// <summary>Saved IP from a network log line, optionally reverse-DNS resolved.</summary>
@@ -159,6 +160,19 @@ namespace SilentNotes.Models
         public string RawLog { get; set; }
         public DateTime SavedUtc { get; set; }
         public bool IsResolved { get; set; }
+    }
+
+    /// <summary>Result of a privileged system action (root / iptables / monitor).</summary>
+    public class SystemActionResult
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; }
+
+        public static SystemActionResult Ok(string message = null)
+            => new SystemActionResult { Success = true, Message = message };
+
+        public static SystemActionResult Fail(string message)
+            => new SystemActionResult { Success = false, Message = message };
     }
 
     /// <summary>Processes tab payload including autostart / accessibility sections.</summary>

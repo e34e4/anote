@@ -96,9 +96,9 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
-        public Task<bool> SetNetworkOutboundLoggingAsync(bool enabled)
+        public Task<SystemActionResult> SetNetworkOutboundLoggingAsync(bool enabled)
         {
-            return Task.FromResult(false);
+            return Task.FromResult(SystemActionResult.Fail("System diagnostics are available on Android only."));
         }
 
         /// <inheritdoc/>

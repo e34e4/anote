@@ -46,8 +46,8 @@ namespace SilentNotes.Services
         /// <summary>Reads a single sample of CPU load, temperature, free RAM and frequency.</summary>
         Task<SystemLiveCounters> GetLiveCountersAsync();
 
-        /// <summary>Enables or disables iptables NEW-outbound LOG rule (requires root).</summary>
-        Task<bool> SetNetworkOutboundLoggingAsync(bool enabled);
+        /// <summary>Enables or disables outbound connection logging (requires root).</summary>
+        Task<SystemActionResult> SetNetworkOutboundLoggingAsync(bool enabled);
 
         /// <summary>Gets whether the NET_OUT iptables LOG rule is currently enabled.</summary>
         Task<bool> IsNetworkOutboundLoggingEnabledAsync();

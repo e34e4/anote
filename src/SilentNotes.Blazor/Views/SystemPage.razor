@@ -168,8 +168,8 @@
 				<div class="system-scroll pa-1">
 					<MudPaper Class="pa-2 mb-2" Elevation="0">
 						<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
-							<MudCheckBox T="bool" Dense="true" Value="_countersEnabled" ValueChanged="OnCountersEnableChanged" Label="@LanguageService["system_counters_enable"]" />
-							<MudCheckBox T="bool" Dense="true" Value="@(!_countersEnabled)" ValueChanged="OnCountersDisableChanged" Label="@LanguageService["system_counters_disable"]" />
+							<MudCheckBox T="bool" Dense="true" Value="_countersEnableChecked" ValueChanged="OnCountersEnableChanged" Label="@LanguageService["system_counters_enable"]" />
+							<MudCheckBox T="bool" Dense="true" Value="_countersDisableChecked" ValueChanged="OnCountersDisableChanged" Label="@LanguageService["system_counters_disable"]" />
 						</MudStack>
 						<MudSimpleTable Dense="true" Elevation="0" Class="system-counters">
 							<thead>
@@ -363,8 +363,8 @@
 						<MudTabPanel Text="@LanguageService["system_network_logs"]">
 							<div class="pa-1">
 								<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="2">
-									<MudCheckBox T="bool" Dense="true" Value="_netLogEnabled" ValueChanged="OnNetLogEnableChanged" Label="@LanguageService["system_netlog_enable"]" />
-									<MudCheckBox T="bool" Dense="true" Value="@(!_netLogEnabled)" ValueChanged="OnNetLogDisableChanged" Label="@LanguageService["system_netlog_disable"]" />
+									<MudCheckBox T="bool" Dense="true" Value="_netLogEnableChecked" ValueChanged="OnNetLogEnableChanged" Label="@LanguageService["system_netlog_enable"]" />
+									<MudCheckBox T="bool" Dense="true" Value="_netLogDisableChecked" ValueChanged="OnNetLogDisableChanged" Label="@LanguageService["system_netlog_disable"]" />
 									<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshNetworkLogsAsync">@LanguageService["system_refresh"]</MudButton>
 								</MudStack>
 								<MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">@LanguageService["system_netlog_hint"]</MudText>
@@ -448,13 +448,16 @@
 	private SystemNetworkInfo _network;
 	private SystemNetworkLogEntry[] _networkLogs = Array.Empty<SystemNetworkLogEntry>();
 	private SystemSavedIpEntry[] _savedIps = Array.Empty<SystemSavedIpEntry>();
-	private bool _netLogEnabled;
+	private bool _netLogEnableChecked;
+	private bool _netLogDisableChecked = true;
 	private bool _networkExtrasLoaded;
 
 	private SystemProcessSortMode _processSort = SystemProcessSortMode.Importance;
 	private SystemProcessFilterMode _processFilter = SystemProcessFilterMode.All;
 
 	private bool _countersEnabled;
+	private bool _countersEnableChecked;
+	private bool _countersDisableChecked = true;
 	private CancellationTokenSource _countersCts;
 	private double? _cpuMin, _cpuMax, _tempMin, _tempMax, _freqMin, _freqMax;
 	private long? _memMin, _memMax;
@@ -503,7 +506,9 @@
 		_networkSubTab = index;
 		if (!_networkExtrasLoaded && (index == 1 || index == 2))
 		{
-			_netLogEnabled = await SystemInfoService.IsNetworkOutboundLoggingEnabledAsync();
+			bool enabled = await SystemInfoService.IsNetworkOutboundLoggingEnabledAsync();
+			_netLogEnableChecked = enabled;
+			_netLogDisableChecked = !enabled;
 			_savedIps = await SystemInfoService.GetSavedIpsAsync();
 			_networkExtrasLoaded = true;
 			StateHasChanged();
@@ -616,18 +621,34 @@
 	private async Task OnCountersEnableChanged(bool value)
 	{
 		if (value)
+		{
+			_countersEnableChecked = true;
+			_countersDisableChecked = false;
 			await StartCounterSamplingAsync();
+		}
 		else
+		{
+			_countersEnableChecked = false;
+			_countersDisableChecked = true;
 			StopCounterSampling();
+		}
 		StateHasChanged();
 	}
 
 	private async Task OnCountersDisableChanged(bool value)
 	{
 		if (value)
+		{
+			_countersEnableChecked = false;
+			_countersDisableChecked = true;
 			StopCounterSampling();
+		}
 		else
+		{
+			_countersEnableChecked = true;
+			_countersDisableChecked = false;
 			await StartCounterSamplingAsync();
+		}
 		StateHasChanged();
 	}
 
@@ -636,6 +657,8 @@
 		if (_countersEnabled && _countersCts != null)
 			return;
 		_countersEnabled = true;
+		_countersEnableChecked = true;
+		_countersDisableChecked = false;
 		_countersCts?.Cancel();
 		_countersCts = new CancellationTokenSource();
 		CancellationToken token = _countersCts.Token;
@@ -646,6 +669,8 @@
 	private void StopCounterSampling()
 	{
 		_countersEnabled = false;
+		_countersEnableChecked = false;
+		_countersDisableChecked = true;
 		_countersCts?.Cancel();
 		_countersCts = null;
 	}
@@ -702,38 +727,57 @@
 	{
 		if (!value)
 		{
+			// Unchecking Enable acts as Disable.
 			await DisableNetLogAsync();
 			return;
 		}
+
+		_netLogEnableChecked = true;
+		_netLogDisableChecked = false;
+		StateHasChanged();
 		await EnableNetLogAsync();
 	}
 
 	private async Task OnNetLogDisableChanged(bool value)
 	{
-		if (value)
-			await DisableNetLogAsync();
-		else
+		if (!value)
+		{
+			// Unchecking Disable acts as Enable.
+			_netLogEnableChecked = true;
+			_netLogDisableChecked = false;
+			StateHasChanged();
 			await EnableNetLogAsync();
+			return;
+		}
+
+		_netLogEnableChecked = false;
+		_netLogDisableChecked = true;
+		StateHasChanged();
+		await DisableNetLogAsync();
 	}
 
 	private async Task EnableNetLogAsync()
 	{
-		bool ok = await SystemInfoService.SetNetworkOutboundLoggingAsync(true);
-		_netLogEnabled = ok;
-		FeedbackService.ShowToast(ok
-			? LanguageService["system_netlog_enabled_ok"]
-			: LanguageService["system_netlog_root_fail"]);
+		SystemActionResult result = await SystemInfoService.SetNetworkOutboundLoggingAsync(true);
+		_netLogEnableChecked = result.Success;
+		_netLogDisableChecked = !result.Success;
+		FeedbackService.ShowToast(string.IsNullOrWhiteSpace(result.Message)
+			? (result.Success ? LanguageService["system_netlog_enabled_ok"] : LanguageService["system_netlog_root_fail"])
+			: result.Message);
 		StateHasChanged();
 	}
 
 	private async Task DisableNetLogAsync()
 	{
-		bool ok = await SystemInfoService.SetNetworkOutboundLoggingAsync(false);
-		if (ok)
-			_netLogEnabled = false;
-		FeedbackService.ShowToast(ok
-			? LanguageService["system_netlog_disabled_ok"]
-			: LanguageService["system_netlog_root_fail"]);
+		SystemActionResult result = await SystemInfoService.SetNetworkOutboundLoggingAsync(false);
+		if (result.Success)
+		{
+			_netLogEnableChecked = false;
+			_netLogDisableChecked = true;
+		}
+		FeedbackService.ShowToast(string.IsNullOrWhiteSpace(result.Message)
+			? (result.Success ? LanguageService["system_netlog_disabled_ok"] : LanguageService["system_netlog_root_fail"])
+			: result.Message);
 		StateHasChanged();
 	}
 
