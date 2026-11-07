@@ -22,10 +22,11 @@ using Android.OS;
 using Android.OS.Storage;
 using Android.Provider;
 using Android.Telephony;
-using Java.Net;
 using Java.Util;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using InetAddress = Java.Net.InetAddress;
+using NetNetworkInterface = System.Net.NetworkInformation.NetworkInterface;
 using AConnectivityManager = global::Android.Net.ConnectivityManager;
 using ALinkAddress = global::Android.Net.LinkAddress;
 using ALinkProperties = global::Android.Net.LinkProperties;
@@ -717,7 +718,7 @@ namespace SilentNotes.Platforms.Services
                 {
                     try
                     {
-                        foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces())
+                        foreach (NetNetworkInterface ni in NetNetworkInterface.GetAllNetworkInterfaces())
                         {
                             if (ni.OperationalStatus != OperationalStatus.Up)
                                 continue;
