@@ -17,7 +17,8 @@ using Android.Views;
 using Android.Widget;
 using AndroidX.Core.App;
 using AndroidX.Core.Content;
-using Color = Android.Graphics.Color;
+using Button = Android.Widget.Button;
+using Color = global::Android.Graphics.Color;
 
 namespace SilentNotes.Platforms
 {

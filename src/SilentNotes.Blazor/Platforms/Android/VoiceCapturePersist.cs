@@ -5,11 +5,11 @@
 
 using System;
 using System.IO;
-using Android.Graphics;
 using Android.Util;
 using SilentNotes.Models;
 using SilentNotes.Services;
 using SilentNotes.Workers;
+using Bitmap = global::Android.Graphics.Bitmap;
 
 namespace SilentNotes.Platforms
 {

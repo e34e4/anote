@@ -6,14 +6,15 @@
 using System;
 using System.Collections.Generic;
 using Android.Content;
-using Android.Graphics;
 using Android.OS;
 using Android.Speech;
 using Android.Util;
 using Android.Views;
 using Android.Widget;
 using Android.Service.Voice;
-using Color = Android.Graphics.Color;
+using Bitmap = global::Android.Graphics.Bitmap;
+using Button = Android.Widget.Button;
+using Color = global::Android.Graphics.Color;
 using Orientation = Android.Widget.Orientation;
 
 namespace SilentNotes.Platforms

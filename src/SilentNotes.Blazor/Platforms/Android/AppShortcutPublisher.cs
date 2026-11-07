@@ -91,16 +91,17 @@ namespace SilentNotes.Platforms
                 .Build();
         }
 
-        private static Android.Graphics.Bitmap CreateGlyphBitmap(char glyph, int colorArgb)
+        private static global::Android.Graphics.Bitmap CreateGlyphBitmap(char glyph, int colorArgb)
         {
             int size = 192;
-            var bitmap = Android.Graphics.Bitmap.CreateBitmap(size, size, Android.Graphics.Bitmap.Config.Argb8888);
-            var canvas = new Android.Graphics.Canvas(bitmap);
-            var paint = new Android.Graphics.Paint { AntiAlias = true };
-            paint.Color = new Android.Graphics.Color(colorArgb);
+            var bitmap = global::Android.Graphics.Bitmap.CreateBitmap(
+                size, size, global::Android.Graphics.Bitmap.Config.Argb8888);
+            var canvas = new global::Android.Graphics.Canvas(bitmap);
+            var paint = new global::Android.Graphics.Paint { AntiAlias = true };
+            paint.Color = new global::Android.Graphics.Color(colorArgb);
             canvas.DrawCircle(size / 2f, size / 2f, size / 2f, paint);
-            paint.Color = Android.Graphics.Color.White;
-            paint.TextAlign = Android.Graphics.Paint.Align.Center;
+            paint.Color = global::Android.Graphics.Color.White;
+            paint.TextAlign = global::Android.Graphics.Paint.Align.Center;
             paint.TextSize = size * 0.48f;
             paint.FakeBoldText = true;
             float y = (size / 2f) - ((paint.Descent() + paint.Ascent()) / 2f);
