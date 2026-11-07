@@ -23,8 +23,8 @@
         <ApplicationIdGuid>11EC9146-7F8B-417D-B616-3CF75D22866E</ApplicationIdGuid>
 
         <!-- Versions -->
-        <ApplicationDisplayVersion>1.3.68</ApplicationDisplayVersion>
-        <ApplicationVersion>174</ApplicationVersion>
+        <ApplicationDisplayVersion>1.3.69</ApplicationDisplayVersion>
+        <ApplicationVersion>175</ApplicationVersion>
 
         <!-- Workaround: for https://github.com/dotnet/maui/issues/12859 -->
         <Version>$(ApplicationDisplayVersion)</Version>

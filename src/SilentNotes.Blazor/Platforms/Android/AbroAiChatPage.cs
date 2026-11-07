@@ -35,7 +35,16 @@ namespace SilentNotes.Platforms
         private readonly HorizontalStackLayout _attachmentChips;
         private readonly Label _statusLabel;
         private readonly Label _providerLabel;
-        private readonly List<(string Name, string Text)> _pendingAttachments = new List<(string Name, string Text)>();
+        private readonly List<PendingAttachment> _pendingAttachments = new List<PendingAttachment>();
+
+        private sealed class PendingAttachment
+        {
+            public string Name { get; set; }
+            public string Text { get; set; }
+            public bool IsImage { get; set; }
+            public string MimeType { get; set; }
+            public string Base64Data { get; set; }
+        }
         private AbroAiStoreModel _store;
         private AbroAiConversationModel _conversation;
         private AbroAiProviderModel _provider;
@@ -270,9 +279,10 @@ namespace SilentNotes.Platforms
             {
                 int index = i;
                 string name = _pendingAttachments[i].Name;
+                bool isImage = _pendingAttachments[i].IsImage;
                 var chip = new Button
                 {
-                    Text = "✕ " + Truncate(name, 28),
+                    Text = "✕ " + (isImage ? "🖼 " : string.Empty) + Truncate(name, 28),
                     FontSize = 12,
                     TextColor = Color.FromArgb("#38bdf8"),
                     BackgroundColor = Color.FromArgb("#101010"),
@@ -323,20 +333,60 @@ namespace SilentNotes.Platforms
             {
                 byte[] bytes = await picker.ReadPickedFile().ConfigureAwait(true);
                 string name = picker.GetPickedFileName() ?? "attachment";
-                string text;
-                if (!AbroAiAskText.TryDecodeText(bytes, out text))
+                var pending = new PendingAttachment { Name = name };
+
+                if (AbroAiAskText.IsImageFileName(name) || LooksLikeImage(bytes))
                 {
-                    text = "Binary file (" + (bytes?.Length ?? 0) + " bytes). Content is not text; describe what you need help with.";
+                    pending.IsImage = true;
+                    pending.MimeType = AbroAiAskText.GuessImageMimeType(name);
+                    if (bytes != null && bytes.Length >= 8)
+                    {
+                        // Prefer magic-byte MIME when the extension is wrong/missing.
+                        if (bytes[0] == 0x89 && bytes[1] == 0x50)
+                            pending.MimeType = "image/png";
+                        else if (bytes[0] == 0xFF && bytes[1] == 0xD8)
+                            pending.MimeType = "image/jpeg";
+                        else if (bytes[0] == 0x47 && bytes[1] == 0x49)
+                            pending.MimeType = "image/gif";
+                        else if (bytes.Length >= 12 && bytes[0] == 0x52 && bytes[8] == 0x57)
+                            pending.MimeType = "image/webp";
+                    }
+                    pending.Base64Data = Convert.ToBase64String(bytes ?? Array.Empty<byte>());
+                    SetStatus("Attached image " + Truncate(name, 40));
+                }
+                else if (AbroAiAskText.TryDecodeText(bytes, out string text))
+                {
+                    pending.Text = text ?? string.Empty;
+                    SetStatus("Attached " + Truncate(name, 40));
+                }
+                else
+                {
+                    SetStatus("Unsupported binary file (not an image or text).");
+                    return;
                 }
 
-                _pendingAttachments.Add((name, text ?? string.Empty));
+                _pendingAttachments.Add(pending);
                 RefreshAttachmentChips();
-                SetStatus("Attached " + Truncate(name, 40));
             }
             catch (Exception ex)
             {
                 SetStatus("Attach failed: " + ex.Message);
             }
+        }
+
+        private static bool LooksLikeImage(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length < 3)
+                return false;
+            if (bytes[0] == 0xFF && bytes[1] == 0xD8)
+                return true;
+            if (bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E)
+                return true;
+            if (bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46)
+                return true;
+            if (bytes.Length >= 12 && bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[8] == 0x57)
+                return true;
+            return false;
         }
 
         private static AbroAiProviderModel ResolveProvider(AbroAiStoreModel store, AbroAiConversationModel conversation)
@@ -364,9 +414,16 @@ namespace SilentNotes.Platforms
             bool isUser = string.Equals(message.Role, "user", StringComparison.OrdinalIgnoreCase);
             Color bubbleBg = isUser ? Color.FromArgb("#2481cc") : Color.FromArgb("#2c2c2e");
             Color textColor = Colors.White;
+            string content = message?.Content ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(content)
+                && message?.Images != null
+                && message.Images.Count > 0)
+            {
+                content = message.Images.Count == 1 ? "[Image]" : "[" + message.Images.Count + " images]";
+            }
             View body = isUser
-                ? CreatePlainLabel(message.Content ?? string.Empty, textColor, 15)
-                : CreateMarkdownBody(message.Content ?? string.Empty, textColor, bubbleBg);
+                ? CreatePlainLabel(content, textColor, 15)
+                : CreateMarkdownBody(content, textColor, bubbleBg);
 
             return new Border
             {
@@ -626,28 +683,40 @@ namespace SilentNotes.Platforms
                 return;
             }
 
+            var imageAttachments = new List<AbroAiImageAttachment>();
             if (_pendingAttachments.Count > 0)
             {
-                var builder = new StringBuilder();
+                var textParts = new List<string>();
                 if (!string.IsNullOrEmpty(text))
-                {
-                    builder.Append(text);
-                    builder.Append("\n\n");
-                }
+                    textParts.Add(text);
 
                 for (int i = 0; i < _pendingAttachments.Count; i++)
                 {
-                    if (i > 0)
-                        builder.Append("\n\n");
-                    builder.Append(AbroAiAskText.FormatAttachedFile(
-                        _pendingAttachments[i].Name,
-                        _pendingAttachments[i].Text));
+                    PendingAttachment att = _pendingAttachments[i];
+                    if (att == null)
+                        continue;
+                    if (att.IsImage && !string.IsNullOrEmpty(att.Base64Data))
+                    {
+                        imageAttachments.Add(new AbroAiImageAttachment
+                        {
+                            FileName = att.Name,
+                            MimeType = att.MimeType,
+                            Base64Data = att.Base64Data,
+                        });
+                    }
+                    else if (!string.IsNullOrWhiteSpace(att.Text))
+                    {
+                        textParts.Add(AbroAiAskText.FormatAttachedFile(att.Name, att.Text));
+                    }
                 }
 
-                text = builder.ToString().Trim();
+                text = string.Join("\n\n", textParts).Trim();
                 _pendingAttachments.Clear();
                 RefreshAttachmentChips();
             }
+
+            if (string.IsNullOrEmpty(text) && imageAttachments.Count == 0)
+                return;
 
             _busy = true;
             _sendButton.IsEnabled = false;
@@ -655,15 +724,20 @@ namespace SilentNotes.Platforms
             _input.Text = string.Empty;
             SetStatus("Thinking…");
 
+            string displayContent = text;
+            if (string.IsNullOrEmpty(displayContent) && imageAttachments.Count > 0)
+                displayContent = imageAttachments.Count == 1 ? "[Image]" : "[" + imageAttachments.Count + " images]";
+
             var userMessage = new AbroAiMessageModel
             {
                 Role = "user",
                 Content = text,
                 At = DateTime.UtcNow,
+                Images = imageAttachments,
             };
             _conversation.Messages.Add(userMessage);
             if (_conversation.Title == "New chat" || string.IsNullOrWhiteSpace(_conversation.Title))
-                _conversation.Title = Truncate(text, 48);
+                _conversation.Title = Truncate(string.IsNullOrEmpty(displayContent) ? "Image" : displayContent, 48);
             _conversation.ModifiedAt = DateTime.UtcNow;
             _conversation.ProviderId = _provider.Id;
             _messageStack.Children.Add(CreateBubble(userMessage));

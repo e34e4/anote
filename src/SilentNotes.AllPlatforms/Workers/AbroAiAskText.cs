@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using System;
+using System.IO;
 using System.Text;
 
 namespace SilentNotes.Workers
@@ -17,34 +18,57 @@ namespace SilentNotes.Workers
 
         /// <summary>
         /// Formats the initial chat input for a content item.
+        /// Prefers the context body as-is; falls back to the subject. Does not wrap with
+        /// "I'm asking about …" boilerplate.
         /// </summary>
         public static string FormatInitialPrompt(string subject, string contextText)
         {
-            string title = string.IsNullOrWhiteSpace(subject) ? "Content" : subject.Trim();
             string body = contextText?.Trim() ?? string.Empty;
             if (body.Length > MaxContextChars)
                 body = body.Substring(0, MaxContextChars) + "\n…";
 
-            if (string.IsNullOrEmpty(body))
-            {
-                return "Please help me with: " + title;
-            }
+            if (!string.IsNullOrEmpty(body))
+                return body;
 
-            return "I'm asking about: " + title + "\n\n---\n" + body + "\n---\n\n"
-                + "Please summarize, explain, or help me with this content.";
+            return string.IsNullOrWhiteSpace(subject) ? string.Empty : subject.Trim();
         }
 
         /// <summary>
-        /// Formats a file attachment block that can be appended to a chat message.
+        /// Formats a text file attachment block that can be appended to a chat message.
         /// </summary>
         public static string FormatAttachedFile(string fileName, string fileText)
         {
-            string name = string.IsNullOrWhiteSpace(fileName) ? "attachment" : fileName.Trim();
             string body = fileText ?? string.Empty;
             if (body.Length > MaxContextChars)
                 body = body.Substring(0, MaxContextChars) + "\n…";
+            return body;
+        }
 
-            return "Attached file: " + name + "\n\n---\n" + body + "\n---";
+        /// <summary>
+        /// Returns true when <paramref name="fileName"/> looks like a common image type.
+        /// </summary>
+        public static bool IsImageFileName(string fileName)
+        {
+            string ext = Path.GetExtension(fileName ?? string.Empty).Trim().ToLowerInvariant();
+            return ext is ".jpg" or ".jpeg" or ".png" or ".gif" or ".webp" or ".bmp" or ".heic" or ".heif";
+        }
+
+        /// <summary>
+        /// Guesses an image MIME type from a file name.
+        /// </summary>
+        public static string GuessImageMimeType(string fileName)
+        {
+            string ext = Path.GetExtension(fileName ?? string.Empty).Trim().ToLowerInvariant();
+            return ext switch
+            {
+                ".png" => "image/png",
+                ".gif" => "image/gif",
+                ".webp" => "image/webp",
+                ".bmp" => "image/bmp",
+                ".heic" => "image/heic",
+                ".heif" => "image/heif",
+                _ => "image/jpeg",
+            };
         }
 
         /// <summary>

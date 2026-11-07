@@ -170,6 +170,7 @@
 						<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
 							<MudCheckBox T="bool" Dense="true" Value="_countersEnableChecked" ValueChanged="OnCountersEnableChanged" Label="@LanguageService["system_counters_enable"]" />
 							<MudCheckBox T="bool" Dense="true" Value="_countersDisableChecked" ValueChanged="OnCountersDisableChanged" Label="@LanguageService["system_counters_disable"]" />
+							<MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_countersRefreshing" OnClick="RefreshCountersOnceAsync">@LanguageService["system_refresh"]</MudButton>
 						</MudStack>
 						<MudSimpleTable Dense="true" Elevation="0" Class="system-counters">
 							<thead>
@@ -186,6 +187,10 @@
 								<tr><th>@LanguageService["system_counter_freq"]</th><td>@FormatCounterFreq(_freqMin)</td><td>@FormatCounterFreq(_freqMax)</td></tr>
 							</tbody>
 						</MudSimpleTable>
+						@if (!string.IsNullOrEmpty(_countersNotes))
+						{
+							<MudText Typo="Typo.caption" Class="mud-text-secondary mt-1">@_countersNotes</MudText>
+						}
 					</MudPaper>
 
 					<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="1">
@@ -458,9 +463,11 @@
 	private bool _countersEnabled;
 	private bool _countersEnableChecked;
 	private bool _countersDisableChecked = true;
+	private bool _countersRefreshing;
 	private CancellationTokenSource _countersCts;
 	private double? _cpuMin, _cpuMax, _tempMin, _tempMax, _freqMin, _freqMax;
 	private long? _memMin, _memMax;
+	private string _countersNotes;
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -675,6 +682,29 @@
 		_countersCts = null;
 	}
 
+	private async Task RefreshCountersOnceAsync()
+	{
+		if (_countersRefreshing)
+			return;
+		_countersRefreshing = true;
+		StateHasChanged();
+		try
+		{
+			SystemLiveCounters sample = await SystemInfoService.GetLiveCountersAsync();
+			UpdateCounterExtremes(sample);
+		}
+		catch (Exception ex)
+		{
+			_countersNotes = ex.Message;
+			FeedbackService.ShowToast(ex.Message);
+		}
+		finally
+		{
+			_countersRefreshing = false;
+			StateHasChanged();
+		}
+	}
+
 	private async Task SampleCountersLoopAsync(CancellationToken token)
 	{
 		while (!token.IsCancellationRequested)
@@ -701,6 +731,8 @@
 	{
 		if (sample == null)
 			return;
+		if (!string.IsNullOrEmpty(sample.Notes))
+			_countersNotes = sample.Notes;
 		if (sample.CpuLoadPercent.HasValue)
 		{
 			_cpuMin = _cpuMin.HasValue ? Math.Min(_cpuMin.Value, sample.CpuLoadPercent.Value) : sample.CpuLoadPercent;

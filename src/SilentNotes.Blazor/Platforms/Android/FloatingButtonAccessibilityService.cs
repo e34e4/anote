@@ -2168,9 +2168,16 @@ namespace SilentNotes.Platforms
 
         private void OpenSystemPage()
         {
+            // Set pending route in-process first: the accessibility service shares the app process,
+            // so Blazor can navigate even if the Intent extra is dropped on some OEM launches.
+            // Do not send RouteIntentMessage here — the WebView may still be paused; MainLayout
+            // navigates from AfterResume / OnNewIntent instead.
+            string route = RouteNames.System;
+            RouteIntentRequest.Pending = new RouteIntentRequest { Route = route };
+
             Intent intent = new Intent(this, typeof(MainActivity));
-            intent.PutExtra(ExtraOpenRoute, RouteNames.System);
-            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ReorderToFront);
+            intent.PutExtra(ExtraOpenRoute, route);
+            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ReorderToFront | ActivityFlags.ClearTop);
             StartActivity(intent);
         }
 

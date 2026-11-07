@@ -1769,23 +1769,27 @@ namespace SilentNotes.Platforms.Services
         {
             lock (_cpuSampleLock)
             {
-                // Dual-sample so the first UI poll already has a value (single-shot delta was always empty).
+                // Prefer /proc/loadavg — always available as a single sample (no empty first poll).
+                double? loadAvg = ReadLoadAveragePercent();
+                if (loadAvg.HasValue)
+                    return loadAvg;
+
+                // Fallback: dual-sample /proc/stat (needs ~200ms).
                 if (!TryReadCpuTimes(out long idle1, out long total1))
-                    return ReadLoadAveragePercentFallback();
+                    return null;
 
                 try { System.Threading.Thread.Sleep(220); }
                 catch { /* ignored */ }
 
                 if (!TryReadCpuTimes(out long idle2, out long total2))
-                    return ReadLoadAveragePercentFallback();
+                    return null;
 
                 long totalDelta = total2 - total1;
                 long idleDelta = idle2 - idle1;
                 if (totalDelta <= 0)
-                    return ReadLoadAveragePercentFallback();
+                    return null;
 
-                double percent = Math.Max(0, Math.Min(100, (1.0 - ((double)idleDelta / totalDelta)) * 100.0));
-                return percent;
+                return Math.Max(0, Math.Min(100, (1.0 - ((double)idleDelta / totalDelta)) * 100.0));
             }
         }
 
@@ -1793,16 +1797,14 @@ namespace SilentNotes.Platforms.Services
         {
             idleAll = 0;
             total = 0;
+            string line = ReadProcFirstLine("/proc/stat");
+            if (string.IsNullOrEmpty(line) || !line.StartsWith("cpu", StringComparison.Ordinal))
+                return false;
+            string[] parts = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 5)
+                return false;
             try
             {
-                if (!File.Exists("/proc/stat"))
-                    return false;
-                string line = File.ReadLines("/proc/stat").FirstOrDefault();
-                if (string.IsNullOrEmpty(line) || !line.StartsWith("cpu ", StringComparison.Ordinal))
-                    return false;
-                string[] parts = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length < 5)
-                    return false;
                 long user = long.Parse(parts[1], CultureInfo.InvariantCulture);
                 long nice = long.Parse(parts[2], CultureInfo.InvariantCulture);
                 long system = long.Parse(parts[3], CultureInfo.InvariantCulture);
@@ -1821,20 +1823,56 @@ namespace SilentNotes.Platforms.Services
             }
         }
 
-        private static double? ReadLoadAveragePercentFallback()
+        private static double? ReadLoadAveragePercent()
         {
             try
             {
-                if (!File.Exists("/proc/loadavg"))
+                string text = ReadProcFirstLine("/proc/loadavg");
+                if (string.IsNullOrWhiteSpace(text))
                     return null;
-                string text = File.ReadAllText("/proc/loadavg").Trim();
                 string[] parts = text.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 0)
                     return null;
                 if (!double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double load1))
                     return null;
-                int cores = Math.Max(1, SysEnvironment.ProcessorCount);
+                int cores = Math.Max(1, Java.Lang.Runtime.GetRuntime().AvailableProcessors());
+                // 1-minute load average as % of one full core-set (can exceed 100 on saturation).
                 return Math.Max(0, Math.Min(100, (load1 / cores) * 100.0));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Reads the first line of a proc file via .NET or a short shell fallback (some OEMs
+        /// restrict FileStream on /proc from managed code).
+        /// </summary>
+        private static string ReadProcFirstLine(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    using var reader = new StreamReader(path);
+                    string line = reader.ReadLine();
+                    if (!string.IsNullOrWhiteSpace(line))
+                        return line.Trim();
+                }
+            }
+            catch
+            {
+                // fall through to shell
+            }
+
+            try
+            {
+                using Java.Lang.Process process = Java.Lang.Runtime.GetRuntime().Exec(new[] { "sh", "-c", "head -n 1 " + path });
+                using var reader = new StreamReader(process.InputStream);
+                string line = reader.ReadLine();
+                process.WaitFor();
+                return string.IsNullOrWhiteSpace(line) ? null : line.Trim();
             }
             catch
             {

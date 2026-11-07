@@ -96,7 +96,13 @@
 		// When the application comes to the foreground it owns the focus, which is one of the few
 		// moments a regular application is allowed to read the clipboard.
 		MessengerService.Register<AfterResumeMessage>(
-			this, (recipient, message) => EnvironmentService.ClipboardMonitor?.CaptureNow());
+			this, (recipient, message) => InvokeAsync(async () =>
+			{
+				EnvironmentService.ClipboardMonitor?.CaptureNow();
+				// WebView may not apply NavigateTo until after resume settles (quick-menu → System).
+				await Task.Delay(80);
+				TryNavigatePendingRoute();
+			}));
 
 		MessengerService.Register<TabIntentMessage>(
 			this, (recipient, message) => InvokeAsync(() =>
@@ -106,13 +112,10 @@
 			}));
 
 		MessengerService.Register<RouteIntentMessage>(
-			this, (recipient, message) => InvokeAsync(() =>
+			this, (recipient, message) => InvokeAsync(async () =>
 			{
-				RouteIntentRequest request = RouteIntentRequest.Pending;
-				if (request == null || string.IsNullOrWhiteSpace(request.Route))
-					return;
-				RouteIntentRequest.Pending = null;
-				NavigationService.NavigateTo(request.Route, reload: false);
+				await Task.Delay(30);
+				TryNavigatePendingRoute();
 			}));
 
 		SettingsModel settings = SettingsService.LoadSettingsOrDefault();
@@ -135,12 +138,7 @@
 		{
 			MessengerService.Send(new MainLayoutReadyMessage());
 
-			RouteIntentRequest pendingRoute = RouteIntentRequest.Pending;
-			if (pendingRoute != null && !string.IsNullOrWhiteSpace(pendingRoute.Route))
-			{
-				RouteIntentRequest.Pending = null;
-				NavigationService.NavigateTo(pendingRoute.Route, reload: false);
-			}
+			TryNavigatePendingRoute();
 
 			// Make sure the clipboard monitor keeps running while the app is used, e.g. after the
 			// service was stopped by the operating system.
@@ -181,6 +179,15 @@
 		}
 	}
 
+	private void TryNavigatePendingRoute()
+	{
+		RouteIntentRequest pendingRoute = RouteIntentRequest.Pending;
+		if (pendingRoute == null || string.IsNullOrWhiteSpace(pendingRoute.Route))
+			return;
+		RouteIntentRequest.Pending = null;
+		NavigationService.NavigateTo(pendingRoute.Route, reload: false);
+	}
+
 	/// <summary>
 	/// Allows to create a backup, part of the error page
 	/// </summary>
@@ -213,5 +220,6 @@
 		MessengerService.Unregister<RedrawMainPageMessage>(this);
 		MessengerService.Unregister<AfterResumeMessage>(this);
 		MessengerService.Unregister<TabIntentMessage>(this);
+		MessengerService.Unregister<RouteIntentMessage>(this);
 	}
 }

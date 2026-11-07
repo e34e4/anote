@@ -61,14 +61,69 @@ namespace SilentNotes.Services
             var payloadMessages = new List<object>();
             foreach (AbroAiMessageModel message in messages)
             {
-                if (message == null || string.IsNullOrWhiteSpace(message.Content))
+                if (message == null)
                     continue;
-                payloadMessages.Add(new
+
+                bool hasText = !string.IsNullOrWhiteSpace(message.Content);
+                bool hasImages = message.Images != null && message.Images.Count > 0;
+                if (!hasText && !hasImages)
+                    continue;
+
+                string role = string.IsNullOrWhiteSpace(message.Role) ? "user" : message.Role;
+                if (hasImages)
                 {
-                    role = string.IsNullOrWhiteSpace(message.Role) ? "user" : message.Role,
-                    content = message.Content,
-                });
+                    var parts = new List<object>();
+                    if (hasText)
+                    {
+                        parts.Add(new Dictionary<string, object>
+                        {
+                            ["type"] = "text",
+                            ["text"] = message.Content,
+                        });
+                    }
+                    else
+                    {
+                        parts.Add(new Dictionary<string, object>
+                        {
+                            ["type"] = "text",
+                            ["text"] = "Describe and explain what is in the image(s).",
+                        });
+                    }
+
+                    foreach (AbroAiImageAttachment image in message.Images)
+                    {
+                        if (image == null || string.IsNullOrWhiteSpace(image.Base64Data))
+                            continue;
+                        string mime = string.IsNullOrWhiteSpace(image.MimeType) ? "image/jpeg" : image.MimeType.Trim();
+                        string dataUrl = "data:" + mime + ";base64," + image.Base64Data;
+                        parts.Add(new Dictionary<string, object>
+                        {
+                            ["type"] = "image_url",
+                            ["image_url"] = new Dictionary<string, object>
+                            {
+                                ["url"] = dataUrl,
+                            },
+                        });
+                    }
+
+                    payloadMessages.Add(new Dictionary<string, object>
+                    {
+                        ["role"] = role,
+                        ["content"] = parts,
+                    });
+                }
+                else
+                {
+                    payloadMessages.Add(new Dictionary<string, object>
+                    {
+                        ["role"] = role,
+                        ["content"] = message.Content,
+                    });
+                }
             }
+
+            if (payloadMessages.Count == 0)
+                throw new InvalidOperationException("No messages to send.");
 
             // Include Command Code's usage "mode" so Studio does not label Abro chats as title-gen.
             var payload = new Dictionary<string, object>
