@@ -163,19 +163,57 @@
 					<MudStack Row="true" Class="mb-2">
 						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshProcessesAsync">@LanguageService["system_refresh"]</MudButton>
 					</MudStack>
-					@foreach (var proc in _processes)
+					@if (_processesSnapshot != null && !string.IsNullOrEmpty(_processesSnapshot.Notes))
+					{
+						<MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">@_processesSnapshot.Notes</MudAlert>
+					}
+					<MudText Typo="Typo.subtitle2" Class="mb-1">@LanguageService["system_running"] (@(_processesSnapshot?.Processes.Count ?? 0))</MudText>
+					@foreach (var proc in _processesSnapshot?.Processes ?? Enumerable.Empty<SystemProcessInfo>())
 					{
 						<MudPaper Class="pa-2 mb-1" Elevation="1">
 							<div class="d-flex justify-space-between align-center">
 								<div>
 									<div>@proc.Label</div>
 									<div class="mud-text-secondary system-mono">pid @proc.Pid · @proc.ProcessName</div>
-									<div class="mud-text-secondary system-mono">@proc.Importance · PSS @FormatBytes(proc.PssKb * 1024)</div>
+									<div class="mud-text-secondary system-mono">@proc.Importance · PSS @FormatBytes(proc.PssKb * 1024)@(string.IsNullOrEmpty(proc.Source) ? "" : " · " + proc.Source)</div>
 								</div>
 								@if (proc.CanKill)
 								{
 									<MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="@(() => KillAsync(proc))">@LanguageService["system_kill"]</MudButton>
 								}
+							</div>
+						</MudPaper>
+					}
+
+					<MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">@LanguageService["system_autostart"] (@(_processesSnapshot?.AutostartApps.Count ?? 0))</MudText>
+					@foreach (var app in _processesSnapshot?.AutostartApps ?? Enumerable.Empty<SystemSpecialAppInfo>())
+					{
+						<MudPaper Class="pa-2 mb-1" Elevation="1">
+							<div>@app.Label</div>
+							<div class="mud-text-secondary system-mono">@app.PackageName</div>
+							@if (!string.IsNullOrEmpty(app.Detail))
+							{
+								<div class="mud-text-secondary system-mono">@app.Detail</div>
+							}
+						</MudPaper>
+					}
+
+					<MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">@LanguageService["system_accessibility"] (@(_processesSnapshot?.AccessibilityApps.Count ?? 0))</MudText>
+					@foreach (var app in _processesSnapshot?.AccessibilityApps ?? Enumerable.Empty<SystemSpecialAppInfo>())
+					{
+						<MudPaper Class="pa-2 mb-1" Elevation="1">
+							<div class="d-flex justify-space-between align-center">
+								<div>
+									<div>@app.Label</div>
+									<div class="mud-text-secondary system-mono">@app.PackageName</div>
+									@if (!string.IsNullOrEmpty(app.Detail))
+									{
+										<div class="mud-text-secondary system-mono">@app.Detail</div>
+									}
+								</div>
+								<MudChip T="string" Size="Size.Small" Color="@(app.IsEnabled ? Color.Success : Color.Default)">
+									@(app.IsEnabled ? LanguageService["system_enabled"] : LanguageService["system_disabled"])
+								</MudChip>
 							</div>
 						</MudPaper>
 					}
@@ -280,7 +318,7 @@
 	private SystemBatteryInfo _battery;
 	private SystemHardwareInfo _hardware;
 	private SystemStorageAppInfo[] _storageApps = Array.Empty<SystemStorageAppInfo>();
-	private SystemProcessInfo[] _processes = Array.Empty<SystemProcessInfo>();
+	private SystemProcessesSnapshot _processesSnapshot;
 	private SystemMemoryInfo _memory;
 	private SystemNetworkInfo _network;
 
@@ -354,7 +392,7 @@
 	{
 		await RunLoad(3, async () =>
 		{
-			_processes = await SystemInfoService.GetRunningProcessesAsync();
+			_processesSnapshot = await SystemInfoService.GetRunningProcessesAsync();
 		});
 	}
 

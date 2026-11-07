@@ -31,8 +31,8 @@ namespace SilentNotes.Services
         /// <summary>Lists installed apps ordered by total storage (app + data + cache).</summary>
         Task<SystemStorageAppInfo[]> GetStorageAppsAsync();
 
-        /// <summary>Lists currently running processes.</summary>
-        Task<SystemProcessInfo[]> GetRunningProcessesAsync();
+        /// <summary>Lists running processes plus autostart and accessibility apps.</summary>
+        Task<SystemProcessesSnapshot> GetRunningProcessesAsync();
 
         /// <summary>Attempts to kill a background process / package. Returns true on success.</summary>
         Task<bool> KillProcessAsync(SystemProcessInfo process);

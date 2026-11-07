@@ -54,9 +54,12 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
-        public Task<SystemProcessInfo[]> GetRunningProcessesAsync()
+        public Task<SystemProcessesSnapshot> GetRunningProcessesAsync()
         {
-            return Task.FromResult(Array.Empty<SystemProcessInfo>());
+            return Task.FromResult(new SystemProcessesSnapshot
+            {
+                Notes = "System diagnostics are available on Android only.",
+            });
         }
 
         /// <inheritdoc/>

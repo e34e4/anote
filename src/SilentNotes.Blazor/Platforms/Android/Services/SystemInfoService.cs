@@ -425,59 +425,194 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
-        public Task<SystemProcessInfo[]> GetRunningProcessesAsync()
+        public Task<SystemProcessesSnapshot> GetRunningProcessesAsync()
         {
             return Task.Run(() =>
             {
                 Context context = _appContext.Context;
                 var am = context.GetSystemService(Context.ActivityService) as ActivityManager;
                 PackageManager pm = context.PackageManager;
-                var list = new List<SystemProcessInfo>();
-                if (am == null)
-                    return list.ToArray();
+                var byPid = new Dictionary<int, SystemProcessInfo>();
 
-                IList<ActivityManager.RunningAppProcessInfo> processes = am.RunningAppProcesses;
-                if (processes == null)
-                    return list.ToArray();
-
-                foreach (ActivityManager.RunningAppProcessInfo proc in processes)
+                void Upsert(SystemProcessInfo entry)
                 {
-                    if (proc == null)
-                        continue;
-                    string package = proc.ProcessName;
-                    if (proc.PkgList != null && proc.PkgList.Count > 0)
-                        package = proc.PkgList[0];
-
-                    long pssKb = 0;
-                    try
+                    if (entry == null || entry.Pid <= 0)
+                        return;
+                    if (byPid.TryGetValue(entry.Pid, out SystemProcessInfo existing))
                     {
-                        Debug.MemoryInfo[] mem = am.GetProcessMemoryInfo(new[] { proc.Pid });
-                        if (mem != null && mem.Length > 0)
-                            pssKb = mem[0].TotalPss;
+                        if (entry.PssKb > existing.PssKb)
+                            existing.PssKb = entry.PssKb;
+                        if (string.IsNullOrEmpty(existing.PackageName) && !string.IsNullOrEmpty(entry.PackageName))
+                            existing.PackageName = entry.PackageName;
+                        if (string.IsNullOrEmpty(existing.Label) || existing.Label == existing.ProcessName)
+                            existing.Label = entry.Label ?? existing.Label;
+                        if (entry.SortRank < existing.SortRank)
+                        {
+                            existing.SortRank = entry.SortRank;
+                            existing.Importance = entry.Importance;
+                        }
+                        if (!string.IsNullOrEmpty(entry.Source) && existing.Source != entry.Source)
+                            existing.Source = existing.Source + "+" + entry.Source;
+                        existing.CanKill = existing.CanKill || entry.CanKill;
                     }
-                    catch
+                    else
                     {
-                        // ignored
+                        byPid[entry.Pid] = entry;
                     }
-
-                    list.Add(new SystemProcessInfo
-                    {
-                        Pid = proc.Pid,
-                        Uid = proc.Uid,
-                        ProcessName = proc.ProcessName,
-                        PackageName = package,
-                        Label = SafeLabelByPackage(pm, package) ?? proc.ProcessName,
-                        Importance = proc.Importance.ToString(),
-                        PssKb = pssKb,
-                        CanKill = !string.Equals(package, context.PackageName, StringComparison.Ordinal)
-                            && (int)proc.Importance >= (int)Importance.Service,
-                    });
                 }
 
-                return list
-                    .OrderByDescending(p => p.PssKb)
-                    .ThenBy(p => p.Label, StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
+                // 1) ActivityManager running processes (often only same-UID / visible on modern Android).
+                try
+                {
+                    IList<ActivityManager.RunningAppProcessInfo> processes = am?.RunningAppProcesses;
+                    if (processes != null)
+                    {
+                        foreach (ActivityManager.RunningAppProcessInfo proc in processes)
+                        {
+                            if (proc == null)
+                                continue;
+                            string package = proc.ProcessName;
+                            if (proc.PkgList != null && proc.PkgList.Count > 0)
+                                package = proc.PkgList[0];
+
+                            long pssKb = TryGetPssKb(am, proc.Pid);
+                            int rank = ImportanceToRank(proc.Importance);
+                            Upsert(new SystemProcessInfo
+                            {
+                                Pid = proc.Pid,
+                                Uid = proc.Uid,
+                                ProcessName = proc.ProcessName,
+                                PackageName = package,
+                                Label = SafeLabelByPackage(pm, package) ?? proc.ProcessName,
+                                Importance = FormatImportance(proc.Importance),
+                                PssKb = pssKb,
+                                SortRank = rank,
+                                Source = "am",
+                                CanKill = !string.Equals(package, context.PackageName, StringComparison.Ordinal)
+                                    && rank >= ImportanceToRank(Importance.Service),
+                            });
+                        }
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                // 2) Running services (background / FGS) — deprecated but still useful when visible.
+                try
+                {
+#pragma warning disable CS0618
+                    IList<ActivityManager.RunningServiceInfo> services = am?.GetRunningServices(int.MaxValue);
+#pragma warning restore CS0618
+                    if (services != null)
+                    {
+                        foreach (ActivityManager.RunningServiceInfo svc in services)
+                        {
+                            if (svc == null || svc.Pid <= 0)
+                                continue;
+                            string package = svc.Service?.PackageName;
+                            if (string.IsNullOrEmpty(package))
+                                package = svc.Process;
+                            string detail = svc.Service?.ClassName;
+                            Upsert(new SystemProcessInfo
+                            {
+                                Pid = svc.Pid,
+                                Uid = svc.Uid,
+                                ProcessName = svc.Process ?? package,
+                                PackageName = package,
+                                Label = SafeLabelByPackage(pm, package) ?? package,
+                                Importance = svc.Foreground ? "Foreground service" : "Service",
+                                PssKb = TryGetPssKb(am, svc.Pid),
+                                SortRank = svc.Foreground ? ImportanceToRank(Importance.Foreground) : ImportanceToRank(Importance.Service),
+                                Source = "service",
+                                CanKill = !string.Equals(package, context.PackageName, StringComparison.Ordinal),
+                            });
+                            if (!string.IsNullOrEmpty(detail) && byPid.TryGetValue(svc.Pid, out SystemProcessInfo existing))
+                            {
+                                if (string.IsNullOrEmpty(existing.Importance) || existing.Importance == "Service")
+                                    existing.Importance = (svc.Foreground ? "FGS " : "Service ") + ShortClassName(detail);
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                // 3) /proc scan for PIDs ActivityManager hides (best-effort; SELinux may block cmdline).
+                try
+                {
+                    foreach (string dir in Directory.GetDirectories("/proc"))
+                    {
+                        string name = Path.GetFileName(dir);
+                        if (!int.TryParse(name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int pid) || pid <= 0)
+                            continue;
+                        if (byPid.ContainsKey(pid))
+                            continue;
+
+                        string cmdline = TryReadProcCmdline(dir);
+                        int uid = TryReadProcUid(dir);
+                        string processName = cmdline;
+                        if (string.IsNullOrWhiteSpace(processName))
+                            processName = TryReadProcComm(dir) ?? ("pid:" + pid);
+
+                        string package = null;
+                        if (uid > 0)
+                        {
+                            try
+                            {
+                                string[] pkgs = pm.GetPackagesForUid(uid);
+                                if (pkgs != null && pkgs.Length > 0)
+                                    package = pkgs[0];
+                            }
+                            catch
+                            {
+                                // ignored
+                            }
+                        }
+                        if (string.IsNullOrEmpty(package) && processName.Contains('.', StringComparison.Ordinal) && !processName.Contains(' ', StringComparison.Ordinal))
+                            package = processName.Split(':')[0];
+
+                        // Skip pure kernel threads (empty cmdline + bracketed comm).
+                        if (string.IsNullOrEmpty(cmdline) && processName.StartsWith('[') && processName.EndsWith(']'))
+                            continue;
+
+                        Upsert(new SystemProcessInfo
+                        {
+                            Pid = pid,
+                            Uid = uid,
+                            ProcessName = processName,
+                            PackageName = package ?? processName,
+                            Label = SafeLabelByPackage(pm, package) ?? processName,
+                            Importance = "Background (/proc)",
+                            PssKb = TryGetPssKb(am, pid),
+                            SortRank = ImportanceToRank(Importance.Background),
+                            Source = "proc",
+                            CanKill = !string.IsNullOrEmpty(package)
+                                && !string.Equals(package, context.PackageName, StringComparison.Ordinal)
+                                && uid >= 10000,
+                        });
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                var snapshot = new SystemProcessesSnapshot
+                {
+                    Processes = byPid.Values
+                        .OrderBy(p => p.SortRank)
+                        .ThenByDescending(p => p.PssKb)
+                        .ThenBy(p => p.Label, StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    AutostartApps = QueryAutostartApps(context, pm),
+                    AccessibilityApps = QueryAccessibilityApps(context, pm),
+                    Notes = "Android hides most other apps from ActivityManager. Background rows also come from running services and /proc when readable.",
+                };
+                return snapshot;
             });
         }
 
@@ -944,6 +1079,239 @@ namespace SilentNotes.Platforms.Services
             {
                 return result;
             }
+        }
+
+        private static List<SystemSpecialAppInfo> QueryAutostartApps(Context context, PackageManager pm)
+        {
+            var byPackage = new Dictionary<string, SystemSpecialAppInfo>(StringComparer.Ordinal);
+            string[] actions =
+            {
+                Intent.ActionBootCompleted,
+                Intent.ActionLockedBootCompleted,
+                "android.intent.action.QUICKBOOT_POWERON",
+                "com.htc.intent.action.QUICKBOOT_POWERON",
+            };
+
+            foreach (string action in actions)
+            {
+                try
+                {
+                    var intent = new Intent(action);
+                    IList<ResolveInfo> receivers = pm.QueryBroadcastReceivers(intent, PackageInfoFlags.MatchAll);
+                    if (receivers == null)
+                        continue;
+                    foreach (ResolveInfo ri in receivers)
+                    {
+                        string package = ri.ActivityInfo?.PackageName ?? ri.ResolvePackageName;
+                        if (string.IsNullOrEmpty(package))
+                            continue;
+                        string component = ri.ActivityInfo?.Name;
+                        if (!byPackage.TryGetValue(package, out SystemSpecialAppInfo entry))
+                        {
+                            entry = new SystemSpecialAppInfo
+                            {
+                                PackageName = package,
+                                Label = SafeLabelByPackage(pm, package) ?? package,
+                                Detail = ShortClassName(component),
+                                IsEnabled = ri.ActivityInfo == null || ri.ActivityInfo.Enabled,
+                            };
+                            byPackage[package] = entry;
+                        }
+                        else if (!string.IsNullOrEmpty(component))
+                        {
+                            string shortName = ShortClassName(component);
+                            if (!string.IsNullOrEmpty(shortName) && (entry.Detail == null || !entry.Detail.Contains(shortName, StringComparison.Ordinal)))
+                                entry.Detail = string.IsNullOrEmpty(entry.Detail) ? shortName : entry.Detail + ", " + shortName;
+                        }
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
+            }
+
+            return byPackage.Values
+                .OrderBy(a => a.Label, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static List<SystemSpecialAppInfo> QueryAccessibilityApps(Context context, PackageManager pm)
+        {
+            var result = new List<SystemSpecialAppInfo>();
+            var enabledIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                string enabled = Settings.Secure.GetString(context.ContentResolver, Settings.Secure.EnabledAccessibilityServices);
+                if (!string.IsNullOrEmpty(enabled))
+                {
+                    foreach (string part in enabled.Split(':', StringSplitOptions.RemoveEmptyEntries))
+                        enabledIds.Add(part.Trim());
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+
+            try
+            {
+                var accessibility = context.GetSystemService(Context.AccessibilityService) as Android.Views.Accessibility.AccessibilityManager;
+                IList<Android.AccessibilityServices.AccessibilityServiceInfo> installed = accessibility?.InstalledAccessibilityServiceList;
+                if (installed != null)
+                {
+                    foreach (Android.AccessibilityServices.AccessibilityServiceInfo info in installed)
+                    {
+                        string package = info?.ResolveInfo?.ServiceInfo?.PackageName;
+                        string className = info?.ResolveInfo?.ServiceInfo?.Name;
+                        if (string.IsNullOrEmpty(package))
+                            continue;
+                        string flatId = package + "/" + className;
+                        string flatIdShort = package + "/" + ShortClassName(className);
+                        bool isEnabled = enabledIds.Contains(flatId)
+                            || enabledIds.Contains(flatIdShort)
+                            || enabledIds.Any(id => id.StartsWith(package + "/", StringComparison.OrdinalIgnoreCase));
+                        string title = null;
+                        try { title = info.ResolveInfo?.LoadLabel(pm)?.ToString(); } catch { /* ignored */ }
+                        result.Add(new SystemSpecialAppInfo
+                        {
+                            PackageName = package,
+                            Label = title ?? SafeLabelByPackage(pm, package) ?? package,
+                            Detail = ShortClassName(className),
+                            IsEnabled = isEnabled,
+                        });
+                    }
+                }
+            }
+            catch
+            {
+                // Fallback: enabled list only.
+                foreach (string id in enabledIds)
+                {
+                    string package = id.Split('/')[0];
+                    result.Add(new SystemSpecialAppInfo
+                    {
+                        PackageName = package,
+                        Label = SafeLabelByPackage(pm, package) ?? package,
+                        Detail = id.Contains('/') ? ShortClassName(id.Split('/')[1]) : null,
+                        IsEnabled = true,
+                    });
+                }
+            }
+
+            return result
+                .OrderByDescending(a => a.IsEnabled)
+                .ThenBy(a => a.Label, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static long TryGetPssKb(ActivityManager am, int pid)
+        {
+            if (am == null || pid <= 0)
+                return 0;
+            try
+            {
+                Debug.MemoryInfo[] mem = am.GetProcessMemoryInfo(new[] { pid });
+                if (mem != null && mem.Length > 0)
+                    return mem[0].TotalPss;
+            }
+            catch
+            {
+                // ignored
+            }
+            return 0;
+        }
+
+        private static int ImportanceToRank(Importance importance)
+        {
+            int value = (int)importance;
+            if (value <= (int)Importance.Foreground)
+                return 0;
+            if (value <= (int)Importance.Visible)
+                return 1;
+            if (value <= (int)Importance.Service)
+                return 2;
+            if (value <= (int)Importance.Background)
+                return 3;
+            return 4;
+        }
+
+        private static string FormatImportance(Importance importance)
+        {
+            int value = (int)importance;
+            if (value <= (int)Importance.Foreground)
+                return "Foreground";
+            if (value <= (int)Importance.Visible)
+                return "Visible";
+            if (value <= (int)Importance.Service)
+                return "Service";
+            if (value <= (int)Importance.Background)
+                return "Background";
+            return "Cached/Empty";
+        }
+
+        private static string ShortClassName(string className)
+        {
+            if (string.IsNullOrEmpty(className))
+                return null;
+            int idx = className.LastIndexOf('.');
+            return idx >= 0 && idx + 1 < className.Length ? className.Substring(idx + 1) : className;
+        }
+
+        private static string TryReadProcCmdline(string procDir)
+        {
+            try
+            {
+                string path = Path.Combine(procDir, "cmdline");
+                if (!File.Exists(path))
+                    return null;
+                string raw = File.ReadAllText(path);
+                if (string.IsNullOrEmpty(raw))
+                    return null;
+                return raw.Replace('\0', ' ').Trim();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string TryReadProcComm(string procDir)
+        {
+            try
+            {
+                string path = Path.Combine(procDir, "comm");
+                if (!File.Exists(path))
+                    return null;
+                return File.ReadAllText(path).Trim();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static int TryReadProcUid(string procDir)
+        {
+            try
+            {
+                string path = Path.Combine(procDir, "status");
+                if (!File.Exists(path))
+                    return 0;
+                foreach (string line in File.ReadLines(path))
+                {
+                    if (!line.StartsWith("Uid:", StringComparison.Ordinal))
+                        continue;
+                    string[] parts = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 2 && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int uid))
+                        return uid;
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+            return 0;
         }
 
         private static void RememberNearFullCharge(Context context, int levelPercent)

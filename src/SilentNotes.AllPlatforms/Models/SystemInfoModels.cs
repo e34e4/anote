@@ -96,6 +96,28 @@ namespace SilentNotes.Models
         public string Importance { get; set; }
         public long PssKb { get; set; }
         public bool CanKill { get; set; }
+        /// <summary>Source of the entry: activity-manager, service, or /proc.</summary>
+        public string Source { get; set; }
+        /// <summary>Lower sorts earlier (foreground first).</summary>
+        public int SortRank { get; set; }
+    }
+
+    /// <summary>Processes tab payload including autostart / accessibility sections.</summary>
+    public class SystemProcessesSnapshot
+    {
+        public List<SystemProcessInfo> Processes { get; set; } = new List<SystemProcessInfo>();
+        public List<SystemSpecialAppInfo> AutostartApps { get; set; } = new List<SystemSpecialAppInfo>();
+        public List<SystemSpecialAppInfo> AccessibilityApps { get; set; } = new List<SystemSpecialAppInfo>();
+        public string Notes { get; set; }
+    }
+
+    /// <summary>Installed capability entry (autostart receiver or accessibility service).</summary>
+    public class SystemSpecialAppInfo
+    {
+        public string PackageName { get; set; }
+        public string Label { get; set; }
+        public string Detail { get; set; }
+        public bool IsEnabled { get; set; }
     }
 
     /// <summary>Memory / swap / zram overview.</summary>
