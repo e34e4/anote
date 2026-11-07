@@ -289,6 +289,14 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Message to inform the Voice tab / notes list that the Voice capture note changed
+    /// (assist gesture saved speech and/or a screenshot).
+    /// </summary>
+    public class VoiceNoteChangedMessage
+    {
+    }
+
+    /// <summary>
     /// Enumeration of possible sources of a sent message.
     /// </summary>
     public enum MessageSender

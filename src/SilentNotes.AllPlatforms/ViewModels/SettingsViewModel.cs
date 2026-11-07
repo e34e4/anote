@@ -46,6 +46,7 @@ namespace SilentNotes.ViewModels
         private readonly IDeviceSmsService _deviceSmsService;
         private readonly IDevicePhoneService _devicePhoneService;
         private readonly INativeBrowserService _nativeBrowserService;
+        private readonly IAssistantService _assistantService;
         private readonly SliderStepConverter _fontSizeConverter;
         private readonly SliderStepConverter _noteMaxHeightConverter;
         private string _defaultFontFamilyLabel;
@@ -69,7 +70,8 @@ namespace SilentNotes.ViewModels
             IDevicePhoneService devicePhoneService = null,
             INativeBrowserService nativeBrowserService = null,
             IPasswordVaultSyncService passwordVaultSyncService = null,
-            IClipboardWebdavSyncService clipboardWebdavSyncService = null)
+            IClipboardWebdavSyncService clipboardWebdavSyncService = null,
+            IAssistantService assistantService = null)
         {
             Language = languageService;
             _settingsService = settingsService;
@@ -86,6 +88,7 @@ namespace SilentNotes.ViewModels
             _deviceSmsService = deviceSmsService;
             _devicePhoneService = devicePhoneService;
             _nativeBrowserService = nativeBrowserService;
+            _assistantService = assistantService;
             Model = _settingsService.LoadSettingsOrDefault();
             Modifications = new ModificationDetector(() => GetModificationFingerprint(Model));
 
@@ -117,6 +120,7 @@ namespace SilentNotes.ViewModels
             SetDefaultSmsAppCommand = new AsyncRelayCommand(SetDefaultSmsApp);
             SetDefaultPhoneAppCommand = new AsyncRelayCommand(SetDefaultPhoneApp);
             SetDefaultBrowserAppCommand = new AsyncRelayCommand(SetDefaultBrowserApp);
+            SetDefaultAssistantAppCommand = new AsyncRelayCommand(SetDefaultAssistantApp);
             MoveMainTabUpCommand = new RelayCommand<int>(displayIndex => MoveMainTab(displayIndex, -1));
             MoveMainTabDownCommand = new RelayCommand<int>(displayIndex => MoveMainTab(displayIndex, 1));
             ResetMainTabOrderCommand = new RelayCommand(ResetMainTabOrder);
@@ -147,6 +151,31 @@ namespace SilentNotes.ViewModels
                 return;
             await _nativeBrowserService.RequestDefaultBrowserAppAsync();
             OnPropertyChanged(nameof(IsDefaultBrowserApp), nameof(CanSetDefaultBrowser));
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether the OS supports choosing a default digital assistant.
+        /// </summary>
+        public bool CanSetDefaultAssistant
+        {
+            get { return _assistantService != null && _assistantService.IsSupported; }
+        }
+
+        /// <summary>Gets a value indicating whether aNote is currently the default assistant.</summary>
+        public bool IsDefaultAssistantApp
+        {
+            get { return _assistantService?.IsDefaultAssistant ?? false; }
+        }
+
+        /// <summary>Gets the command which asks the system to make aNote the default assistant.</summary>
+        public ICommand SetDefaultAssistantAppCommand { get; }
+
+        private async Task SetDefaultAssistantApp()
+        {
+            if (_assistantService == null)
+                return;
+            await _assistantService.RequestDefaultAssistantAsync();
+            OnPropertyChanged(nameof(IsDefaultAssistantApp), nameof(CanSetDefaultAssistant));
         }
 
         /// <summary>Gets the command to display the system keyboard switcher dialog.</summary>
@@ -1315,9 +1344,17 @@ namespace SilentNotes.ViewModels
             if (newIndex < 0 || newIndex >= Model.MainTabOrder.Count)
                 return;
 
+            // Voice tab stays pinned first.
+            const int voiceTab = VoiceViewModel.TabIndex;
+            if (Model.MainTabOrder[displayIndex] == voiceTab)
+                return;
+            if (newIndex == 0 || Model.MainTabOrder[newIndex] == voiceTab)
+                return;
+
             int tabIndex = Model.MainTabOrder[displayIndex];
             Model.MainTabOrder[displayIndex] = Model.MainTabOrder[newIndex];
             Model.MainTabOrder[newIndex] = tabIndex;
+            SettingsModel.PinVoiceTabFirst(Model.MainTabOrder);
             _settingsService.TrySaveSettingsToLocalDevice(Model);
             _messengerService.Send(new RedrawCurrentPageMessage());
             RebuildMainTabOrderDisplayItems();

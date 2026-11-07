@@ -848,9 +848,25 @@ namespace SilentNotes.Models
         /// <returns>Stable tab indices in effective display order.</returns>
         public List<int> GetEffectiveMainTabOrder()
         {
-            if (IsValidMainTabOrder(MainTabOrder))
-                return new List<int>(MainTabOrder);
-            return GetDefaultMainTabOrder();
+            List<int> order = IsValidMainTabOrder(MainTabOrder)
+                ? new List<int>(MainTabOrder)
+                : GetDefaultMainTabOrder();
+            return PinVoiceTabFirst(order);
+        }
+
+        /// <summary>
+        /// Keeps the Voice tab pinned as the first main-view tab.
+        /// </summary>
+        internal static List<int> PinVoiceTabFirst(List<int> order)
+        {
+            const int voiceTab = 20;
+            if (order == null)
+                return order;
+
+            order.Remove(voiceTab);
+            if (MainViewTabCatalog.TryGetTab(voiceTab, out _))
+                order.Insert(0, voiceTab);
+            return order;
         }
 
         /// <summary>

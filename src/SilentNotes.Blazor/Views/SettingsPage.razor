@@ -23,6 +23,7 @@
 @inject IDeviceSmsService DeviceSmsService
 @inject IDevicePhoneService DevicePhoneService
 @inject INativeBrowserService NativeBrowserService
+@inject IAssistantService AssistantService
 @inject ISynchronizationService SynchronizationService
 @inject IJSRuntime JSRuntime
 @inject INavigationService Navigation
@@ -578,6 +579,25 @@
 				</div>
 			}
 
+			@if (ViewModel.CanSetDefaultAssistant)
+			{
+				<h2 class="h-colored mt-10">@LanguageService["tab_voice"]</h2>
+
+				<div class="css-grid">
+					<div><MudIcon Icon="@Icons.Material.Filled.RecordVoiceOver" Color="Color.Secondary" /></div>
+					<div>
+						<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+							<MudText>@(ViewModel.IsDefaultAssistantApp ? LanguageService["assistant_is_default"] : LanguageService["assistant_set_default"])</MudText>
+							<MudButton OnClick="@(() => ViewModel.SetDefaultAssistantAppCommand.Execute(null))" Color="Color.Primary" Variant="Variant.Filled"
+								Disabled="@ViewModel.IsDefaultAssistantApp" StartIcon="@Icons.Material.Filled.RecordVoiceOver">
+								@LanguageService["gui_assistant_set_default"]
+							</MudButton>
+						</MudStack>
+						<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["assistant_default_desc"]</MudText>
+					</div>
+				</div>
+			}
+
 			<div class="css-grid">
 				<div><MudIcon Icon="@Icons.Material.Filled.BugReport" Color="Color.Secondary" /></div>
 				<div>
@@ -657,7 +677,7 @@
 
 	protected override void OnInitialized()
 	{
-		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService, NativeBrowserService, PasswordVaultSyncService, ClipboardWebdavSyncService);
+		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService, NativeBrowserService, PasswordVaultSyncService, ClipboardWebdavSyncService, AssistantService);
 	}
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)

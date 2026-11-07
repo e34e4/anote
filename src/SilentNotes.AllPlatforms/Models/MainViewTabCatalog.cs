@@ -35,6 +35,7 @@ namespace SilentNotes.Models
 
         private static readonly TabDescriptor[] Tabs =
         {
+            new TabDescriptor(20, "🎤", "tab_voice"),
             new TabDescriptor(0, "📝", "tab_notes"),
             new TabDescriptor(1, "📋", "tab_clipboard"),
             new TabDescriptor(2, "🔖", "tab_booky"),

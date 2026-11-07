@@ -67,6 +67,7 @@ namespace SilentNotes.Platforms
 
         private static readonly (int Index, string Icon, string Key, string Fallback)[] TabDefinitions = new[]
         {
+            (20, "🎤", "tab_voice", "Voice"),
             (0, "📝", "tab_notes", "Notes"),
             (1, "📋", "tab_clipboard", "Clip"),
             (2, "🔖", "tab_booky", "Booky"),

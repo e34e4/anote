@@ -1,0 +1,98 @@
+@using MudBlazor
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+@implements IDisposable
+
+@inject ILanguageService LanguageService
+@inject IMessengerService MessengerService
+
+<style type="text/css">
+	.voice-root {
+		padding: 14px 16px 28px 16px;
+		max-width: 720px;
+		margin: 0 auto;
+	}
+	.voice-preview {
+		border: 1px solid var(--mud-palette-lines-default);
+		border-radius: 12px;
+		padding: 12px 14px;
+		min-height: 180px;
+		background: var(--mud-palette-background-gray);
+		overflow: auto;
+		max-height: min(55vh, 480px);
+	}
+	.voice-preview img {
+		max-width: 100%;
+		height: auto;
+		border-radius: 8px;
+	}
+	.voice-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px;
+		margin: 14px 0;
+	}
+</style>
+
+<div class="voice-root">
+	<MudText Typo="Typo.h5" Class="mb-2">@LanguageService["tab_voice"]</MudText>
+	<MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">@LanguageService["voice_tab_desc"]</MudText>
+
+	@if (ViewModel.CanSetDefaultAssistant)
+	{
+		<MudPaper Class="pa-3 mb-3" Elevation="0" Outlined="true">
+			<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="flex-wrap:wrap;gap:8px;">
+				<div>
+					<MudText>
+						@(ViewModel.IsDefaultAssistant
+							? LanguageService["assistant_is_default"]
+							: LanguageService["assistant_set_default"])
+					</MudText>
+					<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["assistant_default_desc"]</MudText>
+				</div>
+				<MudButton Color="Color.Primary" Variant="Variant.Filled"
+					Disabled="@ViewModel.IsDefaultAssistant"
+					StartIcon="@Icons.Material.Filled.RecordVoiceOver"
+					OnClick="@(() => ViewModel.SetDefaultAssistantCommand.Execute(null))">
+					@LanguageService["gui_assistant_set_default"]
+				</MudButton>
+			</MudStack>
+		</MudPaper>
+	}
+
+	<div class="voice-actions">
+		<MudButton Variant="Variant.Filled" Color="Color.Primary"
+			StartIcon="@Icons.Material.Filled.Edit"
+			OnClick="@(() => ViewModel.OpenVoiceNoteCommand.Execute(null))">
+			@LanguageService["voice_open_note"]
+		</MudButton>
+		<MudButton Variant="Variant.Outlined" Color="Color.Default"
+			StartIcon="@Icons.Material.Filled.Refresh"
+			OnClick="@(() => ViewModel.RefreshCommand.Execute(null))">
+			@LanguageService["voice_refresh"]
+		</MudButton>
+	</div>
+
+	<div class="voice-preview note-viewer">
+		@((MarkupString)(ViewModel.PreviewHtml ?? string.Empty))
+	</div>
+</div>
+
+@code {
+	[Parameter]
+	public VoiceViewModel ViewModel { get; set; }
+
+	protected override void OnInitialized()
+	{
+		MessengerService.Register<VoiceNoteChangedMessage>(this, (r, m) =>
+		{
+			ViewModel?.Refresh();
+			InvokeAsync(StateHasChanged);
+		});
+	}
+
+	public void Dispose()
+	{
+		MessengerService.Unregister<VoiceNoteChangedMessage>(this);
+	}
+}

@@ -94,6 +94,15 @@ namespace SilentNotes.Services
                 modelWasUpdated = false;
             }
 
+            // Ensure the pinned Voice capture note exists for assist-gesture workflows.
+            if (repositoryModel != null
+                && !Object.ReferenceEquals(NoteRepositoryModel.InvalidRepository, repositoryModel))
+            {
+                VoiceNoteHelper.EnsureVoiceNote(repositoryModel, out bool voiceChanged);
+                if (voiceChanged)
+                    modelWasUpdated = true;
+            }
+
             // Automatically save settings if they where modified by an update
             if (modelWasUpdated)
                 TrySaveRepository(repositoryModel);

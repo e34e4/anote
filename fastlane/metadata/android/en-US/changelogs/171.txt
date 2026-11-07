@@ -1,0 +1,3 @@
+• Voice tab (pinned first): assist-gesture capture into a pinned Voice note
+• Option to set aNote as the default digital assistant (speech + screenshot)
+• Fix Android System page build errors for AccessibilityManager bindings

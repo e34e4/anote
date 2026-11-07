@@ -57,12 +57,13 @@
 @inject IWebdavQuickSaveService WebdavQuickSaveService
 @inject IRssArticleCacheService RssArticleCacheService
 @inject IAbroBrowserService AbroBrowserService
+@inject IAssistantService AssistantService
 
 <style type="text/css">
 	.mud-main-content {
 		@(ThemeService.CssNoteRepositoryBackground)
 		background-attachment: fixed;
-		padding-top: 208px !important;
+		padding-top: 248px !important;
 	}
 	.app-header {
 		position: fixed;
@@ -632,10 +633,15 @@
 		@* Telegram messenger client *@
 		<TgTab ViewModel="_telegramViewModel" />
 	}
-	else if (_activeTab == AbroViewModel.TabIndex)
+		else if (_activeTab == AbroViewModel.TabIndex)
+		{
+			@* Light Abro web browser *@
+			<AbroTab ViewModel="_abroViewModel" />
+		}
+	else if (_activeTab == VoiceViewModel.TabIndex)
 	{
-		@* Light Abro web browser *@
-		<AbroTab ViewModel="_abroViewModel" />
+		@* Voice capture note + assistant opt-in *@
+		<VoiceTab ViewModel="_voiceViewModel" />
 	}
 
 	<ScrollJumpButtons />
@@ -700,6 +706,7 @@
 	private PasswordViewModel _passwordViewModel;
 	private TelegramViewModel _telegramViewModel;
 	private AbroViewModel _abroViewModel;
+	private VoiceViewModel _voiceViewModel;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="NoteRepositoryPage"/> class.
@@ -850,6 +857,13 @@
 			ClipboardService,
 			WebdavQuickSaveService);
 		_abroViewModel = new AbroViewModel(AbroBrowserService);
+		_voiceViewModel = new VoiceViewModel(
+			noteRepositoryModel,
+			LanguageService,
+			RepositoryStorageService,
+			Navigation,
+			AssistantService,
+			FeedbackService);
 
 		// When the app was started by a calendar intent, the calendar tab is opened and shows it.
 		CalendarIntentRequest pendingCalendarIntent = CalendarIntentRequest.Pending;
@@ -956,6 +970,8 @@
 			this, (recipient, message) => OnTelegramLinkIntent());
 		MessengerService.Register<ScreenRecordIntentMessage>(
 			this, (recipient, message) => OnScreenRecordIntent());
+		MessengerService.Register<VoiceNoteChangedMessage>(
+			this, (recipient, message) => OnVoiceNoteChanged());
 
 		if (loadResult == RepositoryStorageLoadResult.InvalidRepository)
 			throw new Exception("Invalid repository");
@@ -1020,6 +1036,7 @@
 		MessengerService.Unregister<DocumentIntentMessage>(this);
 		MessengerService.Unregister<TelegramLinkMessage>(this);
 		MessengerService.Unregister<ScreenRecordIntentMessage>(this);
+		MessengerService.Unregister<VoiceNoteChangedMessage>(this);
 	}
 
 	/// <summary>
@@ -1077,6 +1094,17 @@
 	private void OnSmsChanged()
 	{
 		_smsViewModel?.Reload();
+		InvokeAsync(StateHasChanged);
+	}
+
+	private void OnVoiceNoteChanged()
+	{
+		_voiceViewModel?.Refresh();
+		if (ViewModel != null)
+		{
+			RepositoryStorageService.LoadRepositoryOrDefault(out NoteRepositoryModel repo);
+			ViewModel.Model = repo;
+		}
 		InvokeAsync(StateHasChanged);
 	}
 

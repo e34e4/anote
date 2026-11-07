@@ -1156,11 +1156,12 @@ namespace SilentNotes.Platforms.Services
 
             try
             {
-                var accessibility = context.GetSystemService(Context.AccessibilityService) as Android.Views.Accessibility.AccessibilityManager;
-                IList<Android.AccessibilityServices.AccessibilityServiceInfo> installed = accessibility?.InstalledAccessibilityServiceList;
+                // Use global:: — namespace SilentNotes.Platforms.Android would otherwise shadow Android.*.
+                var accessibility = context.GetSystemService(Context.AccessibilityService) as global::Android.Views.Accessibility.AccessibilityManager;
+                IList<global::Android.AccessibilityServices.AccessibilityServiceInfo> installed = accessibility?.InstalledAccessibilityServiceList;
                 if (installed != null)
                 {
-                    foreach (Android.AccessibilityServices.AccessibilityServiceInfo info in installed)
+                    foreach (global::Android.AccessibilityServices.AccessibilityServiceInfo info in installed)
                     {
                         string package = info?.ResolveInfo?.ServiceInfo?.PackageName;
                         string className = info?.ResolveInfo?.ServiceInfo?.Name;
