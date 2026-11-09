@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Android.Content;
 using Android.Views;
 using Android.Webkit;
+using AndroidX.WebKit;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
@@ -1509,15 +1510,15 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                if (!AndroidX.Webkit.WebViewFeature.IsFeatureSupported(AndroidX.Webkit.WebViewFeature.ProxyOverride))
+                if (!WebViewFeature.IsFeatureSupported(WebViewFeature.ProxyOverride))
                 {
                     if (notifyUnsupported)
                         ShowToast("WebView proxy override not supported on this device");
                     return;
                 }
 
-                var executor = Java.Util.Concurrent.Executors.NewSingleThreadExecutor();
-                var listener = new Java.Lang.Runnable(() => { });
+                var executor = new AbroProxyExecutor();
+                var listener = new AbroProxyRunnable();
 
                 if (settings != null && settings.Socks5Enabled && settings.HasSocks5Config)
                 {
@@ -1530,19 +1531,34 @@ namespace SilentNotes.Platforms
                             + settings.Socks5Port.ToString(CultureInfo.InvariantCulture);
                     }
 
-                    var config = new AndroidX.Webkit.ProxyConfig.Builder()
+                    ProxyConfig config = new ProxyConfig.Builder()
                         .AddProxyRule(rule)
                         .Build();
-                    AndroidX.Webkit.ProxyController.Instance.SetProxyOverride(config, executor, listener);
+                    ProxyController.Instance.SetProxyOverride(config, executor, listener);
                 }
                 else
                 {
-                    AndroidX.Webkit.ProxyController.Instance.ClearProxyOverride(executor, listener);
+                    ProxyController.Instance.ClearProxyOverride(executor, listener);
                 }
             }
             catch (Exception ex)
             {
                 ShowToast("Proxy apply failed: " + ex.Message);
+            }
+        }
+
+        private sealed class AbroProxyExecutor : Java.Lang.Object, Java.Util.Concurrent.IExecutor
+        {
+            public void Execute(Java.Lang.IRunnable command)
+            {
+                command?.Run();
+            }
+        }
+
+        private sealed class AbroProxyRunnable : Java.Lang.Object, Java.Lang.IRunnable
+        {
+            public void Run()
+            {
             }
         }
 
@@ -3308,7 +3324,7 @@ namespace SilentNotes.Platforms
                             new System.IO.MemoryStream(EmptyBody));
                     }
 
-                    if (_page.IsBlockImagesEnabled() && _page.IsImageRequest(request))
+                    if (IsBlockImagesEnabled() && IsImageRequest(request))
                     {
                         return new WebResourceResponse(
                             "image/png",

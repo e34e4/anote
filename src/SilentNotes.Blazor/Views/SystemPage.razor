@@ -472,7 +472,7 @@
 						}
 					</MudStack>
 					<MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">@LanguageService["system_logcat_hint"]</MudText>
-					<MudTextField T="string" Value="_logcatFilter" ValueChanged="OnLogcatFilterChanged" Immediate="true" Dense="true" Variant="Variant.Outlined"
+					<MudTextField T="string" Value="_logcatFilter" ValueChanged="OnLogcatFilterChanged" Immediate="true" Variant="Variant.Outlined"
 						Margin="Margin.Dense" Placeholder="@LanguageService["system_logcat_search"]" Class="mb-2" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
 					@if (_logcatLines.Length > 0)
 					{
