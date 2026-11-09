@@ -728,7 +728,22 @@
 					<button class="tg-btn" @onclick="context.ToggleAsync" title="@LanguageService["tg_menu"]">⋮</button>
 				</ActivatorContent>
 				<ChildContent>
-					<MudMenuItem OnClick="() => ViewModel.OpenAccountsCommand.Execute(null)">@LanguageService["tg_accounts"]</MudMenuItem>
+					@foreach (var account in ViewModel.Accounts)
+					{
+						string label = string.IsNullOrWhiteSpace(account.DisplayName)
+							? (string.IsNullOrWhiteSpace(account.Phone) ? account.Id : account.Phone)
+							: account.DisplayName;
+						if (!string.IsNullOrEmpty(account.Username))
+							label += " @" + account.Username;
+						if (account.Id == ViewModel.ActiveAccountId)
+							label = "✓ " + label;
+						<MudMenuItem Disabled="@(account.Id == ViewModel.ActiveAccountId)" OnClick="() => SwitchAccountAsync(account.Id)" title="@LanguageService["tg_switch_account"]">@label</MudMenuItem>
+					}
+					<MudMenuItem OnClick="() => ViewModel.OpenAccountsCommand.Execute(null)">@LanguageService["tg_manage_accounts"]</MudMenuItem>
+					<MudMenu Label="@LanguageService["tg_search_menu"]">
+						<MudMenuItem OnClick="() => ViewModel.OpenSearchPanel(TelegramSearchMode.ChannelsGroups)">@LanguageService["tg_search_channels"]</MudMenuItem>
+						<MudMenuItem OnClick="() => ViewModel.OpenSearchPanel(TelegramSearchMode.Posts)">@LanguageService["tg_search_posts"]</MudMenuItem>
+					</MudMenu>
 					<MudMenu Label="@LanguageService["tg_proxy"]">
 						<MudMenuItem OnClick="() => ViewModel.ShowProxySetupCommand.Execute(null)">@LanguageService["tg_proxy_setup"]</MudMenuItem>
 						<MudMenuItem OnClick="ToggleProxyAsync">
@@ -740,10 +755,40 @@
 			<button class="tg-btn" @onclick="RefreshAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_refresh"]</button>
 		</div>
 
+		@if (ViewModel.IsSearchPanelOpen)
+		{
+			<div class="tg-accounts-panel">
+				<div style="font-weight:600;margin-bottom:6px;">@ViewModel.SearchModeTitle</div>
+				<div class="tg-hint">@ViewModel.SearchModeHint</div>
+				<MudTextField T="string" @bind-Value="ViewModel.SearchQuery" Label="@LanguageService["tg_search_query"]" Variant="Variant.Outlined" Margin="Margin.Dense" Class="tg-field" Immediate="true" />
+				<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+					<button class="tg-btn primary" @onclick="RunSearchAsync" disabled="@ViewModel.IsBusy">@LanguageService["tg_search_run"]</button>
+					<button class="tg-btn" @onclick="() => ViewModel.CloseSearchPanel()">@LanguageService["tg_search_close"]</button>
+				</div>
+				@if (!string.IsNullOrEmpty(ViewModel.StatusMessage))
+				{
+					<div class="tg-status">@ViewModel.StatusMessage</div>
+				}
+				@foreach (var hit in ViewModel.SearchHits)
+				{
+					<div class="tg-chat-row" @onclick="() => OpenSearchHitAsync(hit)">
+						<div class="tg-avatar">@GetInitial(hit.Title)</div>
+						<div class="tg-chat-body">
+							<div class="tg-chat-top">
+								<div class="tg-chat-title">@hit.Title @(string.IsNullOrEmpty(hit.Username) ? null : "@" + hit.Username)</div>
+								<div class="tg-chat-time">@hit.Kind</div>
+							</div>
+							<div class="tg-chat-preview">@hit.Preview</div>
+						</div>
+					</div>
+				}
+			</div>
+		}
+
 		@if (ViewModel.IsAccountsMenuOpen)
 		{
 			<div class="tg-accounts-panel">
-				<div style="font-weight:600;margin-bottom:6px;">@LanguageService["tg_accounts"]</div>
+				<div style="font-weight:600;margin-bottom:6px;">@LanguageService["tg_manage_accounts"]</div>
 				@foreach (var account in ViewModel.Accounts)
 				{
 					<div class="tg-account-row @(account.Id == ViewModel.ActiveAccountId ? "active" : null)">
@@ -964,6 +1009,18 @@
 			await asyncCmd.ExecuteAsync(null);
 		else
 			ViewModel.ToggleProxyCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task RunSearchAsync()
+	{
+		await ViewModel.RunSearchAsync();
+		StateHasChanged();
+	}
+
+	private async Task OpenSearchHitAsync(TelegramSearchHitModel hit)
+	{
+		await ViewModel.OpenSearchHitAsync(hit);
 		StateHasChanged();
 	}
 

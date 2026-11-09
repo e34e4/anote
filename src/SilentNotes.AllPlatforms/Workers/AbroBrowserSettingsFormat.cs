@@ -77,6 +77,16 @@ namespace SilentNotes.Workers
                 }
             }
 
+            if (obj["blockImages"] != null && obj["blockImages"].GetValueKind() == JsonValueKind.True)
+                settings.BlockImages = true;
+            if (obj["socks5Enabled"] != null && obj["socks5Enabled"].GetValueKind() == JsonValueKind.True)
+                settings.Socks5Enabled = true;
+            settings.Socks5Host = GetString(obj, "socks5Host") ?? string.Empty;
+            if (obj["socks5Port"] != null && obj["socks5Port"].GetValueKind() == JsonValueKind.Number)
+                settings.Socks5Port = obj["socks5Port"].GetValue<int>();
+            settings.Socks5Username = GetString(obj, "socks5Username") ?? string.Empty;
+            settings.Socks5Password = GetString(obj, "socks5Password") ?? string.Empty;
+
             if (obj["engines"] is JsonArray engines)
             {
                 foreach (JsonNode node in engines)
@@ -112,6 +122,12 @@ namespace SilentNotes.Workers
                 ["useCustomFont"] = settings.UseCustomFont,
                 ["customFontFileName"] = settings.CustomFontFileName ?? string.Empty,
                 ["blackMode"] = FormatBlackMode(settings.BlackMode),
+                ["blockImages"] = settings.BlockImages,
+                ["socks5Enabled"] = settings.Socks5Enabled,
+                ["socks5Host"] = settings.Socks5Host ?? string.Empty,
+                ["socks5Port"] = settings.Socks5Port,
+                ["socks5Username"] = settings.Socks5Username ?? string.Empty,
+                ["socks5Password"] = settings.Socks5Password ?? string.Empty,
             };
             if (settings.DefaultEngineId.HasValue)
                 root["defaultEngineId"] = settings.DefaultEngineId.Value.ToString("D");

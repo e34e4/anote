@@ -29,6 +29,32 @@
 		padding: 2px 8px;
 		white-space: nowrap;
 	}
+	.logcat-line {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		padding: 6px 8px;
+		margin-bottom: 4px;
+		border-radius: 6px;
+		border: 1px solid rgba(255,255,255,0.06);
+		background: rgba(0,0,0,0.18);
+	}
+	.logcat-text {
+		flex: 1 1 auto;
+		min-width: 0;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 0.78rem;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+		line-height: 1.35;
+	}
+	.logcat-V { color: #9e9e9e; }
+	.logcat-D { color: #90a4ae; }
+	.logcat-I { color: #81d4fa; }
+	.logcat-W { color: #ffb74d; }
+	.logcat-E, .logcat-F { color: #ef5350; }
+	.logcat-S { color: #bdbdbd; }
 </style>
 
 <MudAppBar Class="flex-none" Fixed="true" Dense="true" WrapContent="false">
@@ -435,6 +461,40 @@
 					</MudTabs>
 				</div>
 			</MudTabPanel>
+
+			<MudTabPanel Text="@LanguageService["system_tab_logcat"]">
+				<div class="system-scroll pa-1">
+					<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="1">
+						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshLogcatAsync">@LanguageService["system_refresh"]</MudButton>
+						@if (!string.IsNullOrEmpty(_logcatFilePath))
+						{
+							<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["system_logcat_file"]: @_logcatFilePath</MudText>
+						}
+					</MudStack>
+					<MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">@LanguageService["system_logcat_hint"]</MudText>
+					<MudTextField T="string" Value="_logcatFilter" ValueChanged="OnLogcatFilterChanged" Immediate="true" Dense="true" Variant="Variant.Outlined"
+						Margin="Margin.Dense" Placeholder="@LanguageService["system_logcat_search"]" Class="mb-2" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+					@if (_logcatLines.Length > 0)
+					{
+						<MudText Typo="Typo.caption" Class="mud-text-secondary mb-1">@string.Format(CultureInfo.InvariantCulture, LanguageService["system_logcat_matches"], FilteredLogcatLines().Count())</MudText>
+					}
+					@foreach (var line in FilteredLogcatLines())
+					{
+						<div class="logcat-line">
+							<div class="logcat-text @LogcatLevelClass(line.Level)">@line.Raw</div>
+							<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" title="@LanguageService["system_ips_copy"]" OnClick="@(() => CopyLogcatLineAsync(line))" />
+						</div>
+					}
+					@if (_logcatLines.Length == 0)
+					{
+						<MudText Typo="Typo.body2" Class="mud-text-secondary">@LanguageService["system_logcat_empty"]</MudText>
+					}
+					else if (!string.IsNullOrEmpty(_logcatNotes))
+					{
+						<MudText Typo="Typo.caption" Class="mud-text-secondary mt-2">@_logcatNotes</MudText>
+					}
+				</div>
+			</MudTabPanel>
 		</MudTabs>
 	</MudContainer>
 </MudMainContent>
@@ -443,7 +503,11 @@
 	private int _tabIndex;
 	private int _networkSubTab;
 	private bool _loading;
-	private bool[] _loaded = new bool[6];
+	private bool[] _loaded = new bool[7];
+	private SystemLogcatLine[] _logcatLines = Array.Empty<SystemLogcatLine>();
+	private string _logcatFilter = string.Empty;
+	private string _logcatFilePath;
+	private string _logcatNotes;
 	private SystemBatterySortMode _batterySort = SystemBatterySortMode.ScreenTime;
 	private SystemBatteryInfo _battery;
 	private SystemHardwareInfo _hardware;
@@ -505,6 +569,7 @@
 			case 3: await RefreshProcessesAsync(); break;
 			case 4: await RefreshMemoryAsync(); break;
 			case 5: await RefreshNetworkAsync(); break;
+			case 6: await RefreshLogcatAsync(); break;
 		}
 	}
 
@@ -595,6 +660,61 @@
 		{
 			_network = await SystemInfoService.GetNetworkInfoAsync();
 		});
+	}
+
+	private async Task RefreshLogcatAsync()
+	{
+		await RunLoad(6, async () =>
+		{
+			SystemLogcatSnapshot snapshot = await SystemInfoService.CaptureLogcatAsync();
+			_logcatLines = snapshot?.Lines?.ToArray() ?? Array.Empty<SystemLogcatLine>();
+			_logcatFilePath = snapshot?.FilePath;
+			_logcatNotes = snapshot?.Notes;
+		});
+	}
+
+	private Task OnLogcatFilterChanged(string value)
+	{
+		_logcatFilter = value ?? string.Empty;
+		StateHasChanged();
+		return Task.CompletedTask;
+	}
+
+	private IEnumerable<SystemLogcatLine> FilteredLogcatLines()
+	{
+		string filter = (_logcatFilter ?? string.Empty).Trim();
+		if (string.IsNullOrEmpty(filter))
+			return _logcatLines;
+		return _logcatLines.Where(l =>
+			(l.Raw != null && l.Raw.Contains(filter, StringComparison.OrdinalIgnoreCase))
+			|| (l.Tag != null && l.Tag.Contains(filter, StringComparison.OrdinalIgnoreCase))
+			|| (l.Message != null && l.Message.Contains(filter, StringComparison.OrdinalIgnoreCase)));
+	}
+
+	private static string LogcatLevelClass(string level)
+	{
+		if (string.IsNullOrEmpty(level))
+			return "logcat-?";
+		char c = char.ToUpperInvariant(level[0]);
+		return c switch
+		{
+			'V' => "logcat-V",
+			'D' => "logcat-D",
+			'I' => "logcat-I",
+			'W' => "logcat-W",
+			'E' => "logcat-E",
+			'F' => "logcat-F",
+			'S' => "logcat-S",
+			_ => "logcat-?",
+		};
+	}
+
+	private async Task CopyLogcatLineAsync(SystemLogcatLine line)
+	{
+		if (line == null || string.IsNullOrEmpty(line.Raw))
+			return;
+		await ClipboardService.SetTextAsync(line.Raw);
+		FeedbackService.ShowToast(LanguageService["system_logcat_copied"]);
 	}
 
 	private async Task KillAsync(SystemProcessInfo process)

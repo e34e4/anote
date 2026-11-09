@@ -313,6 +313,72 @@ namespace SilentNotes.Models
         }
     }
 
+    /// <summary>Kinds of Telegram search results shown in the TG search panel.</summary>
+    public static class TelegramSearchKinds
+    {
+        public const string Channel = "channel";
+        public const string Group = "group";
+        public const string User = "user";
+        public const string Post = "post";
+    }
+
+    /// <summary>Which Telegram search mode the UI is running.</summary>
+    public enum TelegramSearchMode
+    {
+        /// <summary>Find public channels / groups (not limited to subscribed).</summary>
+        ChannelsGroups = 0,
+
+        /// <summary>Premium global posts search across public channels.</summary>
+        Posts = 1,
+    }
+
+    /// <summary>One hit from channel/group or posts search.</summary>
+    public class TelegramSearchHitModel
+    {
+        public string Kind { get; set; } = TelegramSearchKinds.Channel;
+
+        public string ChatKey { get; set; } = string.Empty;
+
+        public string Title { get; set; } = string.Empty;
+
+        public string Username { get; set; } = string.Empty;
+
+        public string Preview { get; set; } = string.Empty;
+
+        public int MessageId { get; set; }
+
+        public DateTime? Date { get; set; }
+    }
+
+    /// <summary>Payload returned by TG search APIs.</summary>
+    public class TelegramSearchResult
+    {
+        public bool Success { get; set; }
+
+        public string ErrorMessage { get; set; }
+
+        public List<TelegramSearchHitModel> Hits { get; set; } = new List<TelegramSearchHitModel>();
+
+        public static TelegramSearchResult Ok(List<TelegramSearchHitModel> hits)
+        {
+            return new TelegramSearchResult
+            {
+                Success = true,
+                Hits = hits ?? new List<TelegramSearchHitModel>(),
+            };
+        }
+
+        public static TelegramSearchResult Fail(string message)
+        {
+            return new TelegramSearchResult
+            {
+                Success = false,
+                ErrorMessage = message ?? "Search failed",
+                Hits = new List<TelegramSearchHitModel>(),
+            };
+        }
+    }
+
     /// <summary>
     /// Authentication / connection state for an account (or the pending login flow).
     /// </summary>

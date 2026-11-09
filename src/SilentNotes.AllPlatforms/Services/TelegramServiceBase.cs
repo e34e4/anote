@@ -3277,6 +3277,209 @@ namespace SilentNotes.Services
             }
         }
 
+        /// <inheritdoc/>
+        public async Task<TelegramSearchResult> SearchChannelsAndGroupsAsync(
+            string query,
+            string accountId = null,
+            int limit = 40,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return TelegramSearchResult.Fail("Enter a search query.");
+            if (!TryGetRuntime(accountId, out AccountRuntime runtime) || runtime.Client == null)
+                return TelegramSearchResult.Fail("Account is not connected.");
+
+            try
+            {
+                if (limit <= 0)
+                    limit = 40;
+                Contacts_Found found = await runtime.Client.Contacts_Search(query.Trim(), limit)
+                    .ConfigureAwait(false);
+                CollectPeers(runtime, found?.users, found?.chats);
+
+                var hits = new List<TelegramSearchHitModel>();
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+
+                void AddPeer(Peer peer)
+                {
+                    if (peer == null)
+                        return;
+                    IPeerInfo info = found.UserOrChat(peer);
+                    if (info == null)
+                        return;
+
+                    string chatKey = BuildChatKey(peer);
+                    if (!seen.Add(chatKey))
+                        return;
+
+                    EnsureChatInList(runtime, chatKey, info);
+
+                    if (info is Channel channel)
+                    {
+                        hits.Add(new TelegramSearchHitModel
+                        {
+                            Kind = channel.IsGroup ? TelegramSearchKinds.Group : TelegramSearchKinds.Channel,
+                            ChatKey = chatKey,
+                            Title = channel.Title ?? string.Empty,
+                            Username = channel.MainUsername ?? channel.username ?? string.Empty,
+                            Preview = channel.IsGroup ? "Group / supergroup" : "Channel",
+                        });
+                    }
+                    else if (info is Chat basic)
+                    {
+                        hits.Add(new TelegramSearchHitModel
+                        {
+                            Kind = TelegramSearchKinds.Group,
+                            ChatKey = chatKey,
+                            Title = basic.Title ?? basic.title ?? string.Empty,
+                            Preview = "Group",
+                        });
+                    }
+                    // Skip users — this search mode is channels/groups only.
+                }
+
+                if (found?.results != null)
+                {
+                    foreach (Peer peer in found.results)
+                        AddPeer(peer);
+                }
+
+                if (found?.my_results != null)
+                {
+                    foreach (Peer peer in found.my_results)
+                        AddPeer(peer);
+                }
+
+                // Also surface chats from the chats dictionary that match the query text.
+                if (found?.chats != null)
+                {
+                    foreach (ChatBase chat in found.chats.Values)
+                    {
+                        if (chat == null || !chat.IsActive)
+                            continue;
+                        string chatKey = BuildChatKeyFromChat(chat);
+                        if (!seen.Add(chatKey))
+                            continue;
+                        EnsureChatInList(runtime, chatKey, chat);
+                        if (chat is Channel channel)
+                        {
+                            hits.Add(new TelegramSearchHitModel
+                            {
+                                Kind = channel.IsGroup ? TelegramSearchKinds.Group : TelegramSearchKinds.Channel,
+                                ChatKey = chatKey,
+                                Title = channel.Title ?? string.Empty,
+                                Username = channel.MainUsername ?? channel.username ?? string.Empty,
+                                Preview = channel.IsGroup ? "Group / supergroup" : "Channel",
+                            });
+                        }
+                        else if (chat is Chat basic)
+                        {
+                            hits.Add(new TelegramSearchHitModel
+                            {
+                                Kind = TelegramSearchKinds.Group,
+                                ChatKey = chatKey,
+                                Title = basic.Title ?? basic.title ?? string.Empty,
+                                Preview = "Group",
+                            });
+                        }
+                    }
+                }
+
+                return TelegramSearchResult.Ok(hits);
+            }
+            catch (Exception ex)
+            {
+                return TelegramSearchResult.Fail(ex.Message);
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task<TelegramSearchResult> SearchPublicPostsAsync(
+            string query,
+            string accountId = null,
+            int limit = 40,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return TelegramSearchResult.Fail("Enter a search query.");
+            if (!TryGetRuntime(accountId, out AccountRuntime runtime) || runtime.Client == null)
+                return TelegramSearchResult.Fail("Account is not connected.");
+
+            try
+            {
+                if (limit <= 0)
+                    limit = 40;
+
+                string trimmed = query.Trim();
+                string hashtag = null;
+                string textQuery = trimmed;
+                if (trimmed.StartsWith("#", StringComparison.Ordinal) && trimmed.Length > 1 && !trimmed.Contains(' '))
+                {
+                    hashtag = trimmed.TrimStart('#');
+                    textQuery = null;
+                }
+
+                Messages_MessagesBase result = await runtime.Client.Channels_SearchPosts(
+                    offset_rate: 0,
+                    offset_peer: null,
+                    offset_id: 0,
+                    limit: limit,
+                    hashtag: hashtag,
+                    query: textQuery).ConfigureAwait(false);
+
+                CollectPeersFromMessages(runtime, result);
+                var hits = new List<TelegramSearchHitModel>();
+                Message[] messages = result switch
+                {
+                    Messages_Messages mm => mm.messages?.OfType<Message>().ToArray() ?? Array.Empty<Message>(),
+                    Messages_ChannelMessages cm => cm.messages?.OfType<Message>().ToArray() ?? Array.Empty<Message>(),
+                    _ => Array.Empty<Message>(),
+                };
+
+                foreach (Message msg in messages)
+                {
+                    if (msg == null)
+                        continue;
+                    string chatKey = BuildChatKey(msg.Peer);
+                    IPeerInfo peerInfo = null;
+                    runtime.PeerByChatKey.TryGetValue(chatKey, out peerInfo);
+                    if (peerInfo != null)
+                        EnsureChatInList(runtime, chatKey, peerInfo);
+
+                    string title = ResolvePeerDisplayName(runtime, msg.Peer);
+                    string username = string.Empty;
+                    if (peerInfo is Channel ch)
+                        username = ch.MainUsername ?? ch.username ?? string.Empty;
+
+                    hits.Add(new TelegramSearchHitModel
+                    {
+                        Kind = TelegramSearchKinds.Post,
+                        ChatKey = chatKey,
+                        Title = title,
+                        Username = username,
+                        Preview = BuildMessagePreview(msg),
+                        MessageId = msg.id,
+                        Date = msg.date,
+                    });
+                }
+
+                return TelegramSearchResult.Ok(hits);
+            }
+            catch (RpcException ex) when (
+                ex.Code == 403
+                || (ex.Message != null && ex.Message.IndexOf("PREMIUM", StringComparison.OrdinalIgnoreCase) >= 0)
+                || (ex.Message != null && ex.Message.IndexOf("PAYMENT", StringComparison.OrdinalIgnoreCase) >= 0)
+                || (ex.Message != null && ex.Message.IndexOf("FLOOD", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                return TelegramSearchResult.Fail(
+                    "Posts search needs Telegram Premium (or free search slots / Stars). " + ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return TelegramSearchResult.Fail(ex.Message);
+            }
+        }
+
         private static string BuildMessagePreview(Message msg)
         {
             if (!string.IsNullOrEmpty(msg.message))

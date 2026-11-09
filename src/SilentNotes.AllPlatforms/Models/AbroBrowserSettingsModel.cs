@@ -47,6 +47,12 @@ namespace SilentNotes.Models
             CustomFontFileName = string.Empty;
             BlackMode = AbroBlackMode.Disable;
             BlackModeDomains = new List<string>();
+            BlockImages = false;
+            Socks5Enabled = false;
+            Socks5Host = string.Empty;
+            Socks5Port = 1080;
+            Socks5Username = string.Empty;
+            Socks5Password = string.Empty;
         }
 
         /// <summary>Gets or sets the store format version.</summary>
@@ -81,6 +87,32 @@ namespace SilentNotes.Models
         /// <see cref="BlackMode"/> is <see cref="AbroBlackMode.Selectively"/>.
         /// </summary>
         public List<string> BlackModeDomains { get; set; }
+
+        /// <summary>
+        /// When true, Abro does not load images and shows same-size placeholders with the image URL.
+        /// </summary>
+        public bool BlockImages { get; set; }
+
+        /// <summary>When true and host/port are set, Abro WebView traffic uses this SOCKS5 proxy.</summary>
+        public bool Socks5Enabled { get; set; }
+
+        /// <summary>SOCKS5 proxy hostname or IP.</summary>
+        public string Socks5Host { get; set; }
+
+        /// <summary>SOCKS5 proxy port (1–65535).</summary>
+        public int Socks5Port { get; set; }
+
+        /// <summary>Optional SOCKS5 username.</summary>
+        public string Socks5Username { get; set; }
+
+        /// <summary>Optional SOCKS5 password.</summary>
+        public string Socks5Password { get; set; }
+
+        /// <summary>True when host and port look usable for SOCKS5.</summary>
+        public bool HasSocks5Config =>
+            !string.IsNullOrWhiteSpace(Socks5Host)
+            && Socks5Port > 0
+            && Socks5Port <= 65535;
 
         /// <summary>
         /// Touches <see cref="UpdatedAt"/> to now (UTC).

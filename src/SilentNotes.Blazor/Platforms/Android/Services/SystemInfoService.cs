@@ -1765,6 +1765,124 @@ namespace SilentNotes.Platforms.Services
             return resolved;
         }
 
+        /// <inheritdoc/>
+        public Task<SystemLogcatSnapshot> CaptureLogcatAsync()
+        {
+            return Task.Run(() =>
+            {
+                var snapshot = new SystemLogcatSnapshot();
+                try
+                {
+                    Context context = _appContext.Context;
+                    string dir = Path.Combine(context.FilesDir.AbsolutePath, "system");
+                    Directory.CreateDirectory(dir);
+                    string filePath = Path.Combine(dir, "logcat_buffer.txt");
+                    snapshot.FilePath = filePath;
+
+                    // Dump buffer: prefer plain logcat (works for app-visible lines), then su for fuller buffer.
+                    string dump = RunShellCommand("logcat -d -v threadtime 2>/dev/null");
+                    if (string.IsNullOrWhiteSpace(dump))
+                        dump = RunSuCommand("logcat -d -v threadtime 2>/dev/null");
+
+                    if (string.IsNullOrWhiteSpace(dump))
+                    {
+                        snapshot.Notes = "logcat returned no lines (permission denied or empty buffer).";
+                        File.WriteAllText(filePath, string.Empty);
+                        return snapshot;
+                    }
+
+                    File.WriteAllText(filePath, dump);
+                    foreach (string rawLine in dump.Split('\n'))
+                    {
+                        string line = rawLine?.TrimEnd('\r');
+                        if (string.IsNullOrWhiteSpace(line))
+                            continue;
+                        snapshot.Lines.Add(ParseLogcatLine(line));
+                    }
+
+                    snapshot.Notes = snapshot.Lines.Count.ToString(CultureInfo.InvariantCulture) + " lines";
+                }
+                catch (Exception ex)
+                {
+                    snapshot.Notes = ex.Message;
+                    global::Android.Util.Log.Warn(LogTag, "logcat capture failed: " + ex);
+                }
+
+                return snapshot;
+            });
+        }
+
+        private static SystemLogcatLine ParseLogcatLine(string line)
+        {
+            var entry = new SystemLogcatLine
+            {
+                Raw = line,
+                Level = SystemLogcatLevels.Unknown,
+                Message = line,
+            };
+
+            // threadtime: 01-02 03:04:05.678  1234  5678 W Tag: message
+            // Or brief: W/Tag( 1234): message
+            try
+            {
+                if (line.Length >= 31 && char.IsDigit(line[0]) && line[2] == '-')
+                {
+                    // MM-dd HH:mm:ss.mmm
+                    int pidStart = 18;
+                    while (pidStart < line.Length && line[pidStart] == ' ')
+                        pidStart++;
+                    int levelIndex = -1;
+                    for (int i = pidStart; i < line.Length - 1; i++)
+                    {
+                        if (line[i] == ' '
+                            && "VDIWEFS".IndexOf(line[i + 1]) >= 0
+                            && (i + 2 >= line.Length || line[i + 2] == ' '))
+                        {
+                            levelIndex = i + 1;
+                            break;
+                        }
+                    }
+
+                    if (levelIndex > 0)
+                    {
+                        entry.Timestamp = line.Substring(0, Math.Min(18, line.Length)).Trim();
+                        entry.Level = line[levelIndex].ToString();
+                        string rest = line.Substring(levelIndex + 1).TrimStart();
+                        int colon = rest.IndexOf(':');
+                        if (colon > 0)
+                        {
+                            entry.Tag = rest.Substring(0, colon).Trim();
+                            entry.Message = rest.Substring(colon + 1).TrimStart();
+                        }
+                        else
+                        {
+                            entry.Message = rest;
+                        }
+                        return entry;
+                    }
+                }
+
+                int slash = line.IndexOf('/');
+                if (slash == 1 && "VDIWEFS".IndexOf(line[0]) >= 0)
+                {
+                    entry.Level = line[0].ToString();
+                    int colon = line.IndexOf(':', slash);
+                    if (colon > slash)
+                    {
+                        string tagPart = line.Substring(slash + 1, colon - slash - 1);
+                        int paren = tagPart.IndexOf('(');
+                        entry.Tag = (paren > 0 ? tagPart.Substring(0, paren) : tagPart).Trim();
+                        entry.Message = line.Substring(colon + 1).TrimStart();
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return entry;
+        }
+
         private double? ReadCpuLoadPercent()
         {
             lock (_cpuSampleLock)

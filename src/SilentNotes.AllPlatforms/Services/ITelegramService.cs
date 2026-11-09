@@ -282,5 +282,25 @@ namespace SilentNotes.Services
             IReadOnlyList<string> chatKeys,
             string accountId = null,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Searches public channels and groups by name/username (including ones not subscribed).
+        /// Uses Telegram <c>contacts.search</c>.
+        /// </summary>
+        Task<TelegramSearchResult> SearchChannelsAndGroupsAsync(
+            string query,
+            string accountId = null,
+            int limit = 40,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Premium-style global posts search across public channels (including ones not joined).
+        /// Uses Telegram <c>channels.searchPosts</c>.
+        /// </summary>
+        Task<TelegramSearchResult> SearchPublicPostsAsync(
+            string query,
+            string accountId = null,
+            int limit = 40,
+            CancellationToken cancellationToken = default);
     }
 }

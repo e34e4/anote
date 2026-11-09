@@ -66,5 +66,11 @@ namespace SilentNotes.Services
 
         /// <summary>Reverse-DNS resolves saved IPs that are not resolved yet. Returns how many were newly resolved.</summary>
         Task<int> ResolveSavedIpsAsync();
+
+        /// <summary>
+        /// Dumps the current logcat buffer to a local snapshot file and returns parsed lines
+        /// for searching on the System → Logcat tab.
+        /// </summary>
+        Task<SystemLogcatSnapshot> CaptureLogcatAsync();
     }
 }

@@ -35,6 +35,10 @@ namespace SilentNotes.ViewModels
         private bool _isAccountsMenuOpen;
         private bool _isApiSetupOpen;
         private bool _isProxySetupOpen;
+        private bool _isSearchPanelOpen;
+        private TelegramSearchMode _searchMode = TelegramSearchMode.ChannelsGroups;
+        private string _searchQuery = string.Empty;
+        private readonly List<TelegramSearchHitModel> _searchHits = new List<TelegramSearchHitModel>();
         private string _filter = string.Empty;
         private string _composerText = string.Empty;
         private string _openChatKey;
@@ -299,7 +303,45 @@ namespace SilentNotes.ViewModels
         }
 
         // Login flow is NOT an overlay for back-key purposes — cancel only via the Cancel button.
-        public bool IsAnyOverlayOpen => IsAccountsMenuOpen || IsApiSetupOpen || IsProxySetupOpen;
+        public bool IsAnyOverlayOpen => IsAccountsMenuOpen || IsApiSetupOpen || IsProxySetupOpen || IsSearchPanelOpen;
+
+        public bool IsSearchPanelOpen
+        {
+            get => _isSearchPanelOpen;
+            set
+            {
+                if (SetProperty(ref _isSearchPanelOpen, value))
+                    NotifyChanged();
+            }
+        }
+
+        public TelegramSearchMode SearchMode
+        {
+            get => _searchMode;
+            set
+            {
+                if (SetProperty(ref _searchMode, value))
+                    NotifyChanged();
+            }
+        }
+
+        public string SearchQuery
+        {
+            get => _searchQuery;
+            set => SetProperty(ref _searchQuery, value ?? string.Empty);
+        }
+
+        public IReadOnlyList<TelegramSearchHitModel> SearchHits => _searchHits;
+
+        public string SearchModeTitle =>
+            SearchMode == TelegramSearchMode.Posts
+                ? (_languageService?["tg_search_posts"] ?? "Posts search")
+                : (_languageService?["tg_search_channels"] ?? "Channels & groups");
+
+        public string SearchModeHint =>
+            SearchMode == TelegramSearchMode.Posts
+                ? (_languageService?["tg_search_posts_hint"] ?? string.Empty)
+                : (_languageService?["tg_search_channels_hint"] ?? string.Empty);
 
         public string Filter
         {
@@ -1040,6 +1082,12 @@ namespace SilentNotes.ViewModels
 
         public void CloseOverlay()
         {
+            if (IsSearchPanelOpen)
+            {
+                CloseSearchPanel();
+                return;
+            }
+
             if (IsAccountsMenuOpen)
             {
                 IsAccountsMenuOpen = false;
@@ -1063,6 +1111,83 @@ namespace SilentNotes.ViewModels
 
             if (IsChatOpen)
                 CloseChat();
+        }
+
+        public void OpenSearchPanel(TelegramSearchMode mode)
+        {
+            IsAccountsMenuOpen = false;
+            IsProxySetupOpen = false;
+            SearchMode = mode;
+            _searchHits.Clear();
+            SearchQuery = string.Empty;
+            IsSearchPanelOpen = true;
+            StatusMessage = string.Empty;
+            NotifyChanged();
+        }
+
+        public void CloseSearchPanel()
+        {
+            IsSearchPanelOpen = false;
+            _searchHits.Clear();
+            SearchQuery = string.Empty;
+            NotifyChanged();
+        }
+
+        public async Task RunSearchAsync()
+        {
+            if (_telegramService == null || IsBusy)
+                return;
+
+            string query = (SearchQuery ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(query))
+            {
+                StatusMessage = _languageService?["tg_search_query"] ?? "Enter a search query.";
+                NotifyChanged();
+                return;
+            }
+
+            IsBusy = true;
+            StatusMessage = string.Empty;
+            try
+            {
+                TelegramSearchResult result = SearchMode == TelegramSearchMode.Posts
+                    ? await _telegramService.SearchPublicPostsAsync(query, ActiveAccountId)
+                    : await _telegramService.SearchChannelsAndGroupsAsync(query, ActiveAccountId);
+
+                _searchHits.Clear();
+                if (result?.Hits != null)
+                    _searchHits.AddRange(result.Hits);
+
+                if (result == null || !result.Success)
+                    StatusMessage = result?.ErrorMessage ?? "Search failed";
+                else if (_searchHits.Count == 0)
+                    StatusMessage = _languageService?["tg_search_empty"] ?? "No results";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = ex.Message;
+            }
+            finally
+            {
+                IsBusy = false;
+                NotifyChanged();
+            }
+        }
+
+        public async Task OpenSearchHitAsync(TelegramSearchHitModel hit)
+        {
+            if (hit == null || string.IsNullOrEmpty(hit.ChatKey) || _telegramService == null)
+                return;
+
+            IsSearchPanelOpen = false;
+            var chat = new TelegramChatModel
+            {
+                Id = hit.ChatKey,
+                Title = string.IsNullOrWhiteSpace(hit.Title) ? hit.ChatKey : hit.Title,
+                IsChannel = string.Equals(hit.Kind, TelegramSearchKinds.Channel, StringComparison.Ordinal),
+                IsGroup = string.Equals(hit.Kind, TelegramSearchKinds.Group, StringComparison.Ordinal),
+            };
+            await OpenChatAsync(chat);
         }
 
         /// <summary>Re-reads pending login / connection state from the singleton service (after resume).</summary>

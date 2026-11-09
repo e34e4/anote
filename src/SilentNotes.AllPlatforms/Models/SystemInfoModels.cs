@@ -249,4 +249,35 @@ namespace SilentNotes.Models
         public long WifiTxBytes { get; set; }
         public long TotalBytes => MobileRxBytes + MobileTxBytes + WifiRxBytes + WifiTxBytes;
     }
+
+    /// <summary>Logcat priority / severity letter (V/D/I/W/E/F/S).</summary>
+    public static class SystemLogcatLevels
+    {
+        public const string Verbose = "V";
+        public const string Debug = "D";
+        public const string Info = "I";
+        public const string Warning = "W";
+        public const string Error = "E";
+        public const string Fatal = "F";
+        public const string Silent = "S";
+        public const string Unknown = "?";
+    }
+
+    /// <summary>One line from a dumped logcat buffer snapshot.</summary>
+    public class SystemLogcatLine
+    {
+        public string Raw { get; set; }
+        public string Level { get; set; } = SystemLogcatLevels.Unknown;
+        public string Tag { get; set; }
+        public string Message { get; set; }
+        public string Timestamp { get; set; }
+    }
+
+    /// <summary>Result of copying the current logcat buffer to a local file.</summary>
+    public class SystemLogcatSnapshot
+    {
+        public string FilePath { get; set; }
+        public string Notes { get; set; }
+        public List<SystemLogcatLine> Lines { get; set; } = new List<SystemLogcatLine>();
+    }
 }

@@ -65,5 +65,30 @@ namespace SilentNotesTest.Workers
             Assert.AreEqual("example.com", parsed.BlackModeDomains[0]);
             Assert.AreEqual("news.site.org", parsed.BlackModeDomains[1]);
         }
+
+        [TestMethod]
+        public void SerializesAndParsesBlockImagesAndSocks5()
+        {
+            var settings = new AbroBrowserSettingsModel
+            {
+                BlockImages = true,
+                Socks5Enabled = true,
+                Socks5Host = "127.0.0.1",
+                Socks5Port = 9050,
+                Socks5Username = "u",
+                Socks5Password = "p",
+            };
+
+            string json = AbroBrowserSettingsFormat.Serialize(settings);
+            AbroBrowserSettingsModel parsed = AbroBrowserSettingsFormat.Parse(json);
+            Assert.IsNotNull(parsed);
+            Assert.IsTrue(parsed.BlockImages);
+            Assert.IsTrue(parsed.Socks5Enabled);
+            Assert.IsTrue(parsed.HasSocks5Config);
+            Assert.AreEqual("127.0.0.1", parsed.Socks5Host);
+            Assert.AreEqual(9050, parsed.Socks5Port);
+            Assert.AreEqual("u", parsed.Socks5Username);
+            Assert.AreEqual("p", parsed.Socks5Password);
+        }
     }
 }

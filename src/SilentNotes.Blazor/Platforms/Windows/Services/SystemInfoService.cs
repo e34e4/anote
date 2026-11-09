@@ -136,5 +136,14 @@ namespace SilentNotes.Platforms.Services
         {
             return Task.FromResult(0);
         }
+
+        /// <inheritdoc/>
+        public Task<SystemLogcatSnapshot> CaptureLogcatAsync()
+        {
+            return Task.FromResult(new SystemLogcatSnapshot
+            {
+                Notes = "Logcat is available on Android only.",
+            });
+        }
     }
 }

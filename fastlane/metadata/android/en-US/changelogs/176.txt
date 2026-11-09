@@ -1,0 +1,5 @@
+• System: Logcat tab dumps buffer to file, search, wrap, copy, severity colors
+• Abro: Block images mode with same-size placeholders + link
+• Abro: SOCKS5 proxy add/edit/remove/enable in ⋮ → Proxy
+• TG: Search channels/groups and Premium posts search in ⋮ menu
+• TG: List accounts directly in ⋮ for faster switching

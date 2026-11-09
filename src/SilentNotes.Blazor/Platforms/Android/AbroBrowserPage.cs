@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -54,6 +55,30 @@ namespace SilentNotes.Platforms
             + "a,a *{color:#9ecbff!important;}"
             + "input,textarea,select,button{background-color:#111!important;color:#fff!important;}'"
             + ";(document.head||document.documentElement).appendChild(s);}catch(e){}})();";
+
+        private const string BlockImagesInjectScript =
+            "(function(){try{"
+            + "function ph(img){if(!img||img.dataset.abroPh==='1')return;"
+            + "img.dataset.abroPh='1';"
+            + "var src=img.currentSrc||img.src||img.getAttribute('data-src')||'';"
+            + "var w=img.width||parseInt(img.getAttribute('width'),10)||img.naturalWidth||120;"
+            + "var h=img.height||parseInt(img.getAttribute('height'),10)||img.naturalHeight||80;"
+            + "if(!isFinite(w)||w<=0)w=120;if(!isFinite(h)||h<=0)h=80;"
+            + "var a=document.createElement('a');a.href=src||'#';a.target='_blank';a.rel='noopener noreferrer';"
+            + "a.textContent=src||'(image)';"
+            + "a.style.cssText='display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;"
+            + "width:'+w+'px;height:'+h+'px;max-width:100%;overflow:auto;padding:4px;margin:0;"
+            + "border:1px dashed #888;background:#f3f3f3;color:#333;font:12px/1.3 sans-serif;"
+            + "text-decoration:none;word-break:break-all;vertical-align:middle;';"
+            + "img.style.display='none';img.removeAttribute('src');img.removeAttribute('srcset');"
+            + "if(img.parentNode)img.parentNode.insertBefore(a,img);}"
+            + "function scan(root){try{(root||document).querySelectorAll('img').forEach(ph);}catch(e){}}"
+            + "scan(document);"
+            + "if(!window.__abroImgMo){window.__abroImgMo=new MutationObserver(function(ms){"
+            + "ms.forEach(function(m){m.addedNodes&&m.addedNodes.forEach(function(n){"
+            + "if(n&&n.tagName==='IMG')ph(n);else if(n&&n.querySelectorAll)scan(n);});});});"
+            + "window.__abroImgMo.observe(document.documentElement,{childList:true,subtree:true});}"
+            + "}catch(e){}})();";
 
         private static readonly object HistoryLock = new object();
 
@@ -341,6 +366,16 @@ namespace SilentNotes.Platforms
             {
                 _restored = true;
                 RestoreTabs();
+            }
+
+            try
+            {
+                AbroBrowserSettingsModel settings = Ioc.Instance.GetService<IAbroBrowserSettingsService>()?.LoadOrDefault();
+                if (settings != null)
+                    ApplySocks5Proxy(settings, notifyUnsupported: false);
+            }
+            catch
+            {
             }
 
             RefreshPasswordSuggestions();
@@ -997,6 +1032,8 @@ namespace SilentNotes.Platforms
             RebuildTabStrip();
             InjectCustomFontIfNeeded(tab);
             InjectBlackModeIfNeeded(tab);
+            InjectBlockImagesIfNeeded(tab);
+            ApplyBlockImagesSetting(tab);
         }
 
         private void InjectCustomFontIfNeeded(BrowserTab tab)
@@ -1033,6 +1070,85 @@ namespace SilentNotes.Platforms
             }
             catch
             {
+            }
+        }
+
+        private void InjectBlockImagesIfNeeded(BrowserTab tab)
+        {
+            try
+            {
+                if (!IsBlockImagesEnabled())
+                    return;
+                AWebView native = tab?.Native;
+                if (native == null)
+                    return;
+                native.EvaluateJavascript(BlockImagesInjectScript, null);
+            }
+            catch
+            {
+            }
+        }
+
+        private void ApplyBlockImagesSetting(BrowserTab tab)
+        {
+            try
+            {
+                AWebView native = tab?.Native;
+                if (native == null)
+                    return;
+                bool block = IsBlockImagesEnabled();
+                native.Settings.BlockNetworkImage = block;
+                native.Settings.LoadsImagesAutomatically = !block;
+            }
+            catch
+            {
+            }
+        }
+
+        private static bool IsBlockImagesEnabled()
+        {
+            try
+            {
+                IAbroBrowserSettingsService settings = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+                return settings?.LoadOrDefault()?.BlockImages == true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsImageRequest(IWebResourceRequest request)
+        {
+            if (request == null)
+                return false;
+            try
+            {
+                string accept = null;
+                if (request.RequestHeaders != null
+                    && request.RequestHeaders.TryGetValue("Accept", out string header))
+                    accept = header;
+                if (!string.IsNullOrEmpty(accept)
+                    && accept.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                string path = request.Url?.Path;
+                if (string.IsNullOrEmpty(path))
+                    return false;
+                string lower = path.ToLowerInvariant();
+                return lower.EndsWith(".png", StringComparison.Ordinal)
+                    || lower.EndsWith(".jpg", StringComparison.Ordinal)
+                    || lower.EndsWith(".jpeg", StringComparison.Ordinal)
+                    || lower.EndsWith(".gif", StringComparison.Ordinal)
+                    || lower.EndsWith(".webp", StringComparison.Ordinal)
+                    || lower.EndsWith(".svg", StringComparison.Ordinal)
+                    || lower.EndsWith(".ico", StringComparison.Ordinal)
+                    || lower.EndsWith(".avif", StringComparison.Ordinal)
+                    || lower.EndsWith(".bmp", StringComparison.Ordinal);
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -1074,9 +1190,11 @@ namespace SilentNotes.Platforms
             const string bookyOpen = "Open from Booky";
             const string bookyAdd = "Add to Booky";
             const string passwords = "Passwords";
+            const string proxy = "Proxy";
             const string clearCookies = "Clear cookies";
             const string clearCache = "Clear cache";
             const string openFiles = "Open files folder";
+            string blockImages = IsBlockImagesEnabled() ? "Load images" : "Block images";
 
             string choice = await ShowTwoColumnMenuAsync(
                 "Abro",
@@ -1090,6 +1208,8 @@ namespace SilentNotes.Platforms
                 bookyOpen,
                 bookyAdd,
                 passwords,
+                proxy,
+                blockImages,
                 clearCookies,
                 clearCache,
                 openFiles).ConfigureAwait(true);
@@ -1125,6 +1245,12 @@ namespace SilentNotes.Platforms
                 case passwords:
                     await ShowPasswordPickerAsync().ConfigureAwait(true);
                     break;
+                case proxy:
+                    await ShowProxyMenuAsync().ConfigureAwait(true);
+                    break;
+                case var _ when choice == blockImages:
+                    ToggleBlockImages();
+                    break;
                 case clearCookies:
                     ClearCookies();
                     break;
@@ -1134,6 +1260,289 @@ namespace SilentNotes.Platforms
                 case openFiles:
                     await OpenFilesFolderAsync().ConfigureAwait(true);
                     break;
+            }
+        }
+
+        private void ToggleBlockImages()
+        {
+            try
+            {
+                IAbroBrowserSettingsService service = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+                if (service == null)
+                {
+                    ShowToast("Settings unavailable");
+                    return;
+                }
+
+                AbroBrowserSettingsModel settings = service.LoadOrDefault();
+                settings.BlockImages = !settings.BlockImages;
+                settings.Touch();
+                if (!service.TrySave(settings))
+                {
+                    ShowToast("Could not save settings");
+                    return;
+                }
+
+                foreach (BrowserTab tab in _tabs)
+                {
+                    ApplyBlockImagesSetting(tab);
+                    if (settings.BlockImages)
+                        InjectBlockImagesIfNeeded(tab);
+                }
+
+                ShowToast(settings.BlockImages
+                    ? "Images blocked — placeholders with links"
+                    : "Images loading enabled");
+
+                if (_current?.Native != null)
+                    _current.Native.Reload();
+            }
+            catch (Exception ex)
+            {
+                ShowToast(ex.Message);
+            }
+        }
+
+        private async Task ShowProxyMenuAsync()
+        {
+            AbroBrowserSettingsModel settings = null;
+            try
+            {
+                settings = Ioc.Instance.GetService<IAbroBrowserSettingsService>()?.LoadOrDefault();
+            }
+            catch
+            {
+            }
+
+            bool enabled = settings?.Socks5Enabled == true && settings.HasSocks5Config;
+            string status = settings == null || !settings.HasSocks5Config
+                ? "Not configured"
+                : (settings.Socks5Host + ":" + settings.Socks5Port);
+
+            const string edit = "Add / edit SOCKS5…";
+            const string remove = "Remove proxy";
+            string toggle = enabled ? "Disable proxy" : "Enable proxy";
+
+            string choice = await DisplayActionSheetAsync(
+                "Proxy · " + status,
+                "Cancel",
+                null,
+                edit,
+                toggle,
+                remove).ConfigureAwait(true);
+
+            switch (choice)
+            {
+                case edit:
+                    await EditSocks5ProxyAsync().ConfigureAwait(true);
+                    break;
+                case var _ when choice == toggle:
+                    await ToggleSocks5ProxyAsync().ConfigureAwait(true);
+                    break;
+                case remove:
+                    await RemoveSocks5ProxyAsync().ConfigureAwait(true);
+                    break;
+            }
+        }
+
+        private async Task EditSocks5ProxyAsync()
+        {
+            try
+            {
+                IAbroBrowserSettingsService service = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+                if (service == null)
+                {
+                    ShowToast("Settings unavailable");
+                    return;
+                }
+
+                AbroBrowserSettingsModel settings = service.LoadOrDefault();
+                string host = await DisplayPromptAsync(
+                    "SOCKS5 host",
+                    "Hostname or IP",
+                    "Next",
+                    "Cancel",
+                    "127.0.0.1",
+                    -1,
+                    Keyboard.Url,
+                    settings.Socks5Host ?? string.Empty).ConfigureAwait(true);
+                if (host == null)
+                    return;
+
+                string portText = await DisplayPromptAsync(
+                    "SOCKS5 port",
+                    "Port (1–65535)",
+                    "Next",
+                    "Cancel",
+                    "1080",
+                    -1,
+                    Keyboard.Numeric,
+                    settings.Socks5Port > 0 ? settings.Socks5Port.ToString(CultureInfo.InvariantCulture) : "1080")
+                    .ConfigureAwait(true);
+                if (portText == null)
+                    return;
+                if (!int.TryParse(portText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int port)
+                    || port <= 0 || port > 65535)
+                {
+                    ShowToast("Invalid port");
+                    return;
+                }
+
+                string user = await DisplayPromptAsync(
+                    "SOCKS5 username",
+                    "Optional",
+                    "Next",
+                    "Cancel",
+                    string.Empty,
+                    -1,
+                    Keyboard.Text,
+                    settings.Socks5Username ?? string.Empty).ConfigureAwait(true);
+                if (user == null)
+                    return;
+
+                string pass = await DisplayPromptAsync(
+                    "SOCKS5 password",
+                    "Optional",
+                    "Save",
+                    "Cancel",
+                    string.Empty,
+                    -1,
+                    Keyboard.Text,
+                    settings.Socks5Password ?? string.Empty).ConfigureAwait(true);
+                if (pass == null)
+                    return;
+
+                settings.Socks5Host = host.Trim();
+                settings.Socks5Port = port;
+                settings.Socks5Username = user.Trim();
+                settings.Socks5Password = pass;
+                settings.Socks5Enabled = settings.HasSocks5Config;
+                settings.Touch();
+                if (!service.TrySave(settings))
+                {
+                    ShowToast("Could not save proxy");
+                    return;
+                }
+
+                ApplySocks5Proxy(settings);
+                ShowToast(settings.Socks5Enabled
+                    ? "SOCKS5 enabled: " + settings.Socks5Host + ":" + settings.Socks5Port
+                    : "Proxy saved");
+            }
+            catch (Exception ex)
+            {
+                ShowToast(ex.Message);
+            }
+        }
+
+        private async Task ToggleSocks5ProxyAsync()
+        {
+            try
+            {
+                IAbroBrowserSettingsService service = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+                if (service == null)
+                {
+                    ShowToast("Settings unavailable");
+                    return;
+                }
+
+                AbroBrowserSettingsModel settings = service.LoadOrDefault();
+                if (!settings.HasSocks5Config)
+                {
+                    await EditSocks5ProxyAsync().ConfigureAwait(true);
+                    return;
+                }
+
+                settings.Socks5Enabled = !settings.Socks5Enabled;
+                settings.Touch();
+                if (!service.TrySave(settings))
+                {
+                    ShowToast("Could not save proxy");
+                    return;
+                }
+
+                ApplySocks5Proxy(settings);
+                ShowToast(settings.Socks5Enabled ? "SOCKS5 proxy enabled" : "SOCKS5 proxy disabled");
+            }
+            catch (Exception ex)
+            {
+                ShowToast(ex.Message);
+            }
+        }
+
+        private async Task RemoveSocks5ProxyAsync()
+        {
+            try
+            {
+                IAbroBrowserSettingsService service = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+                if (service == null)
+                {
+                    ShowToast("Settings unavailable");
+                    return;
+                }
+
+                AbroBrowserSettingsModel settings = service.LoadOrDefault();
+                settings.Socks5Enabled = false;
+                settings.Socks5Host = string.Empty;
+                settings.Socks5Port = 1080;
+                settings.Socks5Username = string.Empty;
+                settings.Socks5Password = string.Empty;
+                settings.Touch();
+                if (!service.TrySave(settings))
+                {
+                    ShowToast("Could not remove proxy");
+                    return;
+                }
+
+                ApplySocks5Proxy(settings);
+                ShowToast("Proxy removed");
+            }
+            catch (Exception ex)
+            {
+                ShowToast(ex.Message);
+            }
+
+            await Task.CompletedTask;
+        }
+
+        private void ApplySocks5Proxy(AbroBrowserSettingsModel settings, bool notifyUnsupported = true)
+        {
+            try
+            {
+                if (!AndroidX.Webkit.WebViewFeature.IsFeatureSupported(AndroidX.Webkit.WebViewFeature.ProxyOverride))
+                {
+                    if (notifyUnsupported)
+                        ShowToast("WebView proxy override not supported on this device");
+                    return;
+                }
+
+                var executor = Java.Util.Concurrent.Executors.NewSingleThreadExecutor();
+                var listener = new Java.Lang.Runnable(() => { });
+
+                if (settings != null && settings.Socks5Enabled && settings.HasSocks5Config)
+                {
+                    string rule = "socks://" + settings.Socks5Host.Trim() + ":" + settings.Socks5Port.ToString(CultureInfo.InvariantCulture);
+                    if (!string.IsNullOrWhiteSpace(settings.Socks5Username))
+                    {
+                        string user = Uri.EscapeDataString(settings.Socks5Username.Trim());
+                        string pass = Uri.EscapeDataString(settings.Socks5Password ?? string.Empty);
+                        rule = "socks://" + user + ":" + pass + "@" + settings.Socks5Host.Trim() + ":"
+                            + settings.Socks5Port.ToString(CultureInfo.InvariantCulture);
+                    }
+
+                    var config = new AndroidX.Webkit.ProxyConfig.Builder()
+                        .AddProxyRule(rule)
+                        .Build();
+                    AndroidX.Webkit.ProxyController.Instance.SetProxyOverride(config, executor, listener);
+                }
+                else
+                {
+                    AndroidX.Webkit.ProxyController.Instance.ClearProxyOverride(executor, listener);
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowToast("Proxy apply failed: " + ex.Message);
             }
         }
 
@@ -2496,6 +2905,15 @@ namespace SilentNotes.Platforms
             awv.Settings.MediaPlaybackRequiresUserGesture = true;
             try
             {
+                bool blockImages = IsBlockImagesEnabled();
+                awv.Settings.BlockNetworkImage = blockImages;
+                awv.Settings.LoadsImagesAutomatically = !blockImages;
+            }
+            catch
+            {
+            }
+            try
+            {
                 // The WebView keeps its HTTP cache in the app cache directory. This setting is
                 // deprecated and ignored on newer Android versions, so it is best effort only.
 #pragma warning disable CA1422, CS0618
@@ -2886,6 +3304,14 @@ namespace SilentNotes.Platforms
                     {
                         return new WebResourceResponse(
                             "text/plain",
+                            "utf-8",
+                            new System.IO.MemoryStream(EmptyBody));
+                    }
+
+                    if (_page.IsBlockImagesEnabled() && _page.IsImageRequest(request))
+                    {
+                        return new WebResourceResponse(
+                            "image/png",
                             "utf-8",
                             new System.IO.MemoryStream(EmptyBody));
                     }
