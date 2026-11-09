@@ -15,7 +15,6 @@ using System.Threading.Tasks;
 using Android.Content;
 using Android.Views;
 using Android.Webkit;
-using AndroidX.WebKit;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
@@ -1510,7 +1509,7 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                if (!WebViewFeature.IsFeatureSupported(WebViewFeature.ProxyOverride))
+                if (!AndroidX.WebKit.WebViewFeature.IsFeatureSupported(AndroidX.WebKit.WebViewFeature.ProxyOverride))
                 {
                     if (notifyUnsupported)
                         ShowToast("WebView proxy override not supported on this device");
@@ -1531,14 +1530,14 @@ namespace SilentNotes.Platforms
                             + settings.Socks5Port.ToString(CultureInfo.InvariantCulture);
                     }
 
-                    ProxyConfig config = new ProxyConfig.Builder()
+                    AndroidX.WebKit.ProxyConfig config = new AndroidX.WebKit.ProxyConfig.Builder()
                         .AddProxyRule(rule)
                         .Build();
-                    ProxyController.Instance.SetProxyOverride(config, executor, listener);
+                    AndroidX.WebKit.ProxyController.Instance.SetProxyOverride(config, executor, listener);
                 }
                 else
                 {
-                    ProxyController.Instance.ClearProxyOverride(executor, listener);
+                    AndroidX.WebKit.ProxyController.Instance.ClearProxyOverride(executor, listener);
                 }
             }
             catch (Exception ex)
@@ -1854,7 +1853,7 @@ namespace SilentNotes.Platforms
             }
         }
 
-        private async Task OpenSettingsPageAsync(Func<Page> createPage, string label)
+        private async Task OpenSettingsPageAsync(Func<Microsoft.Maui.Controls.Page> createPage, string label)
         {
             try
             {
