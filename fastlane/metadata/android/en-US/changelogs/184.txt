@@ -1,0 +1,2 @@
+• Fix image editor ScrollView Maui/Android ambiguity
+• Crop/blur handles, text/emoji preview, stronger blur, nav-bar inset

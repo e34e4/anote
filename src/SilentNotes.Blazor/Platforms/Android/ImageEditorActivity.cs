@@ -22,6 +22,7 @@ using APaint = Android.Graphics.Paint;
 using APath = Android.Graphics.Path;
 using APointF = Android.Graphics.PointF;
 using ARectF = Android.Graphics.RectF;
+using AScrollView = Android.Widget.ScrollView;
 using AView = Android.Views.View;
 using Color = Android.Graphics.Color;
 using IOPath = System.IO.Path;
