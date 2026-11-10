@@ -291,7 +291,7 @@ button.danger { background: var(--danger); }
 .search-go input { flex: 1; }
 .columns-wrapper {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-top: 8px;
 }
