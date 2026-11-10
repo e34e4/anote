@@ -49,9 +49,9 @@ namespace SilentNotes
 
         protected override void OnCreate(Bundle savedInstanceState)
         {
-            base.OnCreate(savedInstanceState);
-            RequestWindowFeature(WindowFeatures.NoTitle);
+            // Must be requested before base.OnCreate / content; Dialog theme already has no title.
             _floating = Intent?.GetBooleanExtra(ExtraFloating, false) ?? false;
+            base.OnCreate(savedInstanceState);
             if (_floating)
                 ConfigureFloatingWindow();
             else
@@ -218,7 +218,12 @@ namespace SilentNotes
                 }
                 else if (System.IO.File.Exists(pathOrUri))
                 {
-                    _imageView.SetImageURI(Uri.FromFile(new Java.IO.File(pathOrUri)));
+                    // Prefer decode-from-path over file:// URIs (more reliable right after a download).
+                    Android.Graphics.Bitmap bitmap = Android.Graphics.BitmapFactory.DecodeFile(pathOrUri);
+                    if (bitmap != null)
+                        _imageView.SetImageBitmap(bitmap);
+                    else
+                        _imageView.SetImageURI(Uri.FromFile(new Java.IO.File(pathOrUri)));
                 }
                 else
                 {

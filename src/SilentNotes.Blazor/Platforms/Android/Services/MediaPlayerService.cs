@@ -13,6 +13,7 @@ using Android.Content;
 using Android.Media;
 using Android.OS;
 using Android.Provider;
+using Microsoft.Maui.ApplicationModel;
 using SilentNotes.Models;
 using SilentNotes.Services;
 using AndroidEnv = Android.OS.Environment;
@@ -295,10 +296,7 @@ namespace SilentNotes.Platforms.Services
             string title = displayName ?? GuessDisplayName(normalized);
 
             if (kind == MediaKind.Image)
-            {
-                OpenImagePath(normalized, title, floating: false);
-                return Task.CompletedTask;
-            }
+                return OpenImagePath(normalized, title, floating: false);
 
             if (kind == MediaKind.Video)
             {
@@ -385,8 +383,7 @@ namespace SilentNotes.Platforms.Services
         {
             if (item == null)
                 return Task.CompletedTask;
-            OpenImagePath(item.Path, item.Name, floating: false);
-            return Task.CompletedTask;
+            return OpenImagePath(item.Path, item.Name, floating: false);
         }
 
         /// <inheritdoc/>
@@ -394,11 +391,10 @@ namespace SilentNotes.Platforms.Services
         {
             if (string.IsNullOrWhiteSpace(pathOrUri))
                 return Task.CompletedTask;
-            OpenImagePath(pathOrUri, title, floating);
-            return Task.CompletedTask;
+            return OpenImagePath(pathOrUri, title, floating);
         }
 
-        private void OpenImagePath(string pathOrUri, string title, bool floating)
+        private Task OpenImagePath(string pathOrUri, string title, bool floating)
         {
             List<string> gallery;
             int index;
@@ -422,13 +418,17 @@ namespace SilentNotes.Platforms.Services
                 }
             }
 
-            SilentNotes.ImageViewerActivity.Start(
-                GetLaunchContext(),
-                pathOrUri,
-                title ?? Path.GetFileName(pathOrUri),
-                gallery,
-                index,
-                floating);
+            // TG downloads resume on a background thread; StartActivity must run on the UI thread.
+            return MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                SilentNotes.ImageViewerActivity.Start(
+                    GetLaunchContext(),
+                    pathOrUri,
+                    title ?? Path.GetFileName(pathOrUri),
+                    gallery,
+                    index,
+                    floating);
+            });
         }
 
         private Context GetLaunchContext()

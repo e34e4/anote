@@ -1346,6 +1346,10 @@ namespace SilentNotes.ViewModels
                 if (result.Success)
                 {
                     StatusMessage = string.Format(_languageService?["tg_downloaded"] ?? "Saved: {0}", result.LocalPath ?? string.Empty);
+                    // Finish the busy/status UI update before launching the viewer so Blazor can
+                    // paint "Saved…" and so StartActivity runs after the download continuation.
+                    IsBusy = false;
+                    NotifyChanged();
                     await TryOpenDownloadedImageAsync(message, result.LocalPath);
                 }
                 else
@@ -1370,15 +1374,41 @@ namespace SilentNotes.ViewModels
 
             try
             {
+                // Brief delay + readiness wait: download ends on a background thread and the file
+                // may not be fully visible to the image decoder for a moment.
+                await Task.Delay(300).ConfigureAwait(true);
+                if (!await WaitForReadableFileAsync(localPath).ConfigureAwait(true))
+                    return;
+
                 string title = !string.IsNullOrWhiteSpace(message?.MediaFileName)
                     ? message.MediaFileName
                     : System.IO.Path.GetFileName(localPath);
-                await _mediaPlayerService.OpenImagePathAsync(localPath, title, floating: true);
+                await _mediaPlayerService.OpenImagePathAsync(localPath, title, floating: true).ConfigureAwait(true);
             }
             catch
             {
                 // Download already succeeded; viewing is best-effort.
             }
+        }
+
+        private static async Task<bool> WaitForReadableFileAsync(string localPath)
+        {
+            for (int attempt = 0; attempt < 10; attempt++)
+            {
+                try
+                {
+                    var info = new System.IO.FileInfo(localPath);
+                    if (info.Exists && info.Length > 0)
+                        return true;
+                }
+                catch
+                {
+                }
+
+                await Task.Delay(100).ConfigureAwait(true);
+            }
+
+            return false;
         }
 
         private static bool IsViewableImageDownload(TelegramMessageModel message, string localPath)

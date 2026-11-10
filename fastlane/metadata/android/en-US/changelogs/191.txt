@@ -1,0 +1,1 @@
+• Fix TG photo floating viewer: open on UI thread after a short post-save delay
