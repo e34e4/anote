@@ -101,7 +101,7 @@ namespace SilentNotes
             closeButton.LayoutParameters = closeLp;
             closeButton.Click += (_, __) => Finish();
 
-            Button cropButton = new Button(this)
+            var cropButton = new Android.Widget.Button(this)
             {
                 Text = "Crop",
                 TextSize = 13,

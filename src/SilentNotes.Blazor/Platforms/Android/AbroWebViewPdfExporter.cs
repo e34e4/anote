@@ -60,8 +60,10 @@ namespace SilentNotes.Platforms
                 Directory.CreateDirectory(directory);
 
             int contentWidth = Math.Max(webView.Width, 1);
+            // ContentHeight is CSS px; ScaleX tracks the rendered zoom without the deprecated Scale API.
+            float pageScale = webView.ScaleX > 0.01f ? webView.ScaleX : 1f;
             int contentHeight = Math.Max(
-                (int)Math.Ceiling(webView.ContentHeight * webView.Scale),
+                (int)Math.Ceiling(webView.ContentHeight * pageScale),
                 Math.Max(webView.Height, 1));
 
             // Cap extreme pages to keep memory reasonable (~8k CSS px).
@@ -74,7 +76,7 @@ namespace SilentNotes.Platforms
             {
                 bitmap = Bitmap.CreateBitmap(contentWidth, contentHeight, Bitmap.Config.Argb8888);
                 var canvas = new Canvas(bitmap);
-                canvas.DrawColor(Color.White);
+                canvas.DrawColor(Android.Graphics.Color.White);
                 webView.Draw(canvas);
 
                 document = new PdfDocument();
