@@ -24,6 +24,7 @@ import { SearchNReplace } from './search-n-replace'
 import { CheckableParagraph, registerIsShoppingModeActive as checklistRegisterIsShoppingModeActive } from "./checkable-paragraph-extension";
 import { ScrollTo } from './scroll-to-extension'
 import { TabHandler } from './tab-handler-extension'
+import { WhitespaceMarks } from './whitespace-marks-extension'
 import { TiptapHelper } from "./tiptap-helper";
 
 export { exportAsPlainText, exportChecklistAsPlainText } from './tiptap-plain-text-exporter'
@@ -91,6 +92,7 @@ export function initializeEditor(editorElement: HTMLElement): any {
         }),
         ScrollTo,
         TabHandler,
+        WhitespaceMarks,
       ],
       editorProps: {
         transformPastedHTML(html) {

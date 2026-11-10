@@ -35,7 +35,17 @@ td { word-wrap: anywhere; } /* table should not exceed device width */
 	margin: 0;
 	padding: 0 20px 0 4px;
 }
-.overflow-menu { max-height: 80%; overflow: auto }
+/* Keep overflow menus scrollable so long item lists stay reachable on short screens. */
+.overflow-menu {
+	max-height: min(80vh, calc(100dvh - 72px)) !important;
+	overflow-y: auto !important;
+	-webkit-overflow-scrolling: touch;
+}
+.overflow-menu .mud-list,
+.overflow-menu .mud-menu-list {
+	max-height: none;
+	overflow: visible;
+}
 
 .fab-position {
 	position: fixed;
@@ -339,6 +349,69 @@ div.ProseMirror {
 }
 div.ProseMirror:focus {
 	outline: none;
+}
+
+/* Line numbers + whitespace glyphs in the individual note editor (main TipTap view). */
+.note-viewer.detail-view:not(.checklist) .ProseMirror {
+	counter-reset: note-line;
+	padding-left: 3.2em;
+	position: relative;
+}
+.note-viewer.detail-view:not(.checklist) .ProseMirror > * {
+	counter-increment: note-line;
+	position: relative;
+}
+.note-viewer.detail-view:not(.checklist) .ProseMirror > *::before {
+	content: counter(note-line);
+	position: absolute;
+	left: -2.9em;
+	width: 2.4em;
+	text-align: right;
+	color: #888888;
+	font-size: 0.82em;
+	line-height: inherit;
+	user-select: none;
+	pointer-events: none;
+	font-variant-numeric: tabular-nums;
+}
+.note-viewer.detail-view.dark:not(.checklist) .ProseMirror > *::before {
+	color: #777777;
+}
+
+.note-viewer .pm-space {
+	position: relative;
+}
+.note-viewer .pm-space::after {
+	content: "·";
+	position: absolute;
+	left: 0;
+	top: 0;
+	opacity: 0.72;
+	color: #b0b0b0;
+	pointer-events: none;
+}
+.note-viewer .pm-tab {
+	position: relative;
+}
+.note-viewer .pm-tab::after {
+	content: "→";
+	position: absolute;
+	left: 0;
+	top: 0;
+	opacity: 0.55;
+	color: #a8a8a8;
+	pointer-events: none;
+}
+.note-viewer .pm-eol {
+	display: inline-block;
+	width: 0;
+	overflow: visible;
+	color: #9ccc65;
+	opacity: 0.9;
+	font-size: 0.85em;
+	vertical-align: baseline;
+	pointer-events: none;
+	user-select: none;
 }
 
 .mud-main-content
