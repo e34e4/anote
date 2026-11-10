@@ -76,7 +76,7 @@ namespace SilentNotes.Platforms
             {
                 bitmap = Bitmap.CreateBitmap(contentWidth, contentHeight, Bitmap.Config.Argb8888);
                 var canvas = new Canvas(bitmap);
-                canvas.DrawColor(Android.Graphics.Color.White);
+                canvas.DrawColor(global::Android.Graphics.Color.White);
                 webView.Draw(canvas);
 
                 document = new PdfDocument();
