@@ -1,0 +1,2 @@
+• Finish Android ScrollView/HorizontalScrollView aliases in image editor
+• Crop/blur handles, text/emoji preview, stronger blur, nav-bar inset

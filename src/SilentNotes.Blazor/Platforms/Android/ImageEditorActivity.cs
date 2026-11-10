@@ -235,9 +235,9 @@ namespace SilentNotes
             UpdateToolButtonStyles();
         }
 
-        private HorizontalScrollView WrapScroll(AView child)
+        private AHorizontalScrollView WrapScroll(AView child)
         {
-            var scroll = new HorizontalScrollView(this);
+            var scroll = new AHorizontalScrollView(this);
             scroll.AddView(child);
             return scroll;
         }
