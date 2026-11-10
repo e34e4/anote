@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Android.Content;
 using Android.Views;
 using Android.Webkit;
+using Java.Interop;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
@@ -2350,6 +2351,10 @@ namespace SilentNotes.Platforms
             try
             {
                 EnsureDefaultBookmarksPage();
+                IAbroBookmarkStoreService store = TryGetBookmarkStoreService();
+                if (store != null)
+                    AbroBookmarkHtmlWriter.TryWrite(_bookmarksDir, store.LoadOrDefault());
+
                 string htmlPath = Path.Combine(_bookmarksDir, AbroBookmarkHtmlWriter.HtmlFileName);
                 if (!File.Exists(htmlPath))
                 {
@@ -2365,7 +2370,8 @@ namespace SilentNotes.Platforms
                 }
 
                 string fileUrl = new Uri(htmlPath).AbsoluteUri;
-                OpenOrNavigate(fileUrl);
+                // Always open bookmarks in their own tab so browsing links leave the page intact.
+                AddTab(fileUrl, select: true);
             }
             catch (Exception ex)
             {
@@ -3061,6 +3067,15 @@ namespace SilentNotes.Platforms
             awv.SetDownloadListener(new AbroDownloadListener(this));
             awv.LongClickable = true;
             awv.SetOnLongClickListener(new AbroLinkLongClickListener(this, awv));
+            try
+            {
+                awv.Settings.SetSupportMultipleWindows(true);
+                awv.Settings.JavaScriptCanOpenWindowsAutomatically = true;
+                awv.AddJavascriptInterface(new AbroBookmarkJsBridge(this), "AbroBm");
+            }
+            catch
+            {
+            }
 
             if (ReferenceEquals(tab, _current))
             {
@@ -3446,7 +3461,24 @@ namespace SilentNotes.Platforms
 
             public override bool ShouldOverrideUrlLoading(AWebView view, IWebResourceRequest request)
             {
-                return TryOpenExternally(request?.Url?.ToString());
+                string url = request?.Url?.ToString();
+                if (_page.IsBookmarksDocument(_tab)
+                    && request != null
+                    && request.IsForMainFrame
+                    && IsHttpOrHttps(url))
+                {
+                    MainThread.BeginInvokeOnMainThread(() => _page.AddTab(url, select: true));
+                    return true;
+                }
+
+                return TryOpenExternally(url);
+            }
+
+            private static bool IsHttpOrHttps(string url)
+            {
+                return !string.IsNullOrWhiteSpace(url)
+                    && (url.StartsWith("http:", StringComparison.OrdinalIgnoreCase)
+                        || url.StartsWith("https:", StringComparison.OrdinalIgnoreCase));
             }
 
             public override void OnPageStarted(AWebView view, string url, global::Android.Graphics.Bitmap favicon)
@@ -3513,6 +3545,141 @@ namespace SilentNotes.Platforms
             {
                 base.OnReceivedTitle(view, title);
                 _page.OnTitleChanged(_tab, title);
+            }
+
+            public override bool OnCreateWindow(AWebView view, bool isDialog, bool isUserGesture, Android.OS.Message resultMsg)
+            {
+                // Capture the target URL from window.open / target=_blank, then open an Abro tab.
+                try
+                {
+                    var transportWebView = new AWebView(view.Context);
+                    transportWebView.SetWebViewClient(new NewWindowCaptureClient(_page));
+                    if (resultMsg?.Obj is AWebView.WebViewTransport transport)
+                    {
+                        transport.WebView = transportWebView;
+                        resultMsg.SendToTarget();
+                        return true;
+                    }
+                }
+                catch
+                {
+                }
+
+                return false;
+            }
+        }
+
+        private sealed class NewWindowCaptureClient : WebViewClient
+        {
+            private readonly AbroBrowserPage _page;
+            private bool _opened;
+
+            public NewWindowCaptureClient(AbroBrowserPage page)
+            {
+                _page = page;
+            }
+
+            public override bool ShouldOverrideUrlLoading(AWebView view, IWebResourceRequest request)
+            {
+                string url = request?.Url?.ToString();
+                if (!_opened && !string.IsNullOrWhiteSpace(url)
+                    && (url.StartsWith("http:", StringComparison.OrdinalIgnoreCase)
+                        || url.StartsWith("https:", StringComparison.OrdinalIgnoreCase)))
+                {
+                    _opened = true;
+                    MainThread.BeginInvokeOnMainThread(() => _page.AddTab(url, select: true));
+                    try { view?.StopLoading(); } catch { }
+                    return true;
+                }
+                return true;
+            }
+        }
+
+        private bool IsBookmarksDocument(BrowserTab tab)
+        {
+            string url = tab?.Url ?? tab?.PendingUrl ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(url))
+                return false;
+            return url.IndexOf(AbroBookmarkHtmlWriter.HtmlFileName, StringComparison.OrdinalIgnoreCase) >= 0
+                || url.IndexOf("/abro/bookmarks/", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private sealed class AbroBookmarkJsBridge : Java.Lang.Object
+        {
+            private readonly AbroBrowserPage _page;
+
+            public AbroBookmarkJsBridge(AbroBrowserPage page)
+            {
+                _page = page;
+            }
+
+            [JavascriptInterface]
+            [Export("openTab")]
+            public void OpenTab(string url)
+            {
+                if (string.IsNullOrWhiteSpace(url))
+                    return;
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    _page.AddTab(url.Trim(), select: true);
+                });
+            }
+
+            [JavascriptInterface]
+            [Export("persist")]
+            public void Persist(string portableJson)
+            {
+                if (string.IsNullOrWhiteSpace(portableJson))
+                    return;
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    try
+                    {
+                        IAbroBookmarkStoreService store = TryGetBookmarkStoreService();
+                        if (store == null)
+                            return;
+                        if (store.ReplaceFromPortableJson(portableJson))
+                            _page.ScheduleBookmarkSync();
+                    }
+                    catch
+                    {
+                    }
+                });
+            }
+
+            [JavascriptInterface]
+            [Export("exportFile")]
+            public bool ExportFile()
+            {
+                try
+                {
+                    IAbroBookmarkStoreService store = TryGetBookmarkStoreService();
+                    return store != null && store.TryExportPortableFile();
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            [JavascriptInterface]
+            [Export("importFile")]
+            public string ImportFile()
+            {
+                try
+                {
+                    IAbroBookmarkStoreService store = TryGetBookmarkStoreService();
+                    if (store == null || !store.TryImportPortableFile())
+                        return null;
+                    AbroBookmarkStoreModel model = store.LoadOrDefault();
+                    AbroBookmarkHtmlWriter.TryWrite(_page._bookmarksDir, model);
+                    _page.ScheduleBookmarkSync();
+                    return AbroBookmarkHtmlWriter.BuildPortableJson(model);
+                }
+                catch
+                {
+                    return null;
+                }
             }
         }
 

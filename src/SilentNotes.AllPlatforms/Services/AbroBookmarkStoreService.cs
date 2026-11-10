@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using SilentNotes.Models;
@@ -25,10 +26,14 @@ namespace SilentNotes.Services
             string root = AbroAiStoreService.ResolveRootDirectory();
             StoreFilePath = Path.Combine(root, "bookmarks", "store.json");
             LegacyTsvPath = Path.Combine(root, "bookmarks", "bookmarks.txt");
+            PortableFilePath = Path.Combine(root, "bookmarks.json");
         }
 
         /// <inheritdoc/>
         public string StoreFilePath { get; }
+
+        /// <inheritdoc/>
+        public string PortableFilePath { get; }
 
         private string LegacyTsvPath { get; }
 
@@ -150,6 +155,12 @@ namespace SilentNotes.Services
                     if (!string.IsNullOrWhiteSpace(title))
                         existing.Title = title.Trim();
                     existing.ModifiedAt = DateTime.UtcNow;
+                    // Move recently used bookmarks to the top when move-to-top is enabled.
+                    if (store.IsMoveToTopEnabled)
+                    {
+                        store.Items.Remove(existing);
+                        store.Items.Insert(0, existing);
+                    }
                 }
                 else
                 {
@@ -162,6 +173,66 @@ namespace SilentNotes.Services
                 }
 
                 return TrySaveUnlocked(store);
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool ReplaceFromPortableJson(string portableJson)
+        {
+            if (string.IsNullOrWhiteSpace(portableJson))
+                return false;
+
+            if (!AbroBookmarkHtmlWriter.TryParsePortable(portableJson, out AbroBookmarkStoreModel parsed) || parsed == null)
+                return false;
+
+            lock (_lock)
+            {
+                AbroBookmarkStoreModel local = LoadOrDefault();
+                // Preserve ids when URL already exists.
+                var byUrl = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+                foreach (AbroBookmarkItemModel item in local.Items)
+                {
+                    if (!string.IsNullOrWhiteSpace(item.Url) && !byUrl.ContainsKey(item.Url))
+                        byUrl[item.Url] = item.Id;
+                }
+
+                foreach (AbroBookmarkItemModel item in parsed.Items)
+                {
+                    if (byUrl.TryGetValue(item.Url ?? string.Empty, out Guid id))
+                        item.Id = id;
+                    item.ModifiedAt = DateTime.UtcNow;
+                }
+
+                local.Items = parsed.Items;
+                local.Groups = parsed.Groups ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                local.IsMoveToTopEnabled = parsed.IsMoveToTopEnabled;
+                return TrySaveUnlocked(local);
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool TryExportPortableFile()
+        {
+            lock (_lock)
+            {
+                AbroBookmarkStoreModel store = LoadOrDefault();
+                return AbroBookmarkHtmlWriter.TryWritePortableFile(PortableFilePath, store);
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool TryImportPortableFile()
+        {
+            try
+            {
+                if (!File.Exists(PortableFilePath))
+                    return false;
+                string json = File.ReadAllText(PortableFilePath, Encoding.UTF8);
+                return ReplaceFromPortableJson(json);
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -221,6 +292,7 @@ namespace SilentNotes.Services
                 WriteLegacyTsv(store);
                 string bookmarksDir = Path.GetDirectoryName(StoreFilePath);
                 AbroBookmarkHtmlWriter.TryWrite(bookmarksDir, store);
+                AbroBookmarkHtmlWriter.TryWritePortableFile(PortableFilePath, store);
                 _cached = store;
                 return true;
             }

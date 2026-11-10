@@ -1,0 +1,3 @@
+• Abro bookmarks: move-to-top, favicons, add/edit/delete, Yandex & Startpage search
+• Abro bookmarks: export/import /sdcard/abro/bookmarks.json; links open in new tabs
+• Image editor: fix Android/Maui type build errors from 1.3.73

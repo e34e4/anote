@@ -328,7 +328,7 @@ namespace SilentNotes
                 return;
             }
 
-            ARectF r = rect.Value;
+            ARectF r = rect;
             int x = Math.Max(0, (int)Math.Floor(r.Left));
             int y = Math.Max(0, (int)Math.Floor(r.Top));
             int w = Math.Max(1, (int)Math.Ceiling(r.Width()));
@@ -355,7 +355,7 @@ namespace SilentNotes
                 return;
             }
 
-            ARectF r = rect.Value;
+            ARectF r = rect;
             int x = Math.Max(0, (int)Math.Floor(r.Left));
             int y = Math.Max(0, (int)Math.Floor(r.Top));
             int w = Math.Max(1, (int)Math.Ceiling(r.Width()));
@@ -394,7 +394,7 @@ namespace SilentNotes
             using (var paint = new APaint { AntiAlias = true, Color = Palette[_brushColorIndex], TextSize = Math.Max(12, _bitmap.Width / 18f) })
             {
                 paint.SetTypeface(_pendingTypeface ?? Typeface.Default);
-                canvas.DrawText(_pendingText, pos.Value.X, pos.Value.Y, paint);
+                canvas.DrawText(_pendingText, pos.X, pos.Y, paint);
             }
             _canvas.SetBitmap(_bitmap);
             CancelTool();
@@ -416,7 +416,7 @@ namespace SilentNotes
             using (var canvas = new Canvas(_bitmap))
             using (var paint = new APaint { AntiAlias = true, TextSize = textSize, Color = Color.White })
             {
-                canvas.DrawText(_pendingEmoji, pos.Value.X, pos.Value.Y, paint);
+                canvas.DrawText(_pendingEmoji, pos.X, pos.Y, paint);
             }
             _canvas.SetBitmap(_bitmap);
             CancelTool();
@@ -1292,7 +1292,7 @@ namespace SilentNotes
             {
                 if (_arrowStart == null || _arrowEnd == null)
                     return null;
-                return (_arrowStart.Value, _arrowEnd.Value);
+                return (_arrowStart, _arrowEnd);
             }
 
             protected override void OnSizeChanged(int w, int h, int oldw, int oldh)
@@ -1337,7 +1337,7 @@ namespace SilentNotes
                 if (_bitmap == null || Mode == ToolMode.None)
                     return false;
 
-                APointF? img = ScreenToImage(e.GetX(), e.GetY());
+                APointF img = ScreenToImage(e.GetX(), e.GetY());
                 if (img == null)
                     return true;
 
@@ -1345,17 +1345,17 @@ namespace SilentNotes
                 {
                     case ToolMode.Crop:
                     case ToolMode.Blur:
-                        HandleSelectionTouch(e, img.Value);
+                        HandleSelectionTouch(e, img);
                         break;
                     case ToolMode.Brush:
-                        HandleBrushTouch(e, img.Value);
+                        HandleBrushTouch(e, img);
                         break;
                     case ToolMode.Text:
                     case ToolMode.Emoji:
-                        HandlePlacementTouch(e, img.Value);
+                        HandlePlacementTouch(e, img);
                         break;
                     case ToolMode.Arrow:
-                        HandleArrowTouch(e, img.Value);
+                        HandleArrowTouch(e, img);
                         break;
                 }
 
@@ -1439,8 +1439,8 @@ namespace SilentNotes
                         _dragging = true;
                         if (_arrowStart != null && _arrowEnd != null)
                         {
-                            APointF s = ImageToScreen(_arrowStart.Value);
-                            APointF en = ImageToScreen(_arrowEnd.Value);
+                            APointF s = ImageToScreen(_arrowStart);
+                            APointF en = ImageToScreen(_arrowEnd);
                             float ds = Dist(e.GetX(), e.GetY(), s.X, s.Y);
                             float de = Dist(e.GetX(), e.GetY(), en.X, en.Y);
                             if (ds <= hit || de <= hit)
@@ -1521,7 +1521,7 @@ namespace SilentNotes
 
                 if (_placement != null && (Mode == ToolMode.Text || Mode == ToolMode.Emoji))
                 {
-                    APointF s = ImageToScreen(_placement.Value);
+                    APointF s = ImageToScreen(_placement);
                     canvas.DrawCircle(s.X, s.Y, 10f, _handlePaint);
                     _overlayPaint.Color = Color.Argb(200, 255, 255, 255);
                     canvas.DrawCircle(s.X, s.Y, 12f, _overlayPaint);
@@ -1529,8 +1529,8 @@ namespace SilentNotes
 
                 if (Mode == ToolMode.Arrow && _arrowStart != null && _arrowEnd != null)
                 {
-                    APointF s = ImageToScreen(_arrowStart.Value);
-                    APointF en = ImageToScreen(_arrowEnd.Value);
+                    APointF s = ImageToScreen(_arrowStart);
+                    APointF en = ImageToScreen(_arrowEnd);
                     using var paint = new APaint { AntiAlias = true, StrokeWidth = Math.Max(2f, ArrowStroke * _scale), Color = ArrowColor };
                     paint.SetStyle(APaint.Style.Stroke);
                     paint.StrokeCap = APaint.Cap.Round;

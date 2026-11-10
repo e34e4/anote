@@ -21,6 +21,8 @@ namespace SilentNotes.Models
             Version = 1;
             UpdatedAt = DateTime.UtcNow;
             Items = new List<AbroBookmarkItemModel>();
+            Groups = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            IsMoveToTopEnabled = true;
         }
 
         /// <summary>Gets or sets the store format version.</summary>
@@ -31,6 +33,12 @@ namespace SilentNotes.Models
 
         /// <summary>Gets or sets the bookmark items.</summary>
         public List<AbroBookmarkItemModel> Items { get; set; }
+
+        /// <summary>Gets or sets group name → color (linqs-compatible).</summary>
+        public Dictionary<string, string> Groups { get; set; }
+
+        /// <summary>Gets or sets whether opening a bookmark moves it to the top of the list.</summary>
+        public bool IsMoveToTopEnabled { get; set; }
 
         /// <summary>
         /// Touches <see cref="UpdatedAt"/> to now (UTC).

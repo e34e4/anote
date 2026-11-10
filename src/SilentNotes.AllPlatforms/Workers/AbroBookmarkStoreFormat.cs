@@ -45,6 +45,24 @@ namespace SilentNotes.Workers
             if (TryGetUtcDateTime(obj, "updatedAt", out DateTime updatedAt))
                 store.UpdatedAt = updatedAt;
 
+            if (obj["isMoveToTopEnabled"] != null && obj["isMoveToTopEnabled"].GetValueKind() == JsonValueKind.True)
+                store.IsMoveToTopEnabled = true;
+            else if (obj["isMoveToTopEnabled"] != null && obj["isMoveToTopEnabled"].GetValueKind() == JsonValueKind.False)
+                store.IsMoveToTopEnabled = false;
+
+            if (obj["groups"] is JsonObject groupsObj)
+            {
+                foreach (KeyValuePair<string, JsonNode> pair in groupsObj)
+                {
+                    if (string.IsNullOrWhiteSpace(pair.Key))
+                        continue;
+                    string color = pair.Value?.GetValueKind() == JsonValueKind.String
+                        ? pair.Value.GetValue<string>()
+                        : "#2481cc";
+                    store.Groups[pair.Key] = color ?? "#2481cc";
+                }
+            }
+
             if (obj["items"] is JsonArray items)
             {
                 foreach (JsonNode node in items)
@@ -56,6 +74,7 @@ namespace SilentNotes.Workers
                         bookmark.Id = id;
                     bookmark.Url = GetString(item, "url") ?? string.Empty;
                     bookmark.Title = GetString(item, "title") ?? string.Empty;
+                    bookmark.Group = GetString(item, "group") ?? string.Empty;
                     if (TryGetUtcDateTime(item, "modifiedAt", out DateTime modifiedAt))
                         bookmark.ModifiedAt = modifiedAt;
                     if (string.IsNullOrWhiteSpace(bookmark.Url))
@@ -84,14 +103,24 @@ namespace SilentNotes.Workers
                     ["id"] = bookmark.Id.ToString(),
                     ["url"] = bookmark.Url ?? string.Empty,
                     ["title"] = bookmark.Title ?? string.Empty,
+                    ["group"] = bookmark.Group ?? string.Empty,
                     ["modifiedAt"] = ToIso(bookmark.ModifiedAt),
                 });
+            }
+
+            var groups = new JsonObject();
+            foreach (KeyValuePair<string, string> pair in store.Groups ?? new Dictionary<string, string>())
+            {
+                if (!string.IsNullOrWhiteSpace(pair.Key))
+                    groups[pair.Key] = pair.Value ?? "#2481cc";
             }
 
             var root = new JsonObject
             {
                 ["version"] = store.Version > 0 ? store.Version : 1,
                 ["updatedAt"] = ToIso(store.UpdatedAt == default ? DateTime.UtcNow : store.UpdatedAt),
+                ["isMoveToTopEnabled"] = store.IsMoveToTopEnabled,
+                ["groups"] = groups,
                 ["items"] = items,
             };
 

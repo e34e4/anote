@@ -20,6 +20,7 @@ namespace SilentNotes.Models
             Id = Guid.NewGuid();
             Url = string.Empty;
             Title = string.Empty;
+            Group = string.Empty;
             ModifiedAt = DateTime.UtcNow;
         }
 
@@ -31,6 +32,9 @@ namespace SilentNotes.Models
 
         /// <summary>Gets or sets the bookmark title.</summary>
         public string Title { get; set; }
+
+        /// <summary>Gets or sets the optional group name (linqs-style).</summary>
+        public string Group { get; set; }
 
         /// <summary>Gets or sets the UTC timestamp of the last local/remote change.</summary>
         public DateTime ModifiedAt { get; set; }
@@ -45,6 +49,7 @@ namespace SilentNotes.Models
             target.Id = Id;
             target.Url = Url ?? string.Empty;
             target.Title = Title ?? string.Empty;
+            target.Group = Group ?? string.Empty;
             target.ModifiedAt = ModifiedAt;
         }
     }

@@ -29,5 +29,20 @@ namespace SilentNotes.Services
 
         /// <summary>Adds or updates a bookmark for the given URL.</summary>
         bool AddOrUpdate(string url, string title);
+
+        /// <summary>
+        /// Replaces local bookmarks from a linqs-style portable JSON payload
+        /// (<c>groups</c> / <c>bookmarks</c> / <c>isMoveToTopEnabled</c>).
+        /// </summary>
+        bool ReplaceFromPortableJson(string portableJson);
+
+        /// <summary>Exports the current store as linqs-style JSON to <c>/sdcard/abro/bookmarks.json</c>.</summary>
+        bool TryExportPortableFile();
+
+        /// <summary>Imports linqs-style JSON from <c>/sdcard/abro/bookmarks.json</c>.</summary>
+        bool TryImportPortableFile();
+
+        /// <summary>Gets the absolute path of the portable export file.</summary>
+        string PortableFilePath { get; }
     }
 }
