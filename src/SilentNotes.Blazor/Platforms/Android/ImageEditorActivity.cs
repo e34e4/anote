@@ -22,6 +22,7 @@ using APaint = Android.Graphics.Paint;
 using APath = Android.Graphics.Path;
 using APointF = Android.Graphics.PointF;
 using ARectF = Android.Graphics.RectF;
+using AHorizontalScrollView = Android.Widget.HorizontalScrollView;
 using AScrollView = Android.Widget.ScrollView;
 using AView = Android.Views.View;
 using Color = Android.Graphics.Color;
@@ -223,7 +224,7 @@ namespace SilentNotes
                 ("Save", () => Save(overwrite: true)),
                 ("Save as", () => PromptSaveAs()))));
 
-            var toolsScroll = new ScrollView(this);
+            var toolsScroll = new AScrollView(this);
             toolsScroll.LayoutParameters = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
             toolsScroll.AddView(tools);

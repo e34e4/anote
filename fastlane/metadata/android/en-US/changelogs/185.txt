@@ -1,0 +1,2 @@
+• Actually use Android ScrollView alias in image editor build
+• Crop/blur handles, text/emoji preview, stronger blur, nav-bar inset
