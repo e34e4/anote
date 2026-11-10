@@ -297,7 +297,7 @@ button.danger { background: var(--danger); }
 }
 .bookmark {
   display: flex; align-items: center; gap: 6px;
-  padding: 6px 6px 6px 10px; border-radius: 8px;
+  padding: 6px 4px 6px 10px; border-radius: 8px;
   background: var(--surface); border: 1px solid var(--border);
   min-height: 36px;
 }
@@ -311,35 +311,44 @@ button.danger { background: var(--danger); }
   width: 100%; height: 100%; border-radius: 50%; background: #4CAF50;
 }
 .bookmark-link {
-  flex: 1; min-width: 0; color: inherit; text-decoration: none;
+  flex: 1 1 auto; min-width: 0; color: inherit; text-decoration: none;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px;
 }
-.bookmark-checkbox {
-  width: 16px;
-  height: 16px;
-  margin: 0 2px 0 0;
-  padding: 0;
-  flex-shrink: 0;
-  align-self: center;
-  accent-color: var(--accent);
-  -webkit-appearance: none;
-  appearance: none;
-  border: 1.5px solid #cfcfcf;
+/* Custom check control — native Android WebView checkboxes ignore size CSS. */
+.bookmark-check {
+  box-sizing: border-box;
+  flex: 0 0 20px;
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  max-width: 20px !important;
+  min-height: 20px !important;
+  max-height: 20px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 1.5px solid #cfcfcf !important;
   border-radius: 3px;
-  background: transparent;
-  display: inline-grid;
-  place-content: center;
+  background: transparent !important;
+  color: transparent;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
-.bookmark-checkbox:checked {
-  background: var(--accent);
-  border-color: var(--accent);
+.bookmark-check[aria-checked="true"] {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #fff;
 }
-.bookmark-checkbox:checked::after {
-  content: "";
-  width: 8px;
-  height: 8px;
-  background: #fff;
-  border-radius: 1px;
+.bookmark-check[aria-checked="true"]::before {
+  content: "✓";
+  font-size: 12px;
+  line-height: 1;
+  color: #fff;
 }
 .hidden { display: none !important; }
 </style>
@@ -503,7 +512,7 @@ function moveBookmarkToTop(url) {
 }
 
 function handleBookmarkClick(e, url) {
-  if (e.target && e.target.classList && e.target.classList.contains('bookmark-checkbox'))
+  if (e.target && e.target.closest && e.target.closest('.bookmark-check'))
     return false;
   e.preventDefault();
   e.stopPropagation();
@@ -533,14 +542,18 @@ function resetEditingState() {
   groupSelectInput.value = '';
   editingBookmarkUrl = null;
   addModifyBtn.textContent = 'Add';
-  document.querySelectorAll('.bookmark-checkbox:checked').forEach(function (cb) { cb.checked = false; });
+  document.querySelectorAll('.bookmark-check[aria-checked="true"]').forEach(function (btn) {
+    btn.setAttribute('aria-checked', 'false');
+  });
 }
 
-function selectBookmarkForEditing(url, checkbox) {
-  if (checkbox.checked) {
-    document.querySelectorAll('.bookmark-checkbox:checked').forEach(function (cb) {
-      if (cb !== checkbox) cb.checked = false;
-    });
+function toggleBookmarkCheck(url, btn) {
+  const willCheck = btn.getAttribute('aria-checked') !== 'true';
+  document.querySelectorAll('.bookmark-check[aria-checked="true"]').forEach(function (other) {
+    if (other !== btn) other.setAttribute('aria-checked', 'false');
+  });
+  if (willCheck) {
+    btn.setAttribute('aria-checked', 'true');
     const bookmark = allBookmarks.find(function (bm) { return bm.url === url; });
     if (bookmark) {
       nameInput.value = bookmark.name;
@@ -550,8 +563,10 @@ function selectBookmarkForEditing(url, checkbox) {
       addModifyBtn.textContent = 'Modify';
       nameInput.focus();
     }
-  } else if (editingBookmarkUrl === url) {
-    resetEditingState();
+  } else {
+    btn.setAttribute('aria-checked', 'false');
+    if (editingBookmarkUrl === url)
+      resetEditingState();
   }
   filterBookmarks(searchInput.value);
 }
@@ -620,14 +635,14 @@ function renderBookmarks(items) {
   container.innerHTML = items.map(function (bm) {
     const faviconUrl = getFaviconUrl(bm.url);
     const groupColor = bm.group && groups[bm.group] ? groups[bm.group] : '';
-    const selected = bm.url === editingBookmarkUrl ? ' checked' : '';
+    const selected = bm.url === editingBookmarkUrl ? 'true' : 'false';
     const safeUrl = String(bm.url || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     return '<div class="bookmark" data-group="' + escapeHtml(bm.group || '') + '" style="--group-color-variable:' + escapeHtml(groupColor) + '">'
       + '<div class="bookmark-icon"><img src="' + faviconUrl + '" alt=""></div>'
       + '<a class="bookmark-link" href="' + escapeHtml(bm.url) + '" target="_blank" rel="noopener noreferrer"'
       + ' onclick="return handleBookmarkClick(event, \'' + safeUrl + '\')">' + escapeHtml(bm.name) + '</a>'
-      + '<input type="checkbox" class="bookmark-checkbox"' + selected
-      + ' onchange="selectBookmarkForEditing(\'' + safeUrl + '\', this)">'
+      + '<button type="button" class="bookmark-check" aria-checked="' + selected + '"'
+      + ' aria-label="Select bookmark" onclick="event.stopPropagation(); toggleBookmarkCheck(\'' + safeUrl + '\', this)"></button>'
       + '</div>';
   }).join('');
 
