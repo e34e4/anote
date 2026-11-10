@@ -1,0 +1,2 @@
+• Fix Abro Android.OS namespace clash in bookmarks new-tab handler
+• Image editor PointF/RectF build fix; Abro bookmarks linqs-style UI

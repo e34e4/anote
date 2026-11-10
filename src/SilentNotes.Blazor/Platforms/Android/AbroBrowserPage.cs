@@ -3547,7 +3547,7 @@ namespace SilentNotes.Platforms
                 _page.OnTitleChanged(_tab, title);
             }
 
-            public override bool OnCreateWindow(AWebView view, bool isDialog, bool isUserGesture, Android.OS.Message resultMsg)
+            public override bool OnCreateWindow(AWebView view, bool isDialog, bool isUserGesture, global::Android.OS.Message resultMsg)
             {
                 // Capture the target URL from window.open / target=_blank, then open an Abro tab.
                 try
