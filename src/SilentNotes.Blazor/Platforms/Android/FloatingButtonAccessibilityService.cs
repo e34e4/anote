@@ -1112,7 +1112,7 @@ namespace SilentNotes.Platforms
                 {
                     Text = "⠿ " + headerTitle,
                     TextSize = 13.5f,
-                    Ellipsize = Android.Text.TextUtils.TruncateAt.End,
+                    Ellipsize = global::Android.Text.TextUtils.TruncateAt.End,
                 };
                 titleView.SetSingleLine(true);
                 titleView.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
