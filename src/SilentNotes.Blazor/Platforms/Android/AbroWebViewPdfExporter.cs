@@ -102,7 +102,7 @@ namespace SilentNotes.Platforms
                 _tcs.TrySetResult(false);
             }
 
-            public override void OnLayoutFailed(string error)
+            public override void OnLayoutFailed(Java.Lang.ICharSequence error)
             {
                 _tcs.TrySetResult(false);
             }
@@ -158,7 +158,7 @@ namespace SilentNotes.Platforms
                 _tcs.TrySetResult(false);
             }
 
-            public override void OnWriteFailed(Java.Lang.CharSequence error)
+            public override void OnWriteFailed(Java.Lang.ICharSequence error)
             {
                 try { _descriptor?.Close(); } catch (IOException) { }
                 TryDelete(_tempPath);
