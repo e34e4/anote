@@ -9,7 +9,9 @@ using System.Linq;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
+using Android.Graphics.Drawables;
 using Android.OS;
+using Android.Util;
 using Android.Views;
 using Android.Widget;
 using Color = Android.Graphics.Color;
@@ -19,12 +21,13 @@ using Uri = Android.Net.Uri;
 namespace SilentNotes
 {
     /// <summary>
-    /// Fullscreen image viewer with left/right swipe to browse other images in the same folder.
-    /// Opened as a child of MainActivity (same task) so back/close returns to the Player tab.
+    /// Image viewer with left/right swipe to browse other images in the same folder.
+    /// Opens fullscreen by default (Player gallery), or as a dialog-sized floating window
+    /// when <see cref="ExtraFloating"/> is set (e.g. after a TG photo download).
     /// </summary>
     [Activity(
         Label = "aNote Gallery",
-        Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen",
+        Theme = "@android:style/Theme.DeviceDefault.Dialog.NoActionBar",
         Exported = false,
         ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize)]
     public class ImageViewerActivity : Activity, GestureDetector.IOnGestureListener
@@ -34,6 +37,7 @@ namespace SilentNotes
         public const string ExtraTitle = "silentnotes.image.title";
         public const string ExtraPaths = "silentnotes.image.paths";
         public const string ExtraIndex = "silentnotes.image.index";
+        public const string ExtraFloating = "silentnotes.image.floating";
 
         private ImageView _imageView;
         private TextView _titleView;
@@ -41,12 +45,17 @@ namespace SilentNotes
         private GestureDetector _gestureDetector;
         private string[] _paths = Array.Empty<string>();
         private int _index;
+        private bool _floating;
 
         protected override void OnCreate(Bundle savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
             RequestWindowFeature(WindowFeatures.NoTitle);
-            Window?.AddFlags(WindowManagerFlags.Fullscreen);
+            _floating = Intent?.GetBooleanExtra(ExtraFloating, false) ?? false;
+            if (_floating)
+                ConfigureFloatingWindow();
+            else
+                ConfigureFullscreenWindow();
 
             _gestureDetector = new GestureDetector(this, this);
 
@@ -222,6 +231,40 @@ namespace SilentNotes
             }
         }
 
+        private void ConfigureFullscreenWindow()
+        {
+            Window?.AddFlags(WindowManagerFlags.Fullscreen);
+            WindowManagerLayoutParams lp = Window?.Attributes;
+            if (lp != null)
+            {
+                lp.Width = ViewGroup.LayoutParams.MatchParent;
+                lp.Height = ViewGroup.LayoutParams.MatchParent;
+                Window.Attributes = lp;
+            }
+        }
+
+        private void ConfigureFloatingWindow()
+        {
+            if (Window == null)
+                return;
+
+            SetFinishOnTouchOutside(true);
+            Window.SetBackgroundDrawable(new ColorDrawable(Color.Transparent));
+            Window.AddFlags(WindowManagerFlags.DimBehind);
+            Window.ClearFlags(WindowManagerFlags.Fullscreen);
+
+            WindowManagerLayoutParams lp = Window.Attributes;
+            if (lp != null)
+            {
+                DisplayMetrics metrics = Resources.DisplayMetrics;
+                lp.DimAmount = 0.55f;
+                lp.Width = (int)(metrics.WidthPixels * 0.94f);
+                lp.Height = (int)(metrics.HeightPixels * 0.72f);
+                lp.Gravity = GravityFlags.Center;
+                Window.Attributes = lp;
+            }
+        }
+
         private void OpenCropEditor()
         {
             try
@@ -240,7 +283,7 @@ namespace SilentNotes
                     return;
                 }
 
-                StartActivity(ImageEditorActivity.CreateIntent(this, path));
+                StartActivity(ImageEditorActivity.CreateIntent(this, path, _floating));
             }
             catch (Exception ex)
             {
@@ -249,9 +292,16 @@ namespace SilentNotes
         }
 
         /// <summary>
-        /// Starts the fullscreen image viewer for a path, optionally with sibling images for swipe.
+        /// Starts the image viewer for a path, optionally with sibling images for swipe.
+        /// Pass <paramref name="floating"/> to open as a dialog-sized overlay instead of fullscreen.
         /// </summary>
-        public static void Start(Context context, string pathOrUri, string title, IList<string> galleryPaths = null, int index = 0)
+        public static void Start(
+            Context context,
+            string pathOrUri,
+            string title,
+            IList<string> galleryPaths = null,
+            int index = 0,
+            bool floating = false)
         {
             Intent intent = new Intent(context, typeof(ImageViewerActivity));
             // Stay in the same task as MainActivity so back returns to the Player tab.
@@ -288,6 +338,7 @@ namespace SilentNotes
             }
 
             intent.PutExtra(ExtraTitle, title ?? "Image");
+            intent.PutExtra(ExtraFloating, floating);
             context.StartActivity(intent);
         }
     }

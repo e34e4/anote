@@ -27,6 +27,7 @@ namespace SilentNotes.ViewModels
         private readonly IQrService _qrService;
         private readonly IClipboardService _clipboardService;
         private readonly IWebdavQuickSaveService _webdavQuickSave;
+        private readonly IMediaPlayerService _mediaPlayerService;
 
         private TelegramStoreModel _store;
         private TelegramAuthState _authState = TelegramAuthState.LoggedOut;
@@ -86,7 +87,8 @@ namespace SilentNotes.ViewModels
             INativeBrowserService nativeBrowserService = null,
             IQrService qrService = null,
             IClipboardService clipboardService = null,
-            IWebdavQuickSaveService webdavQuickSave = null)
+            IWebdavQuickSaveService webdavQuickSave = null,
+            IMediaPlayerService mediaPlayerService = null)
         {
             _telegramService = telegramService;
             _filePickerService = filePickerService;
@@ -96,6 +98,7 @@ namespace SilentNotes.ViewModels
             _qrService = qrService;
             _clipboardService = clipboardService;
             _webdavQuickSave = webdavQuickSave;
+            _mediaPlayerService = mediaPlayerService;
 
             _store = _telegramService?.LoadStore() ?? new TelegramStoreModel();
             _apiIdText = _store.ApiId > 0 ? _store.ApiId.ToString() : string.Empty;
@@ -1341,15 +1344,53 @@ namespace SilentNotes.ViewModels
                 };
                 TelegramOperationResult result = await _telegramService.DownloadMediaAsync(mediaRef);
                 if (result.Success)
+                {
                     StatusMessage = string.Format(_languageService?["tg_downloaded"] ?? "Saved: {0}", result.LocalPath ?? string.Empty);
+                    await TryOpenDownloadedImageAsync(message, result.LocalPath);
+                }
                 else
+                {
                     StatusMessage = result.ErrorMessage ?? "Download failed";
+                }
             }
             finally
             {
                 IsBusy = false;
                 NotifyChanged();
             }
+        }
+
+        private async Task TryOpenDownloadedImageAsync(TelegramMessageModel message, string localPath)
+        {
+            if (_mediaPlayerService == null || string.IsNullOrWhiteSpace(localPath))
+                return;
+
+            if (!IsViewableImageDownload(message, localPath))
+                return;
+
+            try
+            {
+                string title = !string.IsNullOrWhiteSpace(message?.MediaFileName)
+                    ? message.MediaFileName
+                    : System.IO.Path.GetFileName(localPath);
+                await _mediaPlayerService.OpenImagePathAsync(localPath, title, floating: true);
+            }
+            catch
+            {
+                // Download already succeeded; viewing is best-effort.
+            }
+        }
+
+        private static bool IsViewableImageDownload(TelegramMessageModel message, string localPath)
+        {
+            if (message != null &&
+                string.Equals(message.MediaKind, TelegramMediaKinds.Photo, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            string ext = System.IO.Path.GetExtension(localPath)?.ToLowerInvariant();
+            return ext is ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif" or ".bmp" or ".heic" or ".heif";
         }
 
         public async Task ClickBotButtonAsync(TelegramBotButtonModel button)

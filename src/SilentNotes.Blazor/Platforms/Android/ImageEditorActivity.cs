@@ -12,8 +12,10 @@ using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.Graphics;
+using Android.Graphics.Drawables;
 using Android.OS;
 using Android.Text;
+using Android.Util;
 using Android.Views;
 using Android.Widget;
 using AndroidX.ExifInterface.Media;
@@ -45,6 +47,7 @@ namespace SilentNotes
     {
         public const string ExtraPath = "silentnotes.imageeditor.path";
         public const string ExtraUri = "silentnotes.imageeditor.uri";
+        public const string ExtraFloating = "silentnotes.imageeditor.floating";
 
         private const int MaxHistory = 20;
         private const string AbroFontsDir = "/sdcard/abro/fonts";
@@ -103,6 +106,9 @@ namespace SilentNotes
         {
             base.OnCreate(savedInstanceState);
 
+            if (Intent?.GetBooleanExtra(ExtraFloating, false) == true)
+                ConfigureFloatingWindow();
+
             _path = Intent?.GetStringExtra(ExtraPath);
             if (string.IsNullOrWhiteSpace(_path))
             {
@@ -143,6 +149,27 @@ namespace SilentNotes
             RefreshHeader();
             RefreshStatus();
             UpdateHistoryButtons();
+        }
+
+        private void ConfigureFloatingWindow()
+        {
+            if (Window == null)
+                return;
+
+            SetFinishOnTouchOutside(true);
+            Window.SetBackgroundDrawable(new ColorDrawable(Color.Transparent));
+            Window.AddFlags(WindowManagerFlags.DimBehind);
+
+            WindowManagerLayoutParams lp = Window.Attributes;
+            if (lp != null)
+            {
+                DisplayMetrics metrics = Resources.DisplayMetrics;
+                lp.DimAmount = 0.55f;
+                lp.Width = (int)(metrics.WidthPixels * 0.96f);
+                lp.Height = (int)(metrics.HeightPixels * 0.82f);
+                lp.Gravity = GravityFlags.Center;
+                Window.Attributes = lp;
+            }
         }
 
         protected override void OnDestroy()
@@ -1298,10 +1325,11 @@ namespace SilentNotes
             return result;
         }
 
-        public static Intent CreateIntent(Context context, string path)
+        public static Intent CreateIntent(Context context, string path, bool floating = false)
         {
             var intent = new Intent(context, typeof(ImageEditorActivity));
             intent.PutExtra(ExtraPath, path);
+            intent.PutExtra(ExtraFloating, floating);
             return intent;
         }
 

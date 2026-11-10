@@ -97,6 +97,12 @@ namespace SilentNotes.Services
         /// </summary>
         Task OpenImageAsync(MediaItemModel item);
 
+        /// <summary>
+        /// Opens an image by filesystem path or URI. When <paramref name="floating"/> is true,
+        /// opens a dialog-sized overlay instead of a fullscreen viewer (Android).
+        /// </summary>
+        Task OpenImagePathAsync(string pathOrUri, string title = null, bool floating = false);
+
         /// <summary>Lets the user pick a media file via the system picker and plays/opens it.</summary>
         Task PickAndOpenAsync();
     }

@@ -115,6 +115,10 @@ namespace SilentNotes.Platforms.Services
         public Task OpenImageAsync(MediaItemModel item) => Task.CompletedTask;
 
         /// <inheritdoc/>
+        public Task OpenImagePathAsync(string pathOrUri, string title = null, bool floating = false) =>
+            Task.CompletedTask;
+
+        /// <inheritdoc/>
         public Task PickAndOpenAsync() => Task.CompletedTask;
     }
 }

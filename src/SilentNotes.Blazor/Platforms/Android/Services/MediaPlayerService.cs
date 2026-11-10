@@ -296,7 +296,7 @@ namespace SilentNotes.Platforms.Services
 
             if (kind == MediaKind.Image)
             {
-                OpenImagePath(normalized, title);
+                OpenImagePath(normalized, title, floating: false);
                 return Task.CompletedTask;
             }
 
@@ -385,19 +385,41 @@ namespace SilentNotes.Platforms.Services
         {
             if (item == null)
                 return Task.CompletedTask;
-            OpenImagePath(item.Path, item.Name);
+            OpenImagePath(item.Path, item.Name, floating: false);
             return Task.CompletedTask;
         }
 
-        private void OpenImagePath(string pathOrUri, string title)
+        /// <inheritdoc/>
+        public Task OpenImagePathAsync(string pathOrUri, string title = null, bool floating = false)
         {
-            List<string> gallery = GetSiblingImages(pathOrUri);
-            int index = gallery.FindIndex(p => string.Equals(p, pathOrUri, StringComparison.OrdinalIgnoreCase));
-            if (index < 0)
+            if (string.IsNullOrWhiteSpace(pathOrUri))
+                return Task.CompletedTask;
+            OpenImagePath(pathOrUri, title, floating);
+            return Task.CompletedTask;
+        }
+
+        private void OpenImagePath(string pathOrUri, string title, bool floating)
+        {
+            List<string> gallery;
+            int index;
+            if (floating)
             {
-                if (!string.IsNullOrEmpty(pathOrUri) && gallery.Count == 0)
+                // TG / overlay opens: show only the requested image in a floating window.
+                gallery = new List<string>();
+                if (!string.IsNullOrEmpty(pathOrUri))
                     gallery.Add(pathOrUri);
-                index = Math.Max(0, gallery.Count - 1);
+                index = 0;
+            }
+            else
+            {
+                gallery = GetSiblingImages(pathOrUri);
+                index = gallery.FindIndex(p => string.Equals(p, pathOrUri, StringComparison.OrdinalIgnoreCase));
+                if (index < 0)
+                {
+                    if (!string.IsNullOrEmpty(pathOrUri) && gallery.Count == 0)
+                        gallery.Add(pathOrUri);
+                    index = Math.Max(0, gallery.Count - 1);
+                }
             }
 
             SilentNotes.ImageViewerActivity.Start(
@@ -405,7 +427,8 @@ namespace SilentNotes.Platforms.Services
                 pathOrUri,
                 title ?? Path.GetFileName(pathOrUri),
                 gallery,
-                index);
+                index,
+                floating);
         }
 
         private Context GetLaunchContext()

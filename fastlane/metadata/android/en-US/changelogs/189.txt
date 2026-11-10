@@ -1,0 +1,2 @@
+• TG chat photos open in a floating image viewer after download
+• Crop from that viewer opens the image editor in the same floating style
