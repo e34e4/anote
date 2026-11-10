@@ -1,0 +1,3 @@
+• Image editor: crop/blur with inset frame, edge handles, dimmed outside, toggle apply
+• Image editor: text size + visible text/emoji preview; stronger blur
+• Image editor: keep Save row above system navigation bar

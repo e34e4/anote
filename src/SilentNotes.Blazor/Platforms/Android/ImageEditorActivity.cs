@@ -71,6 +71,10 @@ namespace SilentNotes
         private AButton _redoBtn;
         private AButton _applyBtn;
         private AButton _cancelToolBtn;
+        private AButton _cropBtn;
+        private AButton _blurBtn;
+        private readonly Color _toolIdleBg = Color.Rgb(60, 60, 60);
+        private readonly Color _toolActiveBg = Color.Rgb(180, 140, 20); // dark yellow
 
         private string _path;
         private Bitmap _bitmap;
@@ -83,6 +87,7 @@ namespace SilentNotes
         private int _arrowSizeStep = 5;
         private int _arrowColorIndex;
         private int _emojiSizeStep = 5;
+        private int _textSizeStep = 5;
         private string _pendingText = string.Empty;
         private Typeface _pendingTypeface = Typeface.Default;
         private string _pendingFontLabel = "Default";
@@ -149,9 +154,10 @@ namespace SilentNotes
 
         private void BuildUi()
         {
+            int navPad = (int)(56 * Resources.DisplayMetrics.Density + 0.5f);
             var root = new LinearLayout(this) { Orientation = ViewOrientation.Vertical };
             root.SetBackgroundColor(Color.Black);
-            root.SetPadding(12, 16, 12, 12);
+            root.SetPadding(12, 16, 12, navPad);
 
             var header = new LinearLayout(this) { Orientation = ViewOrientation.Horizontal };
             _headerInfo = new TextView(this)
@@ -180,37 +186,51 @@ namespace SilentNotes
             _status.SetTextColor(Color.LightGray);
             root.AddView(_status);
 
-            root.AddView(CreateButtonRow(
+            // Keep tool/save rows scrollable and above the system navigation bar.
+            var tools = new LinearLayout(this) { Orientation = ViewOrientation.Vertical };
+            var historyRow = CreateButtonRow(
                 ("Undo", () => Undo()),
                 ("Redo", () => Redo()),
                 ("Apply", () => ApplyPendingTool()),
-                ("Cancel", () => CancelTool())));
-            _undoBtn = (AButton)((ViewGroup)root.GetChildAt(root.ChildCount - 1)).GetChildAt(0);
-            _redoBtn = (AButton)((ViewGroup)root.GetChildAt(root.ChildCount - 1)).GetChildAt(1);
-            _applyBtn = (AButton)((ViewGroup)root.GetChildAt(root.ChildCount - 1)).GetChildAt(2);
-            _cancelToolBtn = (AButton)((ViewGroup)root.GetChildAt(root.ChildCount - 1)).GetChildAt(3);
+                ("Cancel", () => CancelTool()));
+            _undoBtn = (AButton)historyRow.GetChildAt(0);
+            _redoBtn = (AButton)historyRow.GetChildAt(1);
+            _applyBtn = (AButton)historyRow.GetChildAt(2);
+            _cancelToolBtn = (AButton)historyRow.GetChildAt(3);
+            tools.AddView(historyRow);
 
-            root.AddView(WrapScroll(CreateButtonRow(
+            var cropRow = CreateButtonRow(
                 ("Rotate 90°", () => Rotate90()),
-                ("Crop", () => EnterMode(ToolMode.Crop)),
+                ("Crop", () => ToggleCrop()),
                 ("Size −10%", () => ShrinkContent10()),
-                ("Size +10%", () => ExpandCanvas10()))));
+                ("Size +10%", () => ExpandCanvas10()));
+            _cropBtn = (AButton)cropRow.GetChildAt(1);
+            tools.AddView(WrapScroll(cropRow));
 
-            root.AddView(WrapScroll(CreateButtonRow(
+            var drawRow = CreateButtonRow(
                 ("Brush", () => ShowBrushOptions()),
-                ("Blur", () => EnterMode(ToolMode.Blur)),
+                ("Blur", () => ToggleBlur()),
                 ("Text", () => ShowTextOptions()),
                 ("Emoji", () => ShowEmojiOptions()),
-                ("Arrow", () => ShowArrowOptions()))));
+                ("Arrow", () => ShowArrowOptions()));
+            _blurBtn = (AButton)drawRow.GetChildAt(1);
+            tools.AddView(WrapScroll(drawRow));
 
-            root.AddView(WrapScroll(CreateButtonRow(
+            tools.AddView(WrapScroll(CreateButtonRow(
                 ("Clear EXIF", () => ClearExifNow()),
                 ("Convert", () => ShowConvertDialog()),
                 ("Save", () => Save(overwrite: true)),
                 ("Save as", () => PromptSaveAs()))));
 
+            var toolsScroll = new ScrollView(this);
+            toolsScroll.LayoutParameters = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
+            toolsScroll.AddView(tools);
+            root.AddView(toolsScroll);
+
             SetContentView(root);
             SetApplyCancelEnabled(false);
+            UpdateToolButtonStyles();
         }
 
         private HorizontalScrollView WrapScroll(AView child)
@@ -241,8 +261,10 @@ namespace SilentNotes
             _mode = mode;
             _canvas.Mode = mode;
             _canvas.ClearOverlay();
-            SetApplyCancelEnabled(mode == ToolMode.Crop || mode == ToolMode.Blur
-                || mode == ToolMode.Text || mode == ToolMode.Emoji || mode == ToolMode.Arrow);
+            bool needsApply = mode == ToolMode.Crop || mode == ToolMode.Blur
+                || mode == ToolMode.Text || mode == ToolMode.Emoji || mode == ToolMode.Arrow;
+            SetApplyCancelEnabled(needsApply);
+            UpdateToolButtonStyles();
             RefreshStatus();
         }
 
@@ -252,6 +274,7 @@ namespace SilentNotes
             _canvas.Mode = ToolMode.None;
             _canvas.ClearOverlay();
             SetApplyCancelEnabled(false);
+            UpdateToolButtonStyles();
             RefreshStatus();
         }
 
@@ -263,9 +286,48 @@ namespace SilentNotes
                 _cancelToolBtn.Enabled = enabled;
         }
 
+        private void UpdateToolButtonStyles()
+        {
+            if (_cropBtn != null)
+            {
+                _cropBtn.SetBackgroundColor(_mode == ToolMode.Crop ? _toolActiveBg : _toolIdleBg);
+                _cropBtn.SetTextColor(Color.White);
+            }
+            if (_blurBtn != null)
+            {
+                _blurBtn.SetBackgroundColor(_mode == ToolMode.Blur ? _toolActiveBg : _toolIdleBg);
+                _blurBtn.SetTextColor(Color.White);
+            }
+        }
+
+        private void ToggleCrop()
+        {
+            if (_mode == ToolMode.Crop)
+            {
+                ApplyCrop();
+                return;
+            }
+
+            EnterMode(ToolMode.Crop);
+            _canvas.BeginInsetSelection(0.10f);
+            Toast.MakeText(this, "Drag edges to adjust, tap Crop again to apply", ToastLength.Short).Show();
+        }
+
+        private void ToggleBlur()
+        {
+            if (_mode == ToolMode.Blur)
+            {
+                ApplyBlur();
+                return;
+            }
+
+            EnterMode(ToolMode.Blur);
+            _canvas.BeginInsetSelection(0.15f);
+            Toast.MakeText(this, "Drag edges to adjust, tap Blur again to apply", ToastLength.Short).Show();
+        }
+
         private void OnSelectionFinished()
         {
-            // Crop/Blur selection ready — wait for Apply.
             RefreshStatus();
         }
 
@@ -369,7 +431,8 @@ namespace SilentNotes
 
             PushHistory();
             using Bitmap region = Bitmap.CreateBitmap(_bitmap, x, y, w, h);
-            using Bitmap blurred = BoxBlur(region, radius: 8);
+            using Bitmap pass1 = BoxBlur(region, radius: 14);
+            using Bitmap blurred = BoxBlur(pass1, radius: 14);
             using (var canvas = new Canvas(_bitmap))
             {
                 canvas.DrawBitmap(blurred, x, y, null);
@@ -380,18 +443,31 @@ namespace SilentNotes
             UpdateHistoryButtons();
         }
 
+        private float CurrentTextSizePx()
+        {
+            // 10 steps from ~3% to ~18% of image width.
+            float t = Math.Clamp(_textSizeStep, 1, 10) / 10f;
+            return Math.Max(16f, _bitmap.Width * (0.03f + t * 0.15f));
+        }
+
+        private float CurrentEmojiSizePx()
+        {
+            float t = Math.Clamp(_emojiSizeStep, 1, 10) / 10f;
+            return Math.Max(24f, _bitmap.Width * (0.04f + t * 0.18f));
+        }
+
         private void ApplyTextOverlay()
         {
             APointF pos = _canvas.GetPlacementPoint();
             if (pos == null || string.IsNullOrWhiteSpace(_pendingText))
             {
-                Toast.MakeText(this, "Tap to place text first", ToastLength.Short).Show();
+                Toast.MakeText(this, "Place text on the image first", ToastLength.Short).Show();
                 return;
             }
 
             PushHistory();
             using (var canvas = new Canvas(_bitmap))
-            using (var paint = new APaint { AntiAlias = true, Color = Palette[_brushColorIndex], TextSize = Math.Max(12, _bitmap.Width / 18f) })
+            using (var paint = new APaint { AntiAlias = true, Color = Palette[_brushColorIndex], TextSize = CurrentTextSizePx() })
             {
                 paint.SetTypeface(_pendingTypeface ?? Typeface.Default);
                 canvas.DrawText(_pendingText, pos.X, pos.Y, paint);
@@ -407,14 +483,13 @@ namespace SilentNotes
             APointF pos = _canvas.GetPlacementPoint();
             if (pos == null || string.IsNullOrEmpty(_pendingEmoji))
             {
-                Toast.MakeText(this, "Tap to place emoji first", ToastLength.Short).Show();
+                Toast.MakeText(this, "Place emoji on the image first", ToastLength.Short).Show();
                 return;
             }
 
-            float textSize = 24f + (_emojiSizeStep * 12f);
             PushHistory();
             using (var canvas = new Canvas(_bitmap))
-            using (var paint = new APaint { AntiAlias = true, TextSize = textSize, Color = Color.White })
+            using (var paint = new APaint { AntiAlias = true, TextSize = CurrentEmojiSizePx(), Color = Color.White })
             {
                 canvas.DrawText(_pendingEmoji, pos.X, pos.Y, paint);
             }
@@ -554,6 +629,17 @@ namespace SilentNotes
                 fontSpinner.SetSelection(fontIndex);
 
             var colorSpinner = CreateColorSpinner(_brushColorIndex);
+            var sizeSeek = new SeekBar(this) { Max = 9, Progress = Math.Max(0, _textSizeStep - 1) };
+            var sizeLabel = new TextView(this) { Text = $"Size step: {_textSizeStep}/10" };
+            sizeLabel.SetTextColor(Color.White);
+            sizeSeek.ProgressChanged += (_, e) =>
+            {
+                if (!e.FromUser)
+                    return;
+                _textSizeStep = e.Progress + 1;
+                sizeLabel.Text = $"Size step: {_textSizeStep}/10";
+            };
+
             var layout = new LinearLayout(this) { Orientation = ViewOrientation.Vertical };
             layout.SetPadding(40, 20, 40, 10);
             layout.AddView(Label("Text"));
@@ -562,6 +648,8 @@ namespace SilentNotes
             layout.AddView(fontSpinner);
             layout.AddView(Label("Color"));
             layout.AddView(colorSpinner);
+            layout.AddView(sizeLabel);
+            layout.AddView(sizeSeek);
 
             new AlertDialog.Builder(this)
                 .SetTitle("Text")
@@ -569,11 +657,21 @@ namespace SilentNotes
                 .SetPositiveButton("OK", (_, __) =>
                 {
                     _pendingText = input.Text ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(_pendingText))
+                    {
+                        Toast.MakeText(this, "Enter some text", ToastLength.Short).Show();
+                        return;
+                    }
                     _pendingFontLabel = fonts[Math.Max(0, fontSpinner.SelectedItemPosition)];
                     _pendingTypeface = ResolveTypeface(_pendingFontLabel);
                     _brushColorIndex = colorSpinner.SelectedItemPosition;
                     EnterMode(ToolMode.Text);
-                    Toast.MakeText(this, "Tap image to place text, then Apply", ToastLength.Short).Show();
+                    _canvas.BeginCenteredPlacement(
+                        _pendingText,
+                        CurrentTextSizePx(),
+                        Palette[_brushColorIndex],
+                        _pendingTypeface ?? Typeface.Default);
+                    Toast.MakeText(this, "Drag text to move, then Apply", ToastLength.Short).Show();
                 })
                 .SetNegativeButton("Cancel", (_, __) => { })
                 .Show();
@@ -625,7 +723,12 @@ namespace SilentNotes
                         ? typed
                         : emojis[Math.Max(0, emojiSpinner.SelectedItemPosition)];
                     EnterMode(ToolMode.Emoji);
-                    Toast.MakeText(this, "Tap image to place emoji, then Apply", ToastLength.Short).Show();
+                    _canvas.BeginCenteredPlacement(
+                        _pendingEmoji,
+                        CurrentEmojiSizePx(),
+                        Color.White,
+                        Typeface.Default);
+                    Toast.MakeText(this, "Drag emoji to move, then Apply", ToastLength.Short).Show();
                 })
                 .SetNegativeButton("Cancel", (_, __) => { })
                 .Show();
@@ -1205,10 +1308,26 @@ namespace SilentNotes
         /// </summary>
         private sealed class EditorCanvasView : AView
         {
+            private enum DragHandle
+            {
+                None,
+                Move,
+                Left,
+                Right,
+                Top,
+                Bottom,
+                TopLeft,
+                TopRight,
+                BottomLeft,
+                BottomRight,
+            }
+
             private Bitmap _bitmap;
             private readonly APaint _bitmapPaint = new APaint { FilterBitmap = true, AntiAlias = true };
             private readonly APaint _overlayPaint = new APaint { AntiAlias = true };
+            private readonly APaint _dimPaint = new APaint { AntiAlias = true };
             private readonly APaint _handlePaint = new APaint { AntiAlias = true };
+            private readonly APaint _previewPaint = new APaint { AntiAlias = true };
 
             private ARectF _dst = new ARectF();
             private float _scale = 1f;
@@ -1216,10 +1335,9 @@ namespace SilentNotes
             private float _offsetY;
 
             private bool _dragging;
-            private float _startX;
-            private float _startY;
-            private float _curX;
-            private float _curY;
+            private DragHandle _dragHandle = DragHandle.None;
+            private float _grabX;
+            private float _grabY;
             private ARectF _selection = new ARectF();
             private bool _hasSelection;
 
@@ -1227,7 +1345,12 @@ namespace SilentNotes
             private APointF _placement;
             private APointF _arrowStart;
             private APointF _arrowEnd;
-            private int _arrowDragTarget; // 0 none, 1 start, 2 end, 3 whole create
+            private int _arrowDragTarget;
+
+            private string _previewText;
+            private float _previewTextSize = 48f;
+            private Color _previewColor = Color.White;
+            private Typeface _previewTypeface = Typeface.Default;
 
             public ToolMode Mode { get; set; } = ToolMode.None;
             public float BrushSize { get; set; } = 6f;
@@ -1245,8 +1368,11 @@ namespace SilentNotes
                 _overlayPaint.SetStyle(APaint.Style.Stroke);
                 _overlayPaint.StrokeWidth = 3f;
                 _overlayPaint.Color = Color.Argb(220, 36, 129, 204);
+                _dimPaint.SetStyle(APaint.Style.Fill);
+                _dimPaint.Color = Color.Argb(140, 0, 0, 0);
                 _handlePaint.SetStyle(APaint.Style.Fill);
                 _handlePaint.Color = Color.White;
+                _previewPaint.SetStyle(APaint.Style.Fill);
             }
 
             public void SetBitmap(Bitmap bitmap)
@@ -1264,7 +1390,33 @@ namespace SilentNotes
                 _placement = null;
                 _arrowStart = null;
                 _arrowEnd = null;
+                _previewText = null;
                 _dragging = false;
+                _dragHandle = DragHandle.None;
+                Invalidate();
+            }
+
+            public void BeginInsetSelection(float insetFraction)
+            {
+                if (_bitmap == null)
+                    return;
+                insetFraction = Math.Clamp(insetFraction, 0.02f, 0.40f);
+                float x = _bitmap.Width * insetFraction;
+                float y = _bitmap.Height * insetFraction;
+                _selection.Set(x, y, _bitmap.Width - x, _bitmap.Height - y);
+                _hasSelection = true;
+                Invalidate();
+            }
+
+            public void BeginCenteredPlacement(string text, float textSizePx, Color color, Typeface typeface)
+            {
+                if (_bitmap == null)
+                    return;
+                _previewText = text ?? string.Empty;
+                _previewTextSize = Math.Max(12f, textSizePx);
+                _previewColor = color;
+                _previewTypeface = typeface ?? Typeface.Default;
+                _placement = new APointF(_bitmap.Width * 0.5f, _bitmap.Height * 0.5f);
                 Invalidate();
             }
 
@@ -1319,77 +1471,176 @@ namespace SilentNotes
             {
                 if (_bitmap == null || _scale <= 0)
                     return null;
-                if (x < _dst.Left || x > _dst.Right || y < _dst.Top || y > _dst.Bottom)
-                {
-                    // Clamp into image for easier touch near edges.
-                    x = Math.Clamp(x, _dst.Left, _dst.Right);
-                    y = Math.Clamp(y, _dst.Top, _dst.Bottom);
-                }
+                x = Math.Clamp(x, _dst.Left, _dst.Right);
+                y = Math.Clamp(y, _dst.Top, _dst.Bottom);
                 return new APointF((x - _offsetX) / _scale, (y - _offsetY) / _scale);
             }
 
             private APointF ImageToScreen(APointF p) =>
                 new APointF(p.X * _scale + _offsetX, p.Y * _scale + _offsetY);
 
+            private ARectF SelectionToScreen()
+            {
+                float l = Math.Min(_selection.Left, _selection.Right) * _scale + _offsetX;
+                float t = Math.Min(_selection.Top, _selection.Bottom) * _scale + _offsetY;
+                float r = Math.Max(_selection.Left, _selection.Right) * _scale + _offsetX;
+                float b = Math.Max(_selection.Top, _selection.Bottom) * _scale + _offsetY;
+                return new ARectF(l, t, r, b);
+            }
+
             public override bool OnTouchEvent(MotionEvent e)
             {
                 if (_bitmap == null || Mode == ToolMode.None)
                     return false;
 
-                APointF img = ScreenToImage(e.GetX(), e.GetY());
-                if (img == null)
-                    return true;
-
                 switch (Mode)
                 {
                     case ToolMode.Crop:
                     case ToolMode.Blur:
-                        HandleSelectionTouch(e, img);
+                        HandleSelectionEditTouch(e);
                         break;
                     case ToolMode.Brush:
-                        HandleBrushTouch(e, img);
-                        break;
+                        {
+                            APointF img = ScreenToImage(e.GetX(), e.GetY());
+                            if (img != null)
+                                HandleBrushTouch(e, img);
+                            break;
+                        }
                     case ToolMode.Text:
                     case ToolMode.Emoji:
-                        HandlePlacementTouch(e, img);
+                        HandlePlacementTouch(e);
                         break;
                     case ToolMode.Arrow:
-                        HandleArrowTouch(e, img);
-                        break;
+                        {
+                            APointF img = ScreenToImage(e.GetX(), e.GetY());
+                            if (img != null)
+                                HandleArrowTouch(e, img);
+                            break;
+                        }
                 }
 
                 return true;
             }
 
-            private void HandleSelectionTouch(MotionEvent e, APointF img)
+            private void HandleSelectionEditTouch(MotionEvent e)
             {
+                float hx = e.GetX();
+                float hy = e.GetY();
+                const float hit = 36f;
+
                 switch (e.ActionMasked)
                 {
                     case MotionEventActions.Down:
+                        if (!_hasSelection)
+                            BeginInsetSelection(0.10f);
                         _dragging = true;
-                        _startX = img.X;
-                        _startY = img.Y;
-                        _curX = img.X;
-                        _curY = img.Y;
-                        _hasSelection = true;
-                        _selection.Set(_startX, _startY, _curX, _curY);
+                        _dragHandle = HitTestHandle(hx, hy, hit);
+                        _grabX = hx;
+                        _grabY = hy;
                         Invalidate();
                         break;
                     case MotionEventActions.Move:
-                        if (!_dragging)
+                        if (!_dragging || !_hasSelection)
                             return;
-                        _curX = img.X;
-                        _curY = img.Y;
-                        _selection.Set(_startX, _startY, _curX, _curY);
+                        float dx = (hx - _grabX) / _scale;
+                        float dy = (hy - _grabY) / _scale;
+                        ApplyHandleDelta(_dragHandle, dx, dy);
+                        _grabX = hx;
+                        _grabY = hy;
                         Invalidate();
                         break;
                     case MotionEventActions.Up:
                     case MotionEventActions.Cancel:
                         _dragging = false;
+                        _dragHandle = DragHandle.None;
                         SelectionFinished?.Invoke();
                         Invalidate();
                         break;
                 }
+            }
+
+            private DragHandle HitTestHandle(float sx, float sy, float hit)
+            {
+                ARectF r = SelectionToScreen();
+                bool nearL = Math.Abs(sx - r.Left) <= hit;
+                bool nearR = Math.Abs(sx - r.Right) <= hit;
+                bool nearT = Math.Abs(sy - r.Top) <= hit;
+                bool nearB = Math.Abs(sy - r.Bottom) <= hit;
+                bool inX = sx >= r.Left - hit && sx <= r.Right + hit;
+                bool inY = sy >= r.Top - hit && sy <= r.Bottom + hit;
+
+                if (nearL && nearT) return DragHandle.TopLeft;
+                if (nearR && nearT) return DragHandle.TopRight;
+                if (nearL && nearB) return DragHandle.BottomLeft;
+                if (nearR && nearB) return DragHandle.BottomRight;
+                if (nearL && inY) return DragHandle.Left;
+                if (nearR && inY) return DragHandle.Right;
+                if (nearT && inX) return DragHandle.Top;
+                if (nearB && inX) return DragHandle.Bottom;
+                if (sx >= r.Left && sx <= r.Right && sy >= r.Top && sy <= r.Bottom)
+                    return DragHandle.Move;
+                return DragHandle.Move;
+            }
+
+            private void ApplyHandleDelta(DragHandle handle, float dx, float dy)
+            {
+                float l = Math.Min(_selection.Left, _selection.Right);
+                float t = Math.Min(_selection.Top, _selection.Bottom);
+                float r = Math.Max(_selection.Left, _selection.Right);
+                float b = Math.Max(_selection.Top, _selection.Bottom);
+                const float minSize = 16f;
+
+                switch (handle)
+                {
+                    case DragHandle.Move:
+                        l += dx; r += dx; t += dy; b += dy;
+                        break;
+                    case DragHandle.Left:
+                        l += dx;
+                        break;
+                    case DragHandle.Right:
+                        r += dx;
+                        break;
+                    case DragHandle.Top:
+                        t += dy;
+                        break;
+                    case DragHandle.Bottom:
+                        b += dy;
+                        break;
+                    case DragHandle.TopLeft:
+                        l += dx; t += dy;
+                        break;
+                    case DragHandle.TopRight:
+                        r += dx; t += dy;
+                        break;
+                    case DragHandle.BottomLeft:
+                        l += dx; b += dy;
+                        break;
+                    case DragHandle.BottomRight:
+                        r += dx; b += dy;
+                        break;
+                }
+
+                if (r - l < minSize)
+                {
+                    if (handle is DragHandle.Left or DragHandle.TopLeft or DragHandle.BottomLeft)
+                        l = r - minSize;
+                    else
+                        r = l + minSize;
+                }
+                if (b - t < minSize)
+                {
+                    if (handle is DragHandle.Top or DragHandle.TopLeft or DragHandle.TopRight)
+                        t = b - minSize;
+                    else
+                        b = t + minSize;
+                }
+
+                l = Math.Clamp(l, 0, _bitmap.Width - minSize);
+                t = Math.Clamp(t, 0, _bitmap.Height - minSize);
+                r = Math.Clamp(r, l + minSize, _bitmap.Width);
+                b = Math.Clamp(b, t + minSize, _bitmap.Height);
+                _selection.Set(l, t, r, b);
             }
 
             private void HandleBrushTouch(MotionEvent e, APointF img)
@@ -1419,8 +1670,11 @@ namespace SilentNotes
                 }
             }
 
-            private void HandlePlacementTouch(MotionEvent e, APointF img)
+            private void HandlePlacementTouch(MotionEvent e)
             {
+                APointF img = ScreenToImage(e.GetX(), e.GetY());
+                if (img == null)
+                    return;
                 if (e.ActionMasked == MotionEventActions.Down
                     || e.ActionMasked == MotionEventActions.Move)
                 {
@@ -1491,14 +1745,28 @@ namespace SilentNotes
 
                 if (_hasSelection && (Mode == ToolMode.Crop || Mode == ToolMode.Blur))
                 {
-                    float l = Math.Min(_selection.Left, _selection.Right) * _scale + _offsetX;
-                    float t = Math.Min(_selection.Top, _selection.Bottom) * _scale + _offsetY;
-                    float r = Math.Max(_selection.Left, _selection.Right) * _scale + _offsetX;
-                    float b = Math.Max(_selection.Top, _selection.Bottom) * _scale + _offsetY;
+                    ARectF sr = SelectionToScreen();
+                    // Dim outside selection.
+                    canvas.DrawRect(_dst.Left, _dst.Top, _dst.Right, sr.Top, _dimPaint);
+                    canvas.DrawRect(_dst.Left, sr.Bottom, _dst.Right, _dst.Bottom, _dimPaint);
+                    canvas.DrawRect(_dst.Left, sr.Top, sr.Left, sr.Bottom, _dimPaint);
+                    canvas.DrawRect(sr.Right, sr.Top, _dst.Right, sr.Bottom, _dimPaint);
+
                     _overlayPaint.Color = Mode == ToolMode.Blur
-                        ? Color.Argb(220, 180, 80, 255)
-                        : Color.Argb(220, 36, 129, 204);
-                    canvas.DrawRect(l, t, r, b, _overlayPaint);
+                        ? Color.Argb(230, 200, 120, 40)
+                        : Color.Argb(230, 220, 180, 40);
+                    _overlayPaint.StrokeWidth = 3f;
+                    canvas.DrawRect(sr, _overlayPaint);
+
+                    float hs = 10f;
+                    DrawHandle(canvas, sr.Left, sr.Top, hs);
+                    DrawHandle(canvas, sr.Right, sr.Top, hs);
+                    DrawHandle(canvas, sr.Left, sr.Bottom, hs);
+                    DrawHandle(canvas, sr.Right, sr.Bottom, hs);
+                    DrawHandle(canvas, (sr.Left + sr.Right) / 2f, sr.Top, hs);
+                    DrawHandle(canvas, (sr.Left + sr.Right) / 2f, sr.Bottom, hs);
+                    DrawHandle(canvas, sr.Left, (sr.Top + sr.Bottom) / 2f, hs);
+                    DrawHandle(canvas, sr.Right, (sr.Top + sr.Bottom) / 2f, hs);
                 }
 
                 if (Mode == ToolMode.Brush && _stroke.Count > 1)
@@ -1518,12 +1786,16 @@ namespace SilentNotes
                     canvas.DrawPath(path, paint);
                 }
 
-                if (_placement != null && (Mode == ToolMode.Text || Mode == ToolMode.Emoji))
+                if (_placement != null && (Mode == ToolMode.Text || Mode == ToolMode.Emoji)
+                    && !string.IsNullOrEmpty(_previewText))
                 {
                     APointF s = ImageToScreen(_placement);
-                    canvas.DrawCircle(s.X, s.Y, 10f, _handlePaint);
-                    _overlayPaint.Color = Color.Argb(200, 255, 255, 255);
-                    canvas.DrawCircle(s.X, s.Y, 12f, _overlayPaint);
+                    _previewPaint.Color = _previewColor;
+                    _previewPaint.TextSize = _previewTextSize * _scale;
+                    _previewPaint.SetTypeface(_previewTypeface ?? Typeface.Default);
+                    canvas.DrawText(_previewText, s.X, s.Y, _previewPaint);
+                    // Anchor marker under the glyph.
+                    canvas.DrawCircle(s.X, s.Y + 6f, 5f, _handlePaint);
                 }
 
                 if (Mode == ToolMode.Arrow && _arrowStart != null && _arrowEnd != null)
@@ -1546,6 +1818,12 @@ namespace SilentNotes
                     canvas.DrawCircle(en.X, en.Y, 8f, _handlePaint);
                 }
             }
+
+            private void DrawHandle(Canvas canvas, float x, float y, float size)
+            {
+                canvas.DrawRect(x - size / 2f, y - size / 2f, x + size / 2f, y + size / 2f, _handlePaint);
+            }
         }
+
     }
 }
