@@ -1,0 +1,2 @@
+• Fix image editor Android PointF/RectF build errors
+• Abro bookmarks: move-to-top, favicons, add/edit, Yandex/Startpage, export/import

@@ -321,7 +321,7 @@ namespace SilentNotes
 
         private void ApplyCrop()
         {
-            ARectF? rect = _canvas.GetImageSelectionRect();
+            ARectF rect = _canvas.GetImageSelectionRect();
             if (rect == null)
             {
                 Toast.MakeText(this, "Drag a crop area first", ToastLength.Short).Show();
@@ -348,7 +348,7 @@ namespace SilentNotes
 
         private void ApplyBlur()
         {
-            ARectF? rect = _canvas.GetImageSelectionRect();
+            ARectF rect = _canvas.GetImageSelectionRect();
             if (rect == null)
             {
                 Toast.MakeText(this, "Drag a blur area first", ToastLength.Short).Show();
@@ -382,7 +382,7 @@ namespace SilentNotes
 
         private void ApplyTextOverlay()
         {
-            APointF? pos = _canvas.GetPlacementPoint();
+            APointF pos = _canvas.GetPlacementPoint();
             if (pos == null || string.IsNullOrWhiteSpace(_pendingText))
             {
                 Toast.MakeText(this, "Tap to place text first", ToastLength.Short).Show();
@@ -404,7 +404,7 @@ namespace SilentNotes
 
         private void ApplyEmojiOverlay()
         {
-            APointF? pos = _canvas.GetPlacementPoint();
+            APointF pos = _canvas.GetPlacementPoint();
             if (pos == null || string.IsNullOrEmpty(_pendingEmoji))
             {
                 Toast.MakeText(this, "Tap to place emoji first", ToastLength.Short).Show();
@@ -426,8 +426,7 @@ namespace SilentNotes
 
         private void ApplyArrowOverlay()
         {
-            (APointF Start, APointF End)? arrow = _canvas.GetArrowPoints();
-            if (arrow == null)
+            if (!_canvas.TryGetArrowPoints(out APointF arrowStart, out APointF arrowEnd))
             {
                 Toast.MakeText(this, "Drag to draw an arrow first", ToastLength.Short).Show();
                 return;
@@ -440,7 +439,7 @@ namespace SilentNotes
             {
                 paint.SetStyle(APaint.Style.Stroke);
                 paint.StrokeCap = APaint.Cap.Round;
-                DrawArrow(canvas, paint, arrow.Value.Start, arrow.Value.End, stroke);
+                DrawArrow(canvas, paint, arrowStart, arrowEnd, stroke);
             }
             _canvas.SetBitmap(_bitmap);
             CancelTool();
@@ -1225,9 +1224,9 @@ namespace SilentNotes
             private bool _hasSelection;
 
             private readonly List<APointF> _stroke = new List<APointF>();
-            private APointF? _placement;
-            private APointF? _arrowStart;
-            private APointF? _arrowEnd;
+            private APointF _placement;
+            private APointF _arrowStart;
+            private APointF _arrowEnd;
             private int _arrowDragTarget; // 0 none, 1 start, 2 end, 3 whole create
 
             public ToolMode Mode { get; set; } = ToolMode.None;
@@ -1269,7 +1268,7 @@ namespace SilentNotes
                 Invalidate();
             }
 
-            public ARectF? GetImageSelectionRect()
+            public ARectF GetImageSelectionRect()
             {
                 if (!_hasSelection || _bitmap == null)
                     return null;
@@ -1286,13 +1285,13 @@ namespace SilentNotes
                     Math.Clamp(bottom, 0, _bitmap.Height));
             }
 
-            public APointF? GetPlacementPoint() => _placement;
+            public APointF GetPlacementPoint() => _placement;
 
-            public (APointF Start, APointF End)? GetArrowPoints()
+            public bool TryGetArrowPoints(out APointF start, out APointF end)
             {
-                if (_arrowStart == null || _arrowEnd == null)
-                    return null;
-                return (_arrowStart, _arrowEnd);
+                start = _arrowStart;
+                end = _arrowEnd;
+                return _arrowStart != null && _arrowEnd != null;
             }
 
             protected override void OnSizeChanged(int w, int h, int oldw, int oldh)
@@ -1316,7 +1315,7 @@ namespace SilentNotes
                 _dst.Set(_offsetX, _offsetY, _offsetX + dw, _offsetY + dh);
             }
 
-            private APointF? ScreenToImage(float x, float y)
+            private APointF ScreenToImage(float x, float y)
             {
                 if (_bitmap == null || _scale <= 0)
                     return null;
