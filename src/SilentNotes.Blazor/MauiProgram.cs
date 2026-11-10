@@ -327,7 +327,8 @@ public static class MauiProgram
             serviceProvider.GetService<ICloudStorageClientFactory>()));
         services.AddSingleton<IMediaPlayerService>((serviceProvider) => new MediaPlayerService(
             serviceProvider.GetService<IAppContextService>(),
-            serviceProvider.GetService<IActivityResultAwaiter>()));
+            serviceProvider.GetService<IActivityResultAwaiter>(),
+            serviceProvider.GetService<IEnvironmentService>()));
         services.AddSingleton<IAbroBrowserService>((serviceProvider) => new AbroBrowserService());
         services.AddSingleton<IAbroAiChatLauncher>((serviceProvider) => new AbroAiChatLauncher());
         services.AddSingleton<IDocumentReaderService>((serviceProvider) => new DocumentReaderService(

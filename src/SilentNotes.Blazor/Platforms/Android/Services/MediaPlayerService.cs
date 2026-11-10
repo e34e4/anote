@@ -45,6 +45,7 @@ namespace SilentNotes.Platforms.Services
 
         private readonly IAppContextService _appContext;
         private readonly IActivityResultAwaiter _activityResultAwaiter;
+        private readonly IEnvironmentService _environmentService;
         private readonly System.Timers.Timer _timer;
 
         private MediaPlayer _player;
@@ -56,10 +57,14 @@ namespace SilentNotes.Platforms.Services
         private bool _isPaused;
         private TimeSpan _duration;
 
-        public MediaPlayerService(IAppContextService appContext, IActivityResultAwaiter activityResultAwaiter)
+        public MediaPlayerService(
+            IAppContextService appContext,
+            IActivityResultAwaiter activityResultAwaiter,
+            IEnvironmentService environmentService = null)
         {
             _appContext = appContext;
             _activityResultAwaiter = activityResultAwaiter;
+            _environmentService = environmentService;
             _currentDirectory = GetDefaultRootPath();
             _timer = new System.Timers.Timer(400);
             _timer.Elapsed += (_, __) => RaiseStateChanged();
@@ -418,13 +423,29 @@ namespace SilentNotes.Platforms.Services
                 }
             }
 
-            // TG downloads resume on a background thread; StartActivity must run on the UI thread.
+            // TG downloads resume on a background thread; overlay/activity start must run on the UI thread.
             return MainThread.InvokeOnMainThreadAsync(() =>
             {
+                string displayTitle = title ?? Path.GetFileName(pathOrUri);
+
+                // Prefer the movable Accessibility overlay (same style as the quick menu).
+                if (floating)
+                {
+                    string localPath = pathOrUri;
+                    if (localPath.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
+                        && Uri.TryCreate(localPath, UriKind.Absolute, out Uri fileUri))
+                    {
+                        localPath = fileUri.LocalPath;
+                    }
+
+                    if (_environmentService?.FloatingButton?.TryShowFloatingImage(localPath, displayTitle) == true)
+                        return;
+                }
+
                 SilentNotes.ImageViewerActivity.Start(
                     GetLaunchContext(),
                     pathOrUri,
-                    title ?? Path.GetFileName(pathOrUri),
+                    displayTitle,
                     gallery,
                     index,
                     floating);

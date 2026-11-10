@@ -1,0 +1,2 @@
+• TG photos open in a draggable floating overlay like the quick menu
+• Drag the header or picture, resize from the bottom bar; Crop still available

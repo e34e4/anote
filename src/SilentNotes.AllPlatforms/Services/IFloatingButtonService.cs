@@ -41,5 +41,11 @@ namespace SilentNotes.Services
         void ShowKeyboardSwitcher()
         {
         }
+
+        /// <summary>
+        /// Shows a movable floating image window (same overlay style as the quick menu).
+        /// Returns false when unsupported or the accessibility service is not running.
+        /// </summary>
+        bool TryShowFloatingImage(string path, string title = null) => false;
     }
 }

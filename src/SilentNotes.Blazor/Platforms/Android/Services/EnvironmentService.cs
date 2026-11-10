@@ -245,6 +245,19 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
+        bool IFloatingButtonService.TryShowFloatingImage(string path, string title)
+        {
+            try
+            {
+                return FloatingButtonAccessibilityService.Instance?.ShowImageOverlay(path, title) == true;
+            }
+            catch (System.Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <inheritdoc/>
         public IBrowserUrlProvider BrowserUrl
         {
             get { return this; }

@@ -63,6 +63,10 @@ namespace SilentNotes.Platforms
         private const string PreferenceKeyMenuY = "menu_y";
         private const string PreferenceKeyMenuWidth = "menu_w";
         private const string PreferenceKeyMenuHeight = "menu_h";
+        private const string PreferenceKeyImageX = "img_x";
+        private const string PreferenceKeyImageY = "img_y";
+        private const string PreferenceKeyImageWidth = "img_w";
+        private const string PreferenceKeyImageHeight = "img_h";
         private const string LogTag = "aNoteFloating";
         private const int LongPressDelayMs = 600;
         private const int DoubleTapTimeoutMs = 260;
@@ -136,6 +140,11 @@ namespace SilentNotes.Platforms
         private WindowManagerLayoutParams _overlayParams;
         private global::Android.Views.View _menuOverlayView;
         private WindowManagerLayoutParams _menuLayoutParams;
+        private global::Android.Views.View _imageOverlayView;
+        private WindowManagerLayoutParams _imageLayoutParams;
+        private ImageView _imageOverlayImageView;
+        private Bitmap _imageOverlayBitmap;
+        private string _imageOverlayPath;
         private bool _captureEnabled;
         private bool _menuShowingApps;
         private bool _menuLaunchAsFloating;
@@ -340,6 +349,7 @@ namespace SilentNotes.Platforms
         public override bool OnUnbind(Intent intent)
         {
             StopClipboardCapture();
+            HideImageOverlay();
             HideMenuOverlay();
             HideOverlay();
             Instance = null;
@@ -352,6 +362,7 @@ namespace SilentNotes.Platforms
         public override void OnDestroy()
         {
             StopClipboardCapture();
+            HideImageOverlay();
             HideMenuOverlay();
             HideOverlay();
             Instance = null;
@@ -1025,6 +1036,368 @@ namespace SilentNotes.Platforms
             _menuOverlayView = null;
             _menuLayoutParams = null;
             _menuShowingApps = false;
+        }
+
+        /// <summary>
+        /// Shows a movable/resizable floating image window using the same Accessibility overlay
+        /// style as the quick menu. Returns false if the path is missing or the overlay cannot be shown.
+        /// </summary>
+        internal bool ShowImageOverlay(string path, string title = null)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+                return false;
+
+            if (_windowManager == null)
+                _windowManager = ResolveWindowManager();
+            if (_windowManager == null)
+                return false;
+
+            try
+            {
+                HideImageOverlay();
+
+                float density = Resources.DisplayMetrics.Density;
+                int screenW = Resources.DisplayMetrics.WidthPixels;
+                int screenH = Resources.DisplayMetrics.HeightPixels;
+
+                var preferences = GetSharedPreferences(PreferencesName, FileCreationMode.Private);
+                int defaultWidth = (int)Math.Min(screenW * 0.92f, 420 * density);
+                int defaultHeight = Math.Max((int)(280 * density), (int)(screenH * 0.55f));
+                int minWidth = (int)(180 * density);
+                int minHeight = (int)(160 * density);
+
+                int winWidth = Math.Clamp(preferences.GetInt(PreferenceKeyImageWidth, defaultWidth), minWidth, screenW);
+                int winHeight = Math.Clamp(preferences.GetInt(PreferenceKeyImageHeight, defaultHeight), minHeight, screenH);
+                int defaultX = Math.Max(0, (screenW - winWidth) / 2);
+                int defaultY = Math.Max(0, (screenH - winHeight) / 2);
+                int winX = Math.Clamp(preferences.GetInt(PreferenceKeyImageX, defaultX), 0, Math.Max(0, screenW - minWidth / 2));
+                int winY = Math.Clamp(preferences.GetInt(PreferenceKeyImageY, defaultY), 0, Math.Max(0, screenH - minHeight / 2));
+
+                Bitmap bitmap = BitmapFactory.DecodeFile(path);
+                if (bitmap == null)
+                    return false;
+
+                _imageOverlayBitmap = bitmap;
+                _imageOverlayPath = path;
+
+                var card = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Vertical,
+                    Clickable = true,
+                };
+                int cardPad = (int)(10 * density);
+                card.SetPadding(cardPad, cardPad, cardPad, (int)(6 * density));
+
+                var cardBg = new GradientDrawable();
+                cardBg.SetColor(Color.ParseColor("#F2101010"));
+                cardBg.SetCornerRadius(16 * density);
+                cardBg.SetStroke((int)(1.5f * density), Color.ParseColor("#38BDF8"));
+                card.Background = cardBg;
+
+                var headerRow = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Horizontal,
+                };
+                headerRow.SetGravity(GravityFlags.CenterVertical);
+                headerRow.SetPadding((int)(4 * density), (int)(2 * density), (int)(4 * density), (int)(6 * density));
+                int btnPad = (int)(6 * density);
+
+                string headerTitle = string.IsNullOrWhiteSpace(title)
+                    ? System.IO.Path.GetFileName(path)
+                    : title;
+                if (string.IsNullOrWhiteSpace(headerTitle))
+                    headerTitle = "Image";
+
+                var titleView = new TextView(this)
+                {
+                    Text = "⠿ " + headerTitle,
+                    TextSize = 13.5f,
+                    Ellipsize = Android.Text.TextUtils.TruncateAt.End,
+                };
+                titleView.SetSingleLine(true);
+                titleView.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+                titleView.SetTextColor(Color.White);
+                headerRow.AddView(titleView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+                var cropBtn = new TextView(this)
+                {
+                    Text = "Crop",
+                    TextSize = 12f,
+                    Gravity = GravityFlags.Center,
+                };
+                cropBtn.SetTextColor(Color.ParseColor("#38BDF8"));
+                cropBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
+                cropBtn.Click += (s, e) => OpenImageOverlayEditor();
+                headerRow.AddView(cropBtn);
+
+                var closeBtn = new TextView(this)
+                {
+                    Text = "✕",
+                    TextSize = 14f,
+                    Gravity = GravityFlags.Center,
+                };
+                closeBtn.SetTextColor(Color.ParseColor("#BDBDBD"));
+                closeBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
+                closeBtn.Click += (s, e) => HideImageOverlay();
+                headerRow.AddView(closeBtn);
+
+                headerRow.SetOnTouchListener(new ImageDragTouchListener(this));
+                card.AddView(headerRow);
+
+                _imageOverlayImageView = new ImageView(this);
+                _imageOverlayImageView.SetScaleType(ImageView.ScaleType.FitCenter);
+                _imageOverlayImageView.SetImageBitmap(_imageOverlayBitmap);
+                _imageOverlayImageView.SetBackgroundColor(Color.Black);
+                // Drag from the picture area as well (same as moving the quick-menu window).
+                _imageOverlayImageView.SetOnTouchListener(new ImageDragTouchListener(this));
+                card.AddView(_imageOverlayImageView, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, 0, 1f));
+
+                var footerRow = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Horizontal,
+                };
+                footerRow.SetGravity(GravityFlags.CenterVertical);
+                footerRow.SetPadding(0, (int)(4 * density), 0, 0);
+
+                var bottomResizePill = new TextView(this)
+                {
+                    Text = "═══",
+                    TextSize = 11f,
+                    Gravity = GravityFlags.Center,
+                };
+                bottomResizePill.SetTextColor(Color.ParseColor("#757575"));
+                bottomResizePill.SetOnTouchListener(new ImageResizeTouchListener(this, resizeWidth: false, resizeHeight: true, minWidth, minHeight, screenW, screenH));
+                footerRow.AddView(bottomResizePill, new LinearLayout.LayoutParams(0, (int)(22 * density), 1f));
+
+                var cornerGrip = new TextView(this)
+                {
+                    Text = "◢",
+                    TextSize = 14f,
+                    Gravity = GravityFlags.Center,
+                };
+                cornerGrip.SetTextColor(Color.ParseColor("#38BDF8"));
+                cornerGrip.SetPadding((int)(8 * density), 0, (int)(4 * density), 0);
+                cornerGrip.SetOnTouchListener(new ImageResizeTouchListener(this, resizeWidth: true, resizeHeight: true, minWidth, minHeight, screenW, screenH));
+                footerRow.AddView(cornerGrip, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WrapContent, (int)(22 * density)));
+
+                card.AddView(footerRow, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+
+                _imageLayoutParams = new WindowManagerLayoutParams(
+                    winWidth,
+                    winHeight,
+                    WindowManagerTypes.AccessibilityOverlay,
+                    WindowManagerFlags.NotFocusable | WindowManagerFlags.NotTouchModal,
+                    Format.Translucent)
+                {
+                    Gravity = GravityFlags.Top | GravityFlags.Start,
+                    X = winX,
+                    Y = winY,
+                };
+
+                _imageOverlayView = card;
+                _windowManager.AddView(_imageOverlayView, _imageLayoutParams);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not show floating image overlay: " + ex);
+                HideImageOverlay();
+                return false;
+            }
+        }
+
+        internal void HideImageOverlay()
+        {
+            if (_imageOverlayView != null && _windowManager != null)
+            {
+                try
+                {
+                    _windowManager.RemoveView(_imageOverlayView);
+                }
+                catch (Exception ex)
+                {
+                    global::Android.Util.Log.Error(LogTag, "Could not hide floating image overlay: " + ex);
+                }
+            }
+
+            _imageOverlayView = null;
+            _imageLayoutParams = null;
+            _imageOverlayImageView = null;
+            _imageOverlayPath = null;
+
+            try
+            {
+                _imageOverlayBitmap?.Recycle();
+            }
+            catch (Exception)
+            {
+            }
+            _imageOverlayBitmap = null;
+        }
+
+        private void SaveImageBounds()
+        {
+            if (_imageLayoutParams == null)
+                return;
+            try
+            {
+                var preferences = GetSharedPreferences(PreferencesName, FileCreationMode.Private);
+                preferences.Edit()
+                    .PutInt(PreferenceKeyImageX, _imageLayoutParams.X)
+                    .PutInt(PreferenceKeyImageY, _imageLayoutParams.Y)
+                    .PutInt(PreferenceKeyImageWidth, _imageLayoutParams.Width)
+                    .PutInt(PreferenceKeyImageHeight, _imageLayoutParams.Height)
+                    .Apply();
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private void OpenImageOverlayEditor()
+        {
+            try
+            {
+                string path = _imageOverlayPath;
+                if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+                    return;
+
+                Intent intent = SilentNotes.ImageEditorActivity.CreateIntent(this, path, floating: true);
+                intent.AddFlags(ActivityFlags.NewTask);
+                StartActivity(intent);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not open image editor from overlay: " + ex);
+            }
+        }
+
+        private class ImageDragTouchListener : Java.Lang.Object, global::Android.Views.View.IOnTouchListener
+        {
+            private readonly FloatingButtonAccessibilityService _service;
+            private float _startRawX;
+            private float _startRawY;
+            private int _startX;
+            private int _startY;
+
+            public ImageDragTouchListener(FloatingButtonAccessibilityService service)
+            {
+                _service = service;
+            }
+
+            public bool OnTouch(global::Android.Views.View view, MotionEvent e)
+            {
+                if (_service._imageOverlayView == null || _service._imageLayoutParams == null || _service._windowManager == null)
+                    return false;
+
+                switch (e.ActionMasked)
+                {
+                    case MotionEventActions.Down:
+                        _startRawX = e.RawX;
+                        _startRawY = e.RawY;
+                        _startX = _service._imageLayoutParams.X;
+                        _startY = _service._imageLayoutParams.Y;
+                        return true;
+
+                    case MotionEventActions.Move:
+                        int dx = (int)(e.RawX - _startRawX);
+                        int dy = (int)(e.RawY - _startRawY);
+                        _service._imageLayoutParams.X = Math.Max(0, _startX + dx);
+                        _service._imageLayoutParams.Y = Math.Max(0, _startY + dy);
+                        try
+                        {
+                            _service._windowManager.UpdateViewLayout(_service._imageOverlayView, _service._imageLayoutParams);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        return true;
+
+                    case MotionEventActions.Up:
+                    case MotionEventActions.Cancel:
+                        _service.SaveImageBounds();
+                        return true;
+                }
+                return false;
+            }
+        }
+
+        private class ImageResizeTouchListener : Java.Lang.Object, global::Android.Views.View.IOnTouchListener
+        {
+            private readonly FloatingButtonAccessibilityService _service;
+            private readonly bool _resizeWidth;
+            private readonly bool _resizeHeight;
+            private readonly int _minWidth;
+            private readonly int _minHeight;
+            private readonly int _maxWidth;
+            private readonly int _maxHeight;
+            private float _startRawX;
+            private float _startRawY;
+            private int _startWidth;
+            private int _startHeight;
+
+            public ImageResizeTouchListener(
+                FloatingButtonAccessibilityService service,
+                bool resizeWidth,
+                bool resizeHeight,
+                int minWidth,
+                int minHeight,
+                int maxWidth,
+                int maxHeight)
+            {
+                _service = service;
+                _resizeWidth = resizeWidth;
+                _resizeHeight = resizeHeight;
+                _minWidth = minWidth;
+                _minHeight = minHeight;
+                _maxWidth = maxWidth;
+                _maxHeight = maxHeight;
+            }
+
+            public bool OnTouch(global::Android.Views.View view, MotionEvent e)
+            {
+                if (_service._imageOverlayView == null || _service._imageLayoutParams == null || _service._windowManager == null)
+                    return false;
+
+                switch (e.ActionMasked)
+                {
+                    case MotionEventActions.Down:
+                        _startRawX = e.RawX;
+                        _startRawY = e.RawY;
+                        _startWidth = _service._imageLayoutParams.Width;
+                        _startHeight = _service._imageLayoutParams.Height;
+                        return true;
+
+                    case MotionEventActions.Move:
+                        if (_resizeWidth)
+                        {
+                            int dw = (int)(e.RawX - _startRawX);
+                            _service._imageLayoutParams.Width = Math.Clamp(_startWidth + dw, _minWidth, _maxWidth);
+                        }
+                        if (_resizeHeight)
+                        {
+                            int dh = (int)(e.RawY - _startRawY);
+                            _service._imageLayoutParams.Height = Math.Clamp(_startHeight + dh, _minHeight, _maxHeight);
+                        }
+                        try
+                        {
+                            _service._windowManager.UpdateViewLayout(_service._imageOverlayView, _service._imageLayoutParams);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        return true;
+
+                    case MotionEventActions.Up:
+                    case MotionEventActions.Cancel:
+                        _service.SaveImageBounds();
+                        return true;
+                }
+                return false;
+            }
         }
 
         private class MenuDragTouchListener : Java.Lang.Object, global::Android.Views.View.IOnTouchListener
