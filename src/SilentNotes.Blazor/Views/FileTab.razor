@@ -51,12 +51,23 @@
 	.file-btn:active {
 		background-color: #1f1f1f;
 	}
+	.file-selection-bar {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		padding: 8px 4px;
+		border-bottom: 1px solid #202020;
+		align-items: center;
+	}
 	.file-row {
 		display: flex;
 		align-items: center;
 		padding: 10px 6px;
 		border-bottom: 1px solid #202020;
 		gap: 8px;
+	}
+	.file-row.selected {
+		background: rgba(36, 129, 204, 0.18);
 	}
 	.file-row-main {
 		flex-grow: 1;
@@ -135,6 +146,17 @@
 			OnClick="() => ViewModel.OpenSettingsCommand.Execute(null)" title="@LanguageService["file_settings"]" />
 	</div>
 
+	@if (ViewModel.HasSelection)
+	{
+		<div class="file-selection-bar">
+			<span>@ViewModel.SelectedCount</span>
+			<button class="file-btn" disabled="@ViewModel.IsBusy" @onclick="ZipSelectedAsync">@LanguageService["file_zip"]</button>
+			<button class="file-btn" disabled="@ViewModel.IsBusy" @onclick="UnzipSelectedAsync">@LanguageService["file_unzip"]</button>
+			<button class="file-btn" disabled="@ViewModel.IsBusy" @onclick="SplitSelectedAsync">@LanguageService["file_split"]</button>
+			<button class="file-btn" @onclick="ClearSelection">@LanguageService["file_clear_selection"]</button>
+		</div>
+	}
+
 	@if (ViewModel.IsNewFolderOpen)
 	{
 		<div class="d-flex align-center gap-2 my-2">
@@ -194,7 +216,16 @@
 	{
 		@foreach (var item in ViewModel.FilteredItems)
 		{
-			<div class="file-row" @key="item.Name">
+			<div class="file-row @(ViewModel.IsSelected(item) ? "selected" : null)" @key="item.Name">
+				@if (!item.IsDirectory)
+				{
+					<MudCheckBox T="bool" Dense="true" Value="@ViewModel.IsSelected(item)"
+						ValueChanged="@((bool _) => ToggleSelection(item))" />
+				}
+				else
+				{
+					<span style="width:42px"></span>
+				}
 				<MudIcon Icon="@(item.IsDirectory ? Icons.Material.Filled.Folder : Icons.Material.Filled.InsertDriveFile)"
 					Color="@(item.IsDirectory ? Color.Warning : Color.Secondary)" />
 
@@ -209,6 +240,11 @@
 						<MudIconButton Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small"
 							OnClick="() => AskAiAboutFileAsync(item)" title="@LanguageService["ask_ai"]" />
 					</span>
+					@if (IsImageFile(item.Name))
+					{
+						<MudIconButton Icon="@Icons.Material.Filled.Crop" Size="Size.Small"
+							OnClick="() => CropImageAsync(item)" title="@LanguageService["file_crop"]" />
+					}
 					<MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small"
 						OnClick="() => DownloadFileAsync(item)" title="@LanguageService["file_download"]" />
 					<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small"
@@ -286,6 +322,48 @@
 	{
 		await ViewModel.DownloadFileToDeviceAsync(item);
 		StateHasChanged();
+	}
+
+	private void ToggleSelection(WebdavFileItemViewModel item)
+	{
+		ViewModel.ToggleSelection(item);
+		StateHasChanged();
+	}
+
+	private void ClearSelection()
+	{
+		ViewModel.ClearSelection();
+		StateHasChanged();
+	}
+
+	private async Task ZipSelectedAsync()
+	{
+		await ViewModel.ZipSelectedAsync();
+		StateHasChanged();
+	}
+
+	private async Task UnzipSelectedAsync()
+	{
+		await ViewModel.UnzipSelectedAsync();
+		StateHasChanged();
+	}
+
+	private async Task SplitSelectedAsync()
+	{
+		await ViewModel.SplitSelectedAsync(5);
+		StateHasChanged();
+	}
+
+	private async Task CropImageAsync(WebdavFileItemViewModel item)
+	{
+		await ViewModel.CropImageAsync(item);
+		StateHasChanged();
+	}
+
+	private static bool IsImageFile(string name)
+	{
+		string ext = System.IO.Path.GetExtension(name ?? string.Empty).ToLowerInvariant();
+		return ext is ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif" or ".bmp" or ".heic" or ".avif";
 	}
 
 	private async Task AskAiAboutFileAsync(WebdavFileItemViewModel item)

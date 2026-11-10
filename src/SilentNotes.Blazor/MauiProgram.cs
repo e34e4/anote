@@ -208,6 +208,7 @@ public static class MauiProgram
             serviceProvider.GetService<IXmlFileService>()));
         services.AddSingleton<IDeviceSmsService>((serviceProvider) => new DeviceSmsService());
         services.AddSingleton<IImageFileService>((serviceProvider) => new ImageFileService());
+        services.AddSingleton<IImageEditorService>((serviceProvider) => new ImageEditorService());
         services.AddSingleton<IQrService>((serviceProvider) => new QrService());
         services.AddSingleton<IQrHistoryService>((serviceProvider) => new QrHistoryService(
             serviceProvider.GetService<IXmlFileService>()));
@@ -289,6 +290,8 @@ public static class MauiProgram
             serviceProvider.GetService<IRepositoryStorageService>(),
             serviceProvider.GetService<IActivityResultAwaiter>()));
         services.AddSingleton<IImageFileService>((serviceProvider) => new ImageFileService(
+            serviceProvider.GetService<IAppContextService>()));
+        services.AddSingleton<IImageEditorService>((serviceProvider) => new ImageEditorService(
             serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<IQrService>((serviceProvider) => new QrService(
             serviceProvider.GetService<IAppContextService>()));

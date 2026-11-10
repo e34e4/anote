@@ -63,6 +63,9 @@ namespace SilentNotes.Services
         /// <summary>Opens the photo in an external image viewer application.</summary>
         Task<bool> OpenPhotoAsync(string fileName);
 
+        /// <summary>Returns the absolute filesystem path of a stored photo, or null.</summary>
+        string GetPhotoFilePath(string fileName);
+
         /// <summary>Exports the photo to the public device gallery (Pictures/aNote) keeping its format.</summary>
         Task<string> SaveToPublicGalleryAsync(string fileName);
 

@@ -24,6 +24,21 @@ namespace SilentNotes.Models
     }
 
     /// <summary>
+    /// How Abro blocks network images on pages.
+    /// </summary>
+    public enum AbroBlockImagesMode
+    {
+        /// <summary>Load images normally.</summary>
+        Disable = 0,
+
+        /// <summary>Block images on every page.</summary>
+        Enable = 1,
+
+        /// <summary>Block images only on listed domains.</summary>
+        Selectively = 2,
+    }
+
+    /// <summary>
     /// Local Abro browser settings: search engines, custom font, and black mode.
     /// </summary>
     public class AbroBrowserSettingsModel
@@ -47,7 +62,8 @@ namespace SilentNotes.Models
             CustomFontFileName = string.Empty;
             BlackMode = AbroBlackMode.Disable;
             BlackModeDomains = new List<string>();
-            BlockImages = false;
+            BlockImagesMode = AbroBlockImagesMode.Disable;
+            BlockImagesDomains = new List<string>();
             Socks5Enabled = false;
             Socks5Host = string.Empty;
             Socks5Port = 1080;
@@ -88,10 +104,24 @@ namespace SilentNotes.Models
         /// </summary>
         public List<string> BlackModeDomains { get; set; }
 
+        /// <summary>Gets or sets whether Abro blocks network images.</summary>
+        public AbroBlockImagesMode BlockImagesMode { get; set; }
+
         /// <summary>
-        /// When true, Abro does not load images and shows same-size placeholders with the image URL.
+        /// Gets or sets hostnames that block images when
+        /// <see cref="BlockImagesMode"/> is <see cref="AbroBlockImagesMode.Selectively"/>.
         /// </summary>
-        public bool BlockImages { get; set; }
+        public List<string> BlockImagesDomains { get; set; }
+
+        /// <summary>
+        /// Legacy convenience: true when images are blocked on every page.
+        /// Prefer <see cref="BlockImagesMode"/> / <see cref="ShouldApplyBlockImages"/>.
+        /// </summary>
+        public bool BlockImages
+        {
+            get => BlockImagesMode == AbroBlockImagesMode.Enable;
+            set => BlockImagesMode = value ? AbroBlockImagesMode.Enable : AbroBlockImagesMode.Disable;
+        }
 
         /// <summary>When true and host/port are set, Abro WebView traffic uses this SOCKS5 proxy.</summary>
         public bool Socks5Enabled { get; set; }
@@ -127,9 +157,30 @@ namespace SilentNotes.Models
         /// </summary>
         public bool ShouldApplyBlackMode(string pageUrl)
         {
-            if (BlackMode == AbroBlackMode.Disable)
+            return ShouldApplyDomainMode(pageUrl, BlackMode == AbroBlackMode.Disable, BlackMode == AbroBlackMode.Enable, BlackModeDomains);
+        }
+
+        /// <summary>
+        /// Returns whether image blocking should apply for <paramref name="pageUrl"/>.
+        /// </summary>
+        public bool ShouldApplyBlockImages(string pageUrl)
+        {
+            return ShouldApplyDomainMode(
+                pageUrl,
+                BlockImagesMode == AbroBlockImagesMode.Disable,
+                BlockImagesMode == AbroBlockImagesMode.Enable,
+                BlockImagesDomains);
+        }
+
+        private static bool ShouldApplyDomainMode(
+            string pageUrl,
+            bool disabled,
+            bool enabledEverywhere,
+            List<string> selectiveDomains)
+        {
+            if (disabled)
                 return false;
-            if (BlackMode == AbroBlackMode.Enable)
+            if (enabledEverywhere)
                 return true;
 
             string host = TryGetHost(pageUrl);
@@ -137,10 +188,10 @@ namespace SilentNotes.Models
                 return false;
 
             host = NormalizeDomain(host);
-            if (BlackModeDomains == null || BlackModeDomains.Count == 0)
+            if (selectiveDomains == null || selectiveDomains.Count == 0)
                 return false;
 
-            foreach (string entry in BlackModeDomains)
+            foreach (string entry in selectiveDomains)
             {
                 string domain = NormalizeDomain(entry);
                 if (string.IsNullOrEmpty(domain))

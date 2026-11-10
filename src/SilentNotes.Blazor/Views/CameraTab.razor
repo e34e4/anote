@@ -312,6 +312,7 @@
 						<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => ViewModel.StartRenameCommand.Execute(item)" title="@LanguageService["camera_rename"]" />
 						<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="() => SaveToGalleryAsync(item)" title="@LanguageService["camera_save_gallery"]" />
 						<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small" OnClick="() => SaveToWebdavAsync(item)" title="@LanguageService["webdav_quick_save"]" />
+						<MudIconButton Icon="@Icons.Material.Filled.Crop" Size="Size.Small" OnClick="() => CropPhotoAsync(item)" title="@LanguageService["file_crop"]" />
 						<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" OnClick="() => SharePhotoAsync(item)" title="@LanguageService["share"]" />
 						<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => DeletePhotoAsync(item)" title="@LanguageService["camera_delete"]" />
 					}
@@ -376,6 +377,11 @@
 	{
 		await ViewModel.SaveToGalleryAsync(item);
 		StateHasChanged();
+	}
+
+	private async Task CropPhotoAsync(CameraPhotoItemViewModel item)
+	{
+		await ViewModel.CropPhotoAsync(item);
 	}
 
 	private async Task SharePhotoAsync(CameraPhotoItemViewModel item)

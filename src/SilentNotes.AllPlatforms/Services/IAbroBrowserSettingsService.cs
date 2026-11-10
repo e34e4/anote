@@ -45,6 +45,11 @@ namespace SilentNotes.Services
         /// </summary>
         bool ShouldApplyBlackMode(string pageUrl);
 
+        /// <summary>
+        /// Returns whether image blocking should apply for the given page URL.
+        /// </summary>
+        bool ShouldApplyBlockImages(string pageUrl);
+
         /// <summary>Gets the absolute path of the copied custom font file, or null.</summary>
         string GetCustomFontPath();
 

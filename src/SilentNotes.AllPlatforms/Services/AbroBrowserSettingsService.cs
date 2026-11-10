@@ -175,6 +175,12 @@ namespace SilentNotes.Services
         }
 
         /// <inheritdoc/>
+        public bool ShouldApplyBlockImages(string pageUrl)
+        {
+            return LoadOrDefault().ShouldApplyBlockImages(pageUrl);
+        }
+
+        /// <inheritdoc/>
         public string GetCustomFontPath()
         {
             AbroBrowserSettingsModel settings = LoadOrDefault();

@@ -71,6 +71,7 @@ namespace SilentNotes.ViewModels
         private int _replyToMsgId;
         private string _replyPreview = string.Empty;
         private bool _sendWithSound;
+        private DateTimeOffset? _pendingScheduleAt;
 
         private readonly List<TelegramChatModel> _chats = new List<TelegramChatModel>();
         private readonly List<TelegramMessageModel> _messages = new List<TelegramMessageModel>();
@@ -494,6 +495,28 @@ namespace SilentNotes.ViewModels
                 if (SetProperty(ref _sendWithSound, value))
                     NotifyChanged();
             }
+        }
+
+        /// <summary>
+        /// When set, the next send schedules the message for this local time (UTC converted for the API).
+        /// Cleared after a successful send or when cancelled.
+        /// </summary>
+        public DateTimeOffset? PendingScheduleAt
+        {
+            get => _pendingScheduleAt;
+            set
+            {
+                if (SetProperty(ref _pendingScheduleAt, value))
+                    NotifyChanged();
+            }
+        }
+
+        public bool HasPendingSchedule =>
+            _pendingScheduleAt.HasValue && _pendingScheduleAt.Value.UtcDateTime > DateTime.UtcNow.AddSeconds(30);
+
+        public void ClearPendingSchedule()
+        {
+            PendingScheduleAt = null;
         }
 
         public IReadOnlyList<TelegramChatModel> ForwardTargets
@@ -1853,6 +1876,9 @@ namespace SilentNotes.ViewModels
                 bool silent = !_sendWithSound;
                 int replyTo = _replyToMsgId;
                 bool replyConsumed = false;
+                DateTimeOffset? scheduleAt = (_editingMessageId > 0) ? null : _pendingScheduleAt;
+                if (scheduleAt.HasValue && scheduleAt.Value.UtcDateTime <= DateTime.UtcNow.AddSeconds(30))
+                    scheduleAt = null;
 
                 foreach (var attachment in _pendingAttachments.ToList())
                 {
@@ -1860,10 +1886,10 @@ namespace SilentNotes.ViewModels
                     TelegramOperationResult attachResult = attachment.IsPhoto
                         ? await _telegramService.SendPhotoAttachmentAsync(
                             _openChatKey, attachment.Content, attachment.FileName, caption: null,
-                            replyToMsgId: attachReply, silent: silent)
+                            replyToMsgId: attachReply, silent: silent, scheduleAt: scheduleAt)
                         : await _telegramService.SendFileAttachmentAsync(
                             _openChatKey, attachment.Content, attachment.FileName, caption: null,
-                            replyToMsgId: attachReply, silent: silent);
+                            replyToMsgId: attachReply, silent: silent, scheduleAt: scheduleAt);
                     if (!attachResult.Success)
                     {
                         StatusMessage = attachResult.ErrorMessage ?? "Send attachment failed";
@@ -1890,7 +1916,8 @@ namespace SilentNotes.ViewModels
                             text,
                             replyToMsgId: replyConsumed ? 0 : replyTo,
                             format: TelegramTextFormat.MarkdownLite,
-                            silent: silent);
+                            silent: silent,
+                            scheduleAt: scheduleAt);
                         replyConsumed = true;
                     }
 
@@ -1905,6 +1932,17 @@ namespace SilentNotes.ViewModels
 
                 CancelReply();
                 _sendWithSound = false;
+                _pendingScheduleAt = null;
+
+                if (scheduleAt.HasValue)
+                {
+                    string when = scheduleAt.Value.ToLocalTime().ToString("g");
+                    string toast = _languageService != null
+                        ? string.Format(System.Globalization.CultureInfo.CurrentCulture, _languageService["tg_scheduled_ok"], when)
+                        : ("Scheduled for " + when);
+                    StatusMessage = toast;
+                    _feedbackService?.ShowToast(toast);
+                }
 
                 await _telegramService.MarkChatReadOnInteractAsync(_openChatKey);
                 ReloadMessages();

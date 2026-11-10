@@ -1,0 +1,342 @@
+@using System.Globalization
+@using MudBlazor
+@using SilentNotes.Services
+
+@inject ILanguageService LanguageService
+
+<style type="text/css">
+	.date-tools-overlay {
+		position: fixed;
+		top: 0; left: 0; right: 0; bottom: 0;
+		background-color: rgba(0, 0, 0, 0.55);
+		z-index: 1400;
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+	}
+	.date-tools-sheet {
+		background-color: var(--mud-palette-surface);
+		color: var(--mud-palette-text-primary);
+		width: 100%;
+		max-width: 560px;
+		max-height: 82vh;
+		overflow-y: auto;
+		border-radius: 16px 16px 0 0;
+		padding: 12px;
+	}
+	.date-tools-title {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		font-size: 1.05rem;
+		font-weight: 600;
+		margin-bottom: 8px;
+	}
+	.app-header-row {
+		display: flex;
+		align-items: center;
+		min-height: 36px;
+		padding: 0;
+	}
+	.app-header-tabs .mud-button {
+		flex: 1 1 0;
+		min-width: 0;
+		padding: 0 4px;
+		font-size: 0.82rem;
+		line-height: 1.15;
+		border-radius: 0;
+		text-transform: none;
+		min-height: 34px;
+		color: var(--mud-palette-text-secondary);
+	}
+	.app-header-tabs .mud-button.tab-active {
+		color: var(--mud-palette-text-primary);
+		border-bottom: 2px solid var(--mud-palette-primary);
+		font-weight: 600;
+	}
+	.date-tools-field {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 8px;
+	}
+	.date-tools-field label {
+		font-size: 0.85rem;
+		opacity: 0.8;
+		min-width: 74px;
+	}
+	.date-tools-input {
+		flex: 1;
+		min-width: 0;
+		background: var(--mud-palette-background);
+		color: inherit;
+		border: 1px solid var(--mud-palette-lines-default);
+		border-radius: 6px;
+		padding: 8px;
+		font-size: 0.95rem;
+	}
+	.date-tools-result {
+		margin-top: 10px;
+		padding: 10px;
+		border-radius: 8px;
+		background: var(--mud-palette-background-gray);
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 0.9rem;
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+</style>
+
+@if (IsOpen)
+{
+	<div class="date-tools-overlay" @onclick="Close">
+		<div class="date-tools-sheet" @onclick:stopPropagation="true">
+			<div class="date-tools-title">
+				<span>@LanguageService["cal_date_tools"]</span>
+				<MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="Close" />
+			</div>
+
+			<div class="app-header-row app-header-tabs mb-2">
+				<MudButton Class="@TabClass(0)" OnClick="@(() => _tab = 0)" Variant="Variant.Text">@LanguageService["cal_date_diff"]</MudButton>
+				<MudButton Class="@TabClass(1)" OnClick="@(() => _tab = 1)" Variant="Variant.Text">@LanguageService["cal_date_units"]</MudButton>
+				<MudButton Class="@TabClass(2)" OnClick="@(() => _tab = 2)" Variant="Variant.Text">@LanguageService["cal_date_unix"]</MudButton>
+			</div>
+
+			@if (_tab == 0)
+			{
+				<div class="date-tools-field">
+					<label>@LanguageService["cal_date_from"]</label>
+					<input class="date-tools-input" type="date" value="@_fromDate" @onchange="OnFromDateChanged" />
+				</div>
+				<div class="date-tools-field">
+					<label>@LanguageService["cal_date_to"]</label>
+					<input class="date-tools-input" type="date" value="@_toDate" @onchange="OnToDateChanged" />
+				</div>
+				<div class="date-tools-result">@DiffResultText()</div>
+			}
+			else if (_tab == 1)
+			{
+				<div class="date-tools-field">
+					<label>@LanguageService["cal_date_seconds"]</label>
+					<input class="date-tools-input" type="number" step="any" value="@_secondsText" @oninput="OnSecondsInput" />
+				</div>
+				<div class="date-tools-field">
+					<label>@LanguageService["cal_date_minutes"]</label>
+					<input class="date-tools-input" type="number" step="any" value="@_minutesText" @oninput="OnMinutesInput" />
+				</div>
+				<div class="date-tools-field">
+					<label>@LanguageService["cal_date_hours"]</label>
+					<input class="date-tools-input" type="number" step="any" value="@_hoursText" @oninput="OnHoursInput" />
+				</div>
+				<div class="date-tools-result">@UnitsResultText()</div>
+			}
+			else
+			{
+				<div class="date-tools-field">
+					<label>@LanguageService["cal_date_unix_ts"]</label>
+					<input class="date-tools-input" type="number" step="1" value="@_unixText" @oninput="OnUnixInput" />
+				</div>
+				<div class="date-tools-field">
+					<label>@LanguageService["cal_date_local"]</label>
+					<input class="date-tools-input" type="datetime-local" value="@_localText" @onchange="OnLocalChanged" />
+				</div>
+				<div class="date-tools-result">@UnixResultText()</div>
+			}
+		</div>
+	</div>
+}
+
+@code {
+	[Parameter] public bool IsOpen { get; set; }
+	[Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+
+	private int _tab;
+	private string _fromDate;
+	private string _toDate;
+	private string _secondsText = "0";
+	private string _minutesText = "0";
+	private string _hoursText = "0";
+	private bool _unitsUpdating;
+	private string _unixText;
+	private string _localText;
+	private bool _unixUpdating;
+
+	protected override void OnParametersSet()
+	{
+		if (!IsOpen)
+			return;
+		if (string.IsNullOrEmpty(_fromDate) || string.IsNullOrEmpty(_toDate))
+		{
+			DateTime today = DateTime.Today;
+			_fromDate = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+			_toDate = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+		}
+		if (string.IsNullOrEmpty(_unixText) || string.IsNullOrEmpty(_localText))
+		{
+			DateTimeOffset now = DateTimeOffset.Now;
+			_unixText = now.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+			_localText = ToLocalInput(now.LocalDateTime);
+		}
+	}
+
+	private string TabClass(int index) => _tab == index ? "tab-active" : null;
+
+	private async Task Close()
+	{
+		IsOpen = false;
+		await IsOpenChanged.InvokeAsync(false);
+	}
+
+	private void OnFromDateChanged(ChangeEventArgs e)
+	{
+		_fromDate = e?.Value?.ToString() ?? _fromDate;
+	}
+
+	private void OnToDateChanged(ChangeEventArgs e)
+	{
+		_toDate = e?.Value?.ToString() ?? _toDate;
+	}
+
+	private string DiffResultText()
+	{
+		if (!DateTime.TryParseExact(_fromDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime from)
+			|| !DateTime.TryParseExact(_toDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime to))
+		{
+			return "—";
+		}
+
+		if (to < from)
+		{
+			DateTime tmp = from;
+			from = to;
+			to = tmp;
+		}
+
+		int totalDays = (to - from).Days;
+		double weeks = totalDays / 7.0;
+		int months = ((to.Year - from.Year) * 12) + (to.Month - from.Month);
+		if (to.Day < from.Day)
+			months--;
+		if (months < 0)
+			months = 0;
+		double years = months / 12.0;
+
+		return string.Join("\n", new[]
+		{
+			LanguageService["cal_date_days"] + ": " + totalDays.ToString(CultureInfo.InvariantCulture),
+			LanguageService["cal_date_weeks"] + ": " + weeks.ToString("0.##", CultureInfo.InvariantCulture),
+			LanguageService["cal_date_months"] + ": " + months.ToString(CultureInfo.InvariantCulture),
+			LanguageService["cal_date_years"] + ": " + years.ToString("0.##", CultureInfo.InvariantCulture),
+		});
+	}
+
+	private void OnSecondsInput(ChangeEventArgs e)
+	{
+		if (_unitsUpdating)
+			return;
+		_secondsText = e?.Value?.ToString() ?? "0";
+		if (!double.TryParse(_secondsText, NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds)
+			&& !double.TryParse(_secondsText, NumberStyles.Float, CultureInfo.CurrentCulture, out seconds))
+			return;
+		_unitsUpdating = true;
+		_minutesText = (seconds / 60.0).ToString("0.######", CultureInfo.InvariantCulture);
+		_hoursText = (seconds / 3600.0).ToString("0.######", CultureInfo.InvariantCulture);
+		_unitsUpdating = false;
+	}
+
+	private void OnMinutesInput(ChangeEventArgs e)
+	{
+		if (_unitsUpdating)
+			return;
+		_minutesText = e?.Value?.ToString() ?? "0";
+		if (!double.TryParse(_minutesText, NumberStyles.Float, CultureInfo.InvariantCulture, out double minutes)
+			&& !double.TryParse(_minutesText, NumberStyles.Float, CultureInfo.CurrentCulture, out minutes))
+			return;
+		_unitsUpdating = true;
+		_secondsText = (minutes * 60.0).ToString("0.######", CultureInfo.InvariantCulture);
+		_hoursText = (minutes / 60.0).ToString("0.######", CultureInfo.InvariantCulture);
+		_unitsUpdating = false;
+	}
+
+	private void OnHoursInput(ChangeEventArgs e)
+	{
+		if (_unitsUpdating)
+			return;
+		_hoursText = e?.Value?.ToString() ?? "0";
+		if (!double.TryParse(_hoursText, NumberStyles.Float, CultureInfo.InvariantCulture, out double hours)
+			&& !double.TryParse(_hoursText, NumberStyles.Float, CultureInfo.CurrentCulture, out hours))
+			return;
+		_unitsUpdating = true;
+		_secondsText = (hours * 3600.0).ToString("0.######", CultureInfo.InvariantCulture);
+		_minutesText = (hours * 60.0).ToString("0.######", CultureInfo.InvariantCulture);
+		_unitsUpdating = false;
+	}
+
+	private string UnitsResultText()
+	{
+		if (!double.TryParse(_secondsText, NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds)
+			&& !double.TryParse(_secondsText, NumberStyles.Float, CultureInfo.CurrentCulture, out seconds))
+			return "—";
+		TimeSpan span = TimeSpan.FromSeconds(seconds);
+		return string.Format(
+			CultureInfo.InvariantCulture,
+			"{0} s = {1} min = {2} h\n({3})",
+			seconds,
+			seconds / 60.0,
+			seconds / 3600.0,
+			span.ToString());
+	}
+
+	private void OnUnixInput(ChangeEventArgs e)
+	{
+		if (_unixUpdating)
+			return;
+		_unixText = e?.Value?.ToString() ?? string.Empty;
+		if (!long.TryParse(_unixText, NumberStyles.Integer, CultureInfo.InvariantCulture, out long unix))
+			return;
+		try
+		{
+			DateTimeOffset dto = DateTimeOffset.FromUnixTimeSeconds(unix).ToLocalTime();
+			_unixUpdating = true;
+			_localText = ToLocalInput(dto.DateTime);
+			_unixUpdating = false;
+		}
+		catch
+		{
+		}
+	}
+
+	private void OnLocalChanged(ChangeEventArgs e)
+	{
+		if (_unixUpdating)
+			return;
+		_localText = e?.Value?.ToString() ?? string.Empty;
+		if (!DateTime.TryParse(_localText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out DateTime local)
+			&& !DateTime.TryParse(_localText, CultureInfo.CurrentCulture, DateTimeStyles.AssumeLocal, out local))
+			return;
+		_unixUpdating = true;
+		_unixText = new DateTimeOffset(local).ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+		_unixUpdating = false;
+	}
+
+	private string UnixResultText()
+	{
+		if (!long.TryParse(_unixText, NumberStyles.Integer, CultureInfo.InvariantCulture, out long unix))
+			return "—";
+		try
+		{
+			DateTimeOffset utc = DateTimeOffset.FromUnixTimeSeconds(unix);
+			DateTimeOffset local = utc.ToLocalTime();
+			return "UTC: " + utc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+				+ "\nLocal: " + local.ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture)
+				+ "\nUnix: " + unix.ToString(CultureInfo.InvariantCulture);
+		}
+		catch (Exception ex)
+		{
+			return ex.Message;
+		}
+	}
+
+	private static string ToLocalInput(DateTime local)
+		=> local.ToString("yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture);
+}

@@ -55,6 +55,16 @@ export function getAsPlainText() {
     return exportAsPlainText(_page.editor);
 }
 
+export function getHtml() {
+    if (!IsInitialized()) return "";
+    try {
+        return _page.editor.getHTML() || "";
+    }
+    catch (ex) {
+        return "";
+    }
+}
+
 export function sessionSaveScrollTop(sessionId, editorContainer) {
     if (!IsInitialized()) return;
     TiptapHelper.sessionSaveScrollTop(sessionId, editorContainer);

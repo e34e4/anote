@@ -1826,6 +1826,7 @@ namespace SilentNotes.Services
             TelegramTextFormat format = TelegramTextFormat.MarkdownLite,
             bool useTelegramMarkdownV2 = false,
             bool silent = true,
+            DateTimeOffset? scheduleAt = null,
             CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(text))
@@ -1852,6 +1853,8 @@ namespace SilentNotes.Services
                     entities = ToTlEntities(parsed.Entities);
                 }
 
+                DateTime? scheduleDate = ToScheduleDateUtc(scheduleAt);
+
                 // NEVER call Messages_SetTyping. Default silent=true → no notification sound for peers.
                 UpdatesBase updates = await runtime.Client.Messages_SendMessage(
                     peer,
@@ -1859,13 +1862,18 @@ namespace SilentNotes.Services
                     NewSendRandomId(),
                     reply_to: BuildReplyTo(replyToMsgId),
                     entities: entities,
+                    schedule_date: scheduleDate,
                     silent: silent).ConfigureAwait(false);
 
-                Message sent = ExtractSentMessage(updates, plain);
-                if (sent != null)
+                // Scheduled messages live in the scheduled folder — only append when sent now.
+                if (scheduleDate == null)
                 {
-                    TelegramMessageModel model = MapMessage(runtime, sent, chatKey);
-                    AppendMessage(runtime, chatKey, model);
+                    Message sent = ExtractSentMessage(updates, plain);
+                    if (sent != null)
+                    {
+                        TelegramMessageModel model = MapMessage(runtime, sent, chatKey);
+                        AppendMessage(runtime, chatKey, model);
+                    }
                 }
 
                 await MarkChatReadOnInteractAsync(chatKey, runtime.AccountId, cancellationToken).ConfigureAwait(false);
@@ -1887,10 +1895,11 @@ namespace SilentNotes.Services
             string caption = null,
             int replyToMsgId = 0,
             bool silent = true,
+            DateTimeOffset? scheduleAt = null,
             CancellationToken cancellationToken = default)
         {
             return await SendUploadedMediaAsync(
-                chatKey, content, fileName, accountId, caption, asPhoto: false, replyToMsgId, silent, cancellationToken)
+                chatKey, content, fileName, accountId, caption, asPhoto: false, replyToMsgId, silent, scheduleAt, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -1903,10 +1912,11 @@ namespace SilentNotes.Services
             string caption = null,
             int replyToMsgId = 0,
             bool silent = true,
+            DateTimeOffset? scheduleAt = null,
             CancellationToken cancellationToken = default)
         {
             return await SendUploadedMediaAsync(
-                chatKey, content, fileName, accountId, caption, asPhoto: true, replyToMsgId, silent, cancellationToken)
+                chatKey, content, fileName, accountId, caption, asPhoto: true, replyToMsgId, silent, scheduleAt, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -2612,6 +2622,7 @@ namespace SilentNotes.Services
             bool asPhoto,
             int replyToMsgId,
             bool silent,
+            DateTimeOffset? scheduleAt,
             CancellationToken cancellationToken)
         {
             if (content == null || content.Length == 0)
@@ -2645,17 +2656,22 @@ namespace SilentNotes.Services
                     };
                 }
 
+                DateTime? scheduleDate = ToScheduleDateUtc(scheduleAt);
                 UpdatesBase updates = await runtime.Client.Messages_SendMedia(
                     peer,
                     media,
                     caption ?? string.Empty,
                     NewSendRandomId(),
                     reply_to: BuildReplyTo(replyToMsgId),
+                    schedule_date: scheduleDate,
                     silent: silent).ConfigureAwait(false);
 
-                Message sent = ExtractSentMessage(updates, caption ?? string.Empty);
-                if (sent != null)
-                    AppendMessage(runtime, chatKey, MapMessage(runtime, sent, chatKey));
+                if (scheduleDate == null)
+                {
+                    Message sent = ExtractSentMessage(updates, caption ?? string.Empty);
+                    if (sent != null)
+                        AppendMessage(runtime, chatKey, MapMessage(runtime, sent, chatKey));
+                }
 
                 await MarkChatReadOnInteractAsync(chatKey, runtime.AccountId, cancellationToken).ConfigureAwait(false);
                 _ = RefreshChatsAsync(runtime.AccountId, cancellationToken);
@@ -2665,6 +2681,16 @@ namespace SilentNotes.Services
             {
                 return TelegramOperationResult.Fail(ex.Message, runtime.AuthState);
             }
+        }
+
+        private static DateTime? ToScheduleDateUtc(DateTimeOffset? scheduleAt)
+        {
+            if (!scheduleAt.HasValue)
+                return null;
+            DateTime utc = scheduleAt.Value.UtcDateTime;
+            if (utc <= DateTime.UtcNow.AddSeconds(30))
+                return null;
+            return DateTime.SpecifyKind(utc, DateTimeKind.Utc);
         }
 
         private static InputReplyTo BuildReplyTo(int replyToMsgId)

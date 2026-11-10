@@ -71,7 +71,8 @@ namespace SilentNotesTest.Workers
         {
             var settings = new AbroBrowserSettingsModel
             {
-                BlockImages = true,
+                BlockImagesMode = AbroBlockImagesMode.Selectively,
+                BlockImagesDomains = { "imgs.example.com", "cdn.news.org" },
                 Socks5Enabled = true,
                 Socks5Host = "127.0.0.1",
                 Socks5Port = 9050,
@@ -82,13 +83,33 @@ namespace SilentNotesTest.Workers
             string json = AbroBrowserSettingsFormat.Serialize(settings);
             AbroBrowserSettingsModel parsed = AbroBrowserSettingsFormat.Parse(json);
             Assert.IsNotNull(parsed);
-            Assert.IsTrue(parsed.BlockImages);
+            Assert.AreEqual(AbroBlockImagesMode.Selectively, parsed.BlockImagesMode);
+            Assert.AreEqual(2, parsed.BlockImagesDomains.Count);
+            Assert.AreEqual("imgs.example.com", parsed.BlockImagesDomains[0]);
+            Assert.IsTrue(parsed.ShouldApplyBlockImages("https://imgs.example.com/page"));
+            Assert.IsFalse(parsed.ShouldApplyBlockImages("https://other.com/page"));
             Assert.IsTrue(parsed.Socks5Enabled);
             Assert.IsTrue(parsed.HasSocks5Config);
             Assert.AreEqual("127.0.0.1", parsed.Socks5Host);
             Assert.AreEqual(9050, parsed.Socks5Port);
             Assert.AreEqual("u", parsed.Socks5Username);
             Assert.AreEqual("p", parsed.Socks5Password);
+        }
+
+        [TestMethod]
+        public void ParsesLegacyBlockImagesBoolAsEnable()
+        {
+            const string json = """
+                {
+                  "version": 1,
+                  "blockImages": true,
+                  "engines": []
+                }
+                """;
+            AbroBrowserSettingsModel parsed = AbroBrowserSettingsFormat.Parse(json);
+            Assert.IsNotNull(parsed);
+            Assert.AreEqual(AbroBlockImagesMode.Enable, parsed.BlockImagesMode);
+            Assert.IsTrue(parsed.BlockImages);
         }
     }
 }

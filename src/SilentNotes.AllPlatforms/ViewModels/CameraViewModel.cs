@@ -23,6 +23,7 @@ namespace SilentNotes.ViewModels
     public class CameraViewModel : ViewModelBase
     {
         private readonly ICameraService _cameraService;
+        private readonly IImageEditorService _imageEditorService;
         private readonly ISettingsService _settingsService;
         private readonly IFilePickerService _filePickerService;
         private readonly ILanguageService _languageService;
@@ -40,13 +41,15 @@ namespace SilentNotes.ViewModels
             ISettingsService settingsService,
             IFilePickerService filePickerService,
             ILanguageService languageService,
-            IFeedbackService feedbackService)
+            IFeedbackService feedbackService,
+            IImageEditorService imageEditorService = null)
         {
             _cameraService = cameraService;
             _settingsService = settingsService;
             _filePickerService = filePickerService;
             _languageService = languageService;
             _feedbackService = feedbackService;
+            _imageEditorService = imageEditorService;
 
             _settings = _settingsService.LoadSettingsOrDefault();
 
@@ -453,6 +456,23 @@ namespace SilentNotes.ViewModels
             {
                 IsBusy = false;
             }
+        }
+
+        public async Task CropPhotoAsync(CameraPhotoItemViewModel item)
+        {
+            if (item == null)
+                return;
+            if (_imageEditorService == null || !_imageEditorService.IsSupported)
+            {
+                _feedbackService?.ShowToast(_languageService["file_crop_unavailable"], FeedbackSeverity.Warning);
+                return;
+            }
+
+            string path = _cameraService.GetPhotoFilePath(item.FileName);
+            if (string.IsNullOrEmpty(path) || !await _imageEditorService.OpenEditorAsync(path))
+                _feedbackService?.ShowToast(_languageService["file_crop_failed"], FeedbackSeverity.Warning);
+            else
+                Reload();
         }
 
         public async Task OpenPhotoAsync(CameraPhotoItemViewModel item)

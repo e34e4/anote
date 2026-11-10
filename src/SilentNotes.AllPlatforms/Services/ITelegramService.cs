@@ -187,6 +187,7 @@ namespace SilentNotes.Services
             TelegramTextFormat format = TelegramTextFormat.MarkdownLite,
             bool useTelegramMarkdownV2 = false,
             bool silent = true,
+            DateTimeOffset? scheduleAt = null,
             CancellationToken cancellationToken = default);
 
         /// <summary>Uploads and sends a file as a document attachment. Silent by default.</summary>
@@ -198,6 +199,7 @@ namespace SilentNotes.Services
             string caption = null,
             int replyToMsgId = 0,
             bool silent = true,
+            DateTimeOffset? scheduleAt = null,
             CancellationToken cancellationToken = default);
 
         /// <summary>Uploads and sends an image as a photo attachment. Silent by default.</summary>
@@ -209,6 +211,7 @@ namespace SilentNotes.Services
             string caption = null,
             int replyToMsgId = 0,
             bool silent = true,
+            DateTimeOffset? scheduleAt = null,
             CancellationToken cancellationToken = default);
 
         /// <summary>

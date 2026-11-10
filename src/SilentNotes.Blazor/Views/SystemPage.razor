@@ -18,7 +18,7 @@
 <style type="text/css">
 	.system-scroll {
 		overflow-y: auto;
-		max-height: calc(100vh - 140px);
+		max-height: calc(100vh - 180px);
 	}
 	.system-mono {
 		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -28,6 +28,39 @@
 	.system-counters td, .system-counters th {
 		padding: 2px 8px;
 		white-space: nowrap;
+	}
+	.app-header-row {
+		display: flex;
+		align-items: center;
+		min-height: 40px;
+		padding: 0 2px;
+	}
+	.app-header-tabs {
+		min-height: 36px;
+		padding: 0;
+	}
+	.app-header-tabs .mud-button {
+		flex: 1 1 0;
+		min-width: 0;
+		padding: 0 2px;
+		font-size: 0.82rem;
+		line-height: 1.15;
+		border-radius: 0;
+		text-transform: none;
+		min-height: 34px;
+		color: var(--mud-palette-text-secondary);
+	}
+	.app-header-tabs .mud-button.tab-active {
+		color: var(--mud-palette-text-primary);
+		border-bottom: 2px solid var(--mud-palette-primary);
+		font-weight: 600;
+	}
+	.system-tools-output {
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 0.78rem;
+		white-space: pre-wrap;
+		word-break: break-word;
+		min-height: 180px;
 	}
 	.logcat-line {
 		display: flex;
@@ -69,8 +102,20 @@
 
 <MudMainContent>
 	<MudContainer Class="ms-0 px-2" MaxWidth="MaxWidth.Large">
-		<MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="false" TabPanelsClass="pt-2" ActivePanelIndex="_tabIndex" ActivePanelIndexChanged="OnTabChanged">
-			<MudTabPanel Text="@LanguageService["system_tab_battery"]">
+		<div class="app-header-row app-header-tabs">
+			<MudButton Class="@GetTabButtonClass(_tabIndex, 0)" OnClick="@(() => OnTabChanged(0))" Variant="Variant.Text">@LanguageService["system_tab_battery"]</MudButton>
+			<MudButton Class="@GetTabButtonClass(_tabIndex, 1)" OnClick="@(() => OnTabChanged(1))" Variant="Variant.Text">@LanguageService["system_tab_hardware"]</MudButton>
+			<MudButton Class="@GetTabButtonClass(_tabIndex, 2)" OnClick="@(() => OnTabChanged(2))" Variant="Variant.Text">@LanguageService["system_tab_storage"]</MudButton>
+			<MudButton Class="@GetTabButtonClass(_tabIndex, 3)" OnClick="@(() => OnTabChanged(3))" Variant="Variant.Text">@LanguageService["system_tab_processes"]</MudButton>
+			<MudButton Class="@GetTabButtonClass(_tabIndex, 4)" OnClick="@(() => OnTabChanged(4))" Variant="Variant.Text">@LanguageService["system_tab_memory"]</MudButton>
+		</div>
+		<div class="app-header-row app-header-tabs">
+			<MudButton Class="@GetTabButtonClass(_tabIndex, 5)" OnClick="@(() => OnTabChanged(5))" Variant="Variant.Text">@LanguageService["system_tab_network"]</MudButton>
+			<MudButton Class="@GetTabButtonClass(_tabIndex, 6)" OnClick="@(() => OnTabChanged(6))" Variant="Variant.Text">@LanguageService["system_tab_logcat"]</MudButton>
+		</div>
+
+		@if (_tabIndex == 0)
+		{
 				<div class="system-scroll pa-1">
 					<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="1">
 						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshBatteryAsync">@LanguageService["system_refresh"]</MudButton>
@@ -124,9 +169,11 @@
 						}
 					}
 				</div>
-			</MudTabPanel>
+			
+		}
 
-			<MudTabPanel Text="@LanguageService["system_tab_hardware"]">
+		@if (_tabIndex == 1)
+		{
 				<div class="system-scroll pa-1">
 					<MudStack Row="true" Class="mb-2">
 						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshHardwareAsync">@LanguageService["system_refresh"]</MudButton>
@@ -165,9 +212,11 @@
 						}
 					}
 				</div>
-			</MudTabPanel>
+			
+		}
 
-			<MudTabPanel Text="@LanguageService["system_tab_storage"]">
+		@if (_tabIndex == 2)
+		{
 				<div class="system-scroll pa-1">
 					<MudStack Row="true" Class="mb-2">
 						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshStorageAsync">@LanguageService["system_refresh"]</MudButton>
@@ -188,9 +237,11 @@
 						</MudPaper>
 					}
 				</div>
-			</MudTabPanel>
+			
+		}
 
-			<MudTabPanel Text="@LanguageService["system_tab_processes"]">
+		@if (_tabIndex == 3)
+		{
 				<div class="system-scroll pa-1">
 					<MudPaper Class="pa-2 mb-2" Elevation="0">
 						<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
@@ -299,9 +350,11 @@
 						</MudPaper>
 					}
 				</div>
-			</MudTabPanel>
+			
+		}
 
-			<MudTabPanel Text="@LanguageService["system_tab_memory"]">
+		@if (_tabIndex == 4)
+		{
 				<div class="system-scroll pa-1">
 					<MudStack Row="true" Class="mb-2">
 						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshMemoryAsync">@LanguageService["system_refresh"]</MudButton>
@@ -339,12 +392,22 @@
 						}
 					}
 				</div>
-			</MudTabPanel>
+			
+		}
 
-			<MudTabPanel Text="@LanguageService["system_tab_network"]">
+		@if (_tabIndex == 5)
+		{
 				<div class="system-scroll pa-1">
-					<MudTabs Elevation="0" Rounded="true" ActivePanelIndex="_networkSubTab" ActivePanelIndexChanged="OnNetworkSubTabChanged">
-						<MudTabPanel Text="@LanguageService["system_network_overview"]">
+				<div class="app-header-row app-header-tabs">
+					<MudButton Class="@GetTabButtonClass(_networkSubTab, 0)" OnClick="@(() => OnNetworkSubTabChanged(0))" Variant="Variant.Text">@LanguageService["system_network_overview"]</MudButton>
+					<MudButton Class="@GetTabButtonClass(_networkSubTab, 1)" OnClick="@(() => OnNetworkSubTabChanged(1))" Variant="Variant.Text">@LanguageService["system_network_logs"]</MudButton>
+				</div>
+				<div class="app-header-row app-header-tabs">
+					<MudButton Class="@GetTabButtonClass(_networkSubTab, 2)" OnClick="@(() => OnNetworkSubTabChanged(2))" Variant="Variant.Text">@LanguageService["system_network_ips"]</MudButton>
+					<MudButton Class="@GetTabButtonClass(_networkSubTab, 3)" OnClick="@(() => OnNetworkSubTabChanged(3))" Variant="Variant.Text">@LanguageService["system_network_tools"]</MudButton>
+				</div>
+					@if (_networkSubTab == 0)
+					{
 							<div class="pa-1">
 								<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="1">
 									<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshNetworkAsync">@LanguageService["system_refresh"]</MudButton>
@@ -389,9 +452,10 @@
 									}
 								}
 							</div>
-						</MudTabPanel>
-
-						<MudTabPanel Text="@LanguageService["system_network_logs"]">
+						
+					}
+					else if (_networkSubTab == 1)
+					{
 							<div class="pa-1">
 								<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="2">
 									<MudCheckBox T="bool" Dense="true" Value="_netLogEnableChecked" ValueChanged="OnNetLogEnableChanged" Label="@LanguageService["system_netlog_enable"]" />
@@ -413,9 +477,10 @@
 									<MudText Typo="Typo.body2" Class="mud-text-secondary">@LanguageService["system_netlog_empty"]</MudText>
 								}
 							</div>
-						</MudTabPanel>
-
-						<MudTabPanel Text="@LanguageService["system_network_ips"]">
+						
+					}
+					else if (_networkSubTab == 2)
+					{
 							<div class="pa-1">
 								<MudStack Row="true" Class="mb-2" Spacing="1">
 									<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="ResolveSavedIpsAsync">@LanguageService["system_ips_resolve"]</MudButton>
@@ -457,12 +522,36 @@
 									<MudText Typo="Typo.body2" Class="mud-text-secondary">@LanguageService["system_ips_empty"]</MudText>
 								}
 							</div>
-						</MudTabPanel>
-					</MudTabs>
+						
+					}
+					else if (_networkSubTab == 3)
+					{
+							<div class="pa-1">
+								<MudTextField T="string" @bind-Value="_toolsHost" Label="@LanguageService["system_tools_host"]"
+									Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" Immediate="true" />
+								<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="1">
+									<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_toolsRunning" OnClick="@(() => RunNetworkToolAsync(SystemNetworkToolKind.Ping))">@LanguageService["system_tools_ping"]</MudButton>
+									<MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_toolsRunning" OnClick="@(() => RunNetworkToolAsync(SystemNetworkToolKind.Traceroute))">@LanguageService["system_tools_traceroute"]</MudButton>
+									<MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_toolsRunning" OnClick="@(() => RunNetworkToolAsync(SystemNetworkToolKind.DnsLookup))">@LanguageService["system_tools_dns"]</MudButton>
+									<MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_toolsRunning" OnClick="@(() => RunNetworkToolAsync(SystemNetworkToolKind.HttpHead))">@LanguageService["system_tools_http_head"]</MudButton>
+								</MudStack>
+								@if (_toolsRunning)
+								{
+									<MudProgressLinear Indeterminate="true" Class="mb-2" />
+								}
+								@if (!string.IsNullOrEmpty(_toolsNotes))
+								{
+									<MudText Typo="Typo.caption" Class="mud-text-secondary mb-1">@_toolsNotes</MudText>
+								}
+								<MudTextField T="string" Value="_toolsOutput" ReadOnly="true" Lines="14" Variant="Variant.Outlined"
+									Class="system-tools-output" Immediate="false" />
+							</div>
+					}
 				</div>
-			</MudTabPanel>
+		}
 
-			<MudTabPanel Text="@LanguageService["system_tab_logcat"]">
+		@if (_tabIndex == 6)
+		{
 				<div class="system-scroll pa-1">
 					<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="1">
 						<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="_loading" OnClick="RefreshLogcatAsync">@LanguageService["system_refresh"]</MudButton>
@@ -494,8 +583,9 @@
 						<MudText Typo="Typo.caption" Class="mud-text-secondary mt-2">@_logcatNotes</MudText>
 					}
 				</div>
-			</MudTabPanel>
-		</MudTabs>
+			
+		}
+
 	</MudContainer>
 </MudMainContent>
 
@@ -520,6 +610,10 @@
 	private bool _netLogEnableChecked;
 	private bool _netLogDisableChecked = true;
 	private bool _networkExtrasLoaded;
+	private string _toolsHost = "1.1.1.1";
+	private string _toolsOutput = string.Empty;
+	private string _toolsNotes;
+	private bool _toolsRunning;
 
 	private SystemProcessSortMode _processSort = SystemProcessSortMode.Importance;
 	private SystemProcessFilterMode _processFilter = SystemProcessFilterMode.All;
@@ -554,11 +648,15 @@
 		base.OnClosingPage();
 	}
 
+	private string GetTabButtonClass(int current, int index)
+		=> current == index ? "tab-active" : null;
+
 	private async Task OnTabChanged(int index)
 	{
 		_tabIndex = index;
 		if (index != 3)
 			StopCounterSampling();
+		StateHasChanged();
 		if (_loaded[index])
 			return;
 		switch (index)
@@ -576,6 +674,7 @@
 	private async Task OnNetworkSubTabChanged(int index)
 	{
 		_networkSubTab = index;
+		StateHasChanged();
 		if (!_networkExtrasLoaded && (index == 1 || index == 2))
 		{
 			bool enabled = await SystemInfoService.IsNetworkOutboundLoggingEnabledAsync();
@@ -587,6 +686,34 @@
 		}
 		if (index == 2)
 			await RefreshSavedIpsAsync();
+	}
+
+	private async Task RunNetworkToolAsync(SystemNetworkToolKind tool)
+	{
+		if (_toolsRunning)
+			return;
+		_toolsRunning = true;
+		_toolsNotes = null;
+		_toolsOutput = string.Empty;
+		StateHasChanged();
+		try
+		{
+			SystemNetworkToolResult result = await SystemInfoService.RunNetworkToolAsync(tool, _toolsHost);
+			_toolsOutput = result?.Output ?? string.Empty;
+			_toolsNotes = string.IsNullOrEmpty(result?.Notes)
+				? null
+				: result.Notes + (result.ExitCode != 0 ? $" (exit {result.ExitCode})" : string.Empty);
+		}
+		catch (Exception ex)
+		{
+			_toolsOutput = ex.Message;
+			FeedbackService.ShowToast(ex.Message);
+		}
+		finally
+		{
+			_toolsRunning = false;
+			StateHasChanged();
+		}
 	}
 
 	private async Task OnBatterySortChanged(SystemBatterySortMode mode)

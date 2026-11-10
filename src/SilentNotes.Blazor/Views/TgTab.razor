@@ -417,6 +417,54 @@
 		accent-color: var(--mud-palette-primary);
 		cursor: pointer;
 	}
+	.tg-schedule-overlay {
+		position: fixed;
+		top: 0; left: 0; right: 0; bottom: 0;
+		background: rgba(0,0,0,0.55);
+		z-index: 1400;
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+	}
+	.tg-schedule-sheet {
+		width: 100%;
+		max-width: 480px;
+		background: #121212;
+		border: 1px solid #2b2b2b;
+		border-radius: 16px 16px 0 0;
+		padding: 14px;
+		color: #fff;
+	}
+	.tg-schedule-sheet h3 {
+		margin: 0 0 10px 0;
+		font-size: 1rem;
+	}
+	.tg-schedule-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: 10px;
+	}
+	.tg-schedule-field {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 8px;
+	}
+	.tg-schedule-field label {
+		min-width: 64px;
+		font-size: 0.85rem;
+		color: #9e9e9e;
+	}
+	.tg-schedule-field input {
+		flex: 1;
+		min-width: 0;
+		background: #0a0a0a;
+		color: #fff;
+		border: 1px solid #333;
+		border-radius: 8px;
+		padding: 8px;
+	}
 	.tg-accounts-panel {
 		border: 1px solid #262626;
 		border-radius: 12px;
@@ -703,6 +751,14 @@
 			</div>
 		}
 
+		@if (ViewModel.HasPendingSchedule)
+		{
+			<div class="tg-hint" style="color:#7dd3fc;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+				<span>@LanguageService["tg_schedule_at"]: @ViewModel.PendingScheduleAt.Value.ToLocalTime().ToString("g")</span>
+				<button class="tg-format-btn" @onclick="ClearSchedule">@LanguageService["tg_schedule_cancel"]</button>
+			</div>
+		}
+
 		<div class="tg-composer">
 			<label class="tg-sound-toggle" title="@LanguageService["tg_send_with_sound"]">
 				<input type="checkbox" checked="@ViewModel.SendWithSound" @onchange="OnSendWithSoundChanged" />
@@ -710,10 +766,50 @@
 			</label>
 			<MudIconButton Icon="@Icons.Material.Filled.AttachFile" Color="Color.Inherit" OnClick="AttachFileAsync" title="@LanguageService["tg_attach_file"]" />
 			<MudIconButton Icon="@Icons.Material.Filled.Image" Color="Color.Inherit" OnClick="AttachPhotoAsync" title="@LanguageService["tg_attach_photo"]" />
+			@if (!ViewModel.IsEditingMessage)
+			{
+				<MudIconButton Icon="@(ViewModel.HasPendingSchedule ? Icons.Material.Filled.ScheduleSend : Icons.Material.Filled.Schedule)"
+					Color="@(ViewModel.HasPendingSchedule ? Color.Primary : Color.Inherit)"
+					OnClick="OpenSchedulePicker" title="@LanguageService["tg_schedule"]" />
+			}
 			<MudTextField T="string" @bind-Value="ViewModel.ComposerText" Placeholder="@(ViewModel.IsEditingMessage ? LanguageService["tg_edit_placeholder"] : LanguageService["tg_type_message"])"
 				Variant="Variant.Outlined" Margin="Margin.Dense" Lines="4" Class="flex-grow-1" Immediate="true" />
 			<MudIconButton Icon="@(ViewModel.IsEditingMessage ? Icons.Material.Filled.Check : Icons.Material.Filled.Send)" Color="Color.Primary" Disabled="@(!ViewModel.CanSend)" OnClick="SendAsync" title="@(ViewModel.IsEditingMessage ? LanguageService["tg_edit"] : LanguageService["tg_send"])" />
 		</div>
+
+		@if (_showSendChoice)
+		{
+			<div class="tg-schedule-overlay" @onclick="CloseSendOverlays">
+				<div class="tg-schedule-sheet" @onclick:stopPropagation="true">
+					<h3>@LanguageService["tg_send"]</h3>
+					<div class="tg-schedule-actions">
+						<button class="tg-btn primary" @onclick="ConfirmSendNowAsync">@LanguageService["tg_send_now"]</button>
+						<button class="tg-btn" @onclick="OpenScheduleFromChoice">@LanguageService["tg_schedule"]</button>
+						<button class="tg-btn" @onclick="CloseSendOverlays">@LanguageService["cancel"]</button>
+					</div>
+				</div>
+			</div>
+		}
+		else if (_showSchedulePicker)
+		{
+			<div class="tg-schedule-overlay" @onclick="CloseSendOverlays">
+				<div class="tg-schedule-sheet" @onclick:stopPropagation="true">
+					<h3>@LanguageService["tg_schedule_at"]</h3>
+					<div class="tg-schedule-field">
+						<label>@LanguageService["cal_event_date"]</label>
+						<input type="date" value="@_scheduleDate" @onchange="OnScheduleDateChanged" />
+					</div>
+					<div class="tg-schedule-field">
+						<label>@LanguageService["cal_event_start"]</label>
+						<input type="time" value="@_scheduleTime" @onchange="OnScheduleTimeChanged" />
+					</div>
+					<div class="tg-schedule-actions">
+						<button class="tg-btn primary" @onclick="ConfirmScheduleAsync">@LanguageService["tg_schedule"]</button>
+						<button class="tg-btn" @onclick="CloseSendOverlays">@LanguageService["cancel"]</button>
+					</div>
+				</div>
+			</div>
+		}
 	}
 	else
 	{
@@ -944,6 +1040,11 @@
 	public TelegramViewModel ViewModel { get; set; }
 
 	private ElementReference _messagesContainer;
+	private bool _showSendChoice;
+	private bool _showSchedulePicker;
+	private bool _scheduleThenSend;
+	private string _scheduleDate;
+	private string _scheduleTime;
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -1231,6 +1332,103 @@
 	}
 
 	private async Task SendAsync()
+	{
+		if (!ViewModel.CanSend)
+			return;
+
+		// Editing always applies immediately.
+		if (ViewModel.IsEditingMessage)
+		{
+			await ExecuteSendCommandAsync();
+			return;
+		}
+
+		// Already scheduled via the clock button — send with that time.
+		if (ViewModel.HasPendingSchedule)
+		{
+			await ExecuteSendCommandAsync();
+			return;
+		}
+
+		_showSendChoice = true;
+		_showSchedulePicker = false;
+		_scheduleThenSend = false;
+		StateHasChanged();
+	}
+
+	private async Task ConfirmSendNowAsync()
+	{
+		ViewModel.ClearPendingSchedule();
+		CloseSendOverlays();
+		await ExecuteSendCommandAsync();
+	}
+
+	private void OpenScheduleFromChoice()
+	{
+		_showSendChoice = false;
+		_scheduleThenSend = true;
+		OpenSchedulePicker();
+	}
+
+	private void OpenSchedulePicker()
+	{
+		DateTimeOffset seed = ViewModel.PendingScheduleAt ?? DateTimeOffset.Now.AddHours(1);
+		_scheduleDate = seed.ToLocalTime().ToString("yyyy-MM-dd");
+		_scheduleTime = seed.ToLocalTime().ToString("HH:mm");
+		_showSchedulePicker = true;
+		_showSendChoice = false;
+		StateHasChanged();
+	}
+
+	private void ClearSchedule()
+	{
+		ViewModel.ClearPendingSchedule();
+		StateHasChanged();
+	}
+
+	private void CloseSendOverlays()
+	{
+		_showSendChoice = false;
+		_showSchedulePicker = false;
+		_scheduleThenSend = false;
+		StateHasChanged();
+	}
+
+	private void OnScheduleDateChanged(ChangeEventArgs e)
+	{
+		_scheduleDate = e?.Value?.ToString() ?? _scheduleDate;
+	}
+
+	private void OnScheduleTimeChanged(ChangeEventArgs e)
+	{
+		_scheduleTime = e?.Value?.ToString() ?? _scheduleTime;
+	}
+
+	private async Task ConfirmScheduleAsync()
+	{
+		if (!DateTime.TryParse($"{_scheduleDate} {_scheduleTime}", out DateTime local))
+		{
+			FeedbackService.ShowToast(LanguageService["tg_schedule_invalid"]);
+			return;
+		}
+
+		var when = new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Local));
+		if (when.UtcDateTime <= DateTime.UtcNow.AddSeconds(30))
+		{
+			FeedbackService.ShowToast(LanguageService["tg_schedule_invalid"]);
+			return;
+		}
+
+		ViewModel.PendingScheduleAt = when;
+		bool sendNow = _scheduleThenSend;
+		CloseSendOverlays();
+		if (sendNow)
+			await ExecuteSendCommandAsync();
+		else
+			StateHasChanged();
+	}
+
+	private async Task ExecuteSendCommandAsync()
 	{
 		if (ViewModel.SendCommand is IAsyncRelayCommand asyncCmd)
 			await asyncCmd.ExecuteAsync(null);

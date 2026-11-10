@@ -9,8 +9,10 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 using Android.App;
 using Android.App.Usage;
@@ -1774,9 +1776,7 @@ namespace SilentNotes.Platforms.Services
                 try
                 {
                     Context context = _appContext.Context;
-                    string dir = Path.Combine(context.FilesDir.AbsolutePath, "system");
-                    Directory.CreateDirectory(dir);
-                    string filePath = Path.Combine(dir, "logcat_buffer.txt");
+                    string filePath = ResolveLogcatDumpPath(context);
                     snapshot.FilePath = filePath;
 
                     // Dump buffer: prefer plain logcat (works for app-visible lines), then su for fuller buffer.
@@ -1800,7 +1800,7 @@ namespace SilentNotes.Platforms.Services
                         snapshot.Lines.Add(ParseLogcatLine(line));
                     }
 
-                    snapshot.Notes = snapshot.Lines.Count.ToString(CultureInfo.InvariantCulture) + " lines";
+                    snapshot.Notes = snapshot.Lines.Count.ToString(CultureInfo.InvariantCulture) + " lines → " + filePath;
                 }
                 catch (Exception ex)
                 {
@@ -1810,6 +1810,51 @@ namespace SilentNotes.Platforms.Services
 
                 return snapshot;
             });
+        }
+
+        /// <summary>
+        /// Prefers <c>/sdcard/abro/logcat</c> (ExternalStorageDirectory/abro/logcat) when writable;
+        /// falls back to the private files/system directory.
+        /// </summary>
+        private static string ResolveLogcatDumpPath(Context context)
+        {
+            string preferredDir = null;
+            try
+            {
+                string external = global::Android.OS.Environment.ExternalStorageDirectory?.AbsolutePath;
+                if (string.IsNullOrEmpty(external))
+                    external = "/sdcard";
+                preferredDir = Path.Combine(external, "abro", "logcat");
+            }
+            catch
+            {
+                preferredDir = "/sdcard/abro/logcat";
+            }
+
+            if (TryEnsureWritableDirectory(preferredDir))
+                return Path.Combine(preferredDir, "logcat_buffer.txt");
+
+            string fallbackDir = Path.Combine(context.FilesDir.AbsolutePath, "system");
+            Directory.CreateDirectory(fallbackDir);
+            return Path.Combine(fallbackDir, "logcat_buffer.txt");
+        }
+
+        private static bool TryEnsureWritableDirectory(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+            try
+            {
+                Directory.CreateDirectory(path);
+                string probe = Path.Combine(path, ".probe");
+                File.WriteAllText(probe, "1");
+                File.Delete(probe);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static SystemLogcatLine ParseLogcatLine(string line)
@@ -2571,21 +2616,296 @@ namespace SilentNotes.Platforms.Services
 
         private static string RunShellCommand(string command)
         {
+            var result = RunShellDetailed(command);
+            return result.Stdout;
+        }
+
+        private static (int ExitCode, string Stdout, string Stderr) RunShellDetailed(string command)
+        {
             if (string.IsNullOrWhiteSpace(command))
-                return null;
+                return (-1, null, "empty command");
             try
             {
                 using Java.Lang.Process process = Java.Lang.Runtime.GetRuntime().Exec(new[] { "sh", "-c", command });
                 string stdout;
+                string stderr;
                 using (var reader = new StreamReader(process.InputStream))
                     stdout = reader.ReadToEnd();
+                using (var reader = new StreamReader(process.ErrorStream))
+                    stderr = reader.ReadToEnd();
                 process.WaitFor();
-                return stdout ?? string.Empty;
+                return (process.ExitValue(), stdout ?? string.Empty, stderr ?? string.Empty);
             }
-            catch
+            catch (Exception ex)
             {
-                return null;
+                return (-1, null, ex.Message);
             }
+        }
+
+        /// <inheritdoc/>
+        public Task<SystemNetworkToolResult> RunNetworkToolAsync(
+            SystemNetworkToolKind tool,
+            string host,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.Run(async () =>
+            {
+                var result = new SystemNetworkToolResult
+                {
+                    Tool = tool,
+                    Host = host,
+                };
+
+                string safeHost = SanitizeNetworkHost(host);
+                if (string.IsNullOrEmpty(safeHost))
+                {
+                    result.ExitCode = -1;
+                    result.Output = "Enter a host name or IP address.";
+                    result.Notes = "invalid host";
+                    return result;
+                }
+
+                try
+                {
+                    switch (tool)
+                    {
+                        case SystemNetworkToolKind.Ping:
+                            return RunPingTool(safeHost);
+                        case SystemNetworkToolKind.Traceroute:
+                            return RunTracerouteTool(safeHost);
+                        case SystemNetworkToolKind.DnsLookup:
+                            return RunDnsLookupTool(safeHost);
+                        case SystemNetworkToolKind.HttpHead:
+                            return await RunHttpHeadToolAsync(safeHost, cancellationToken).ConfigureAwait(false);
+                        default:
+                            result.ExitCode = -1;
+                            result.Output = "Unknown tool.";
+                            return result;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.ExitCode = -1;
+                    result.Output = ex.Message;
+                    result.Notes = "exception";
+                    return result;
+                }
+            }, cancellationToken);
+        }
+
+        private static SystemNetworkToolResult RunPingTool(string host)
+        {
+            string cmd = "ping -c 4 " + host + " 2>&1";
+            var (exit, stdout, stderr) = RunShellDetailed(cmd);
+            return new SystemNetworkToolResult
+            {
+                Tool = SystemNetworkToolKind.Ping,
+                Host = host,
+                ExitCode = exit,
+                Output = CombineStreams(stdout, stderr),
+                Notes = "ping -c 4",
+            };
+        }
+
+        private static SystemNetworkToolResult RunTracerouteTool(string host)
+        {
+            // Prefer traceroute; many Android builds only ship tracepath.
+            string[] commands =
+            {
+                "traceroute -n -w 2 -q 1 -m 20 " + host + " 2>&1",
+                "tracepath -n " + host + " 2>&1",
+                "busybox traceroute -n -w 2 -q 1 -m 20 " + host + " 2>&1",
+            };
+
+            foreach (string cmd in commands)
+            {
+                var (exit, stdout, stderr) = RunShellDetailed(cmd);
+                string output = CombineStreams(stdout, stderr);
+                if (!string.IsNullOrWhiteSpace(output)
+                    && !output.Contains("not found", StringComparison.OrdinalIgnoreCase)
+                    && !output.Contains("No such file", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SystemNetworkToolResult
+                    {
+                        Tool = SystemNetworkToolKind.Traceroute,
+                        Host = host,
+                        ExitCode = exit,
+                        Output = output,
+                        Notes = cmd.Split(' ')[0],
+                    };
+                }
+            }
+
+            return new SystemNetworkToolResult
+            {
+                Tool = SystemNetworkToolKind.Traceroute,
+                Host = host,
+                ExitCode = -1,
+                Output = "traceroute/tracepath not available on this device.",
+                Notes = "missing binary",
+            };
+        }
+
+        private static SystemNetworkToolResult RunDnsLookupTool(string host)
+        {
+            string[] commands =
+            {
+                "nslookup " + host + " 2>&1",
+                "getent hosts " + host + " 2>&1",
+                "busybox nslookup " + host + " 2>&1",
+            };
+
+            foreach (string cmd in commands)
+            {
+                var (exit, stdout, stderr) = RunShellDetailed(cmd);
+                string output = CombineStreams(stdout, stderr);
+                if (!string.IsNullOrWhiteSpace(output)
+                    && !output.Contains("not found", StringComparison.OrdinalIgnoreCase)
+                    && !output.Contains("No such file", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SystemNetworkToolResult
+                    {
+                        Tool = SystemNetworkToolKind.DnsLookup,
+                        Host = host,
+                        ExitCode = exit,
+                        Output = output,
+                        Notes = cmd.Split(' ')[0],
+                    };
+                }
+            }
+
+            // Fallback: managed DNS resolve.
+            try
+            {
+                IPAddress[] addresses = Dns.GetHostAddresses(host);
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("Dns.GetHostAddresses(" + host + ")");
+                foreach (IPAddress addr in addresses)
+                    sb.AppendLine(addr.ToString());
+                return new SystemNetworkToolResult
+                {
+                    Tool = SystemNetworkToolKind.DnsLookup,
+                    Host = host,
+                    ExitCode = addresses.Length > 0 ? 0 : 1,
+                    Output = sb.ToString(),
+                    Notes = "managed DNS",
+                };
+            }
+            catch (Exception ex)
+            {
+                return new SystemNetworkToolResult
+                {
+                    Tool = SystemNetworkToolKind.DnsLookup,
+                    Host = host,
+                    ExitCode = -1,
+                    Output = ex.Message,
+                    Notes = "dns failed",
+                };
+            }
+        }
+
+        private static async Task<SystemNetworkToolResult> RunHttpHeadToolAsync(string host, CancellationToken cancellationToken)
+        {
+            string url = host;
+            if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                && !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                url = "https://" + host;
+            }
+
+            // Prefer curl when present; otherwise use HttpClient.
+            string curlCmd = "curl -sI -m 15 " + QuoteShellArg(url) + " 2>&1";
+            var (curlExit, curlOut, curlErr) = RunShellDetailed(curlCmd);
+            string curlCombined = CombineStreams(curlOut, curlErr);
+            if (!string.IsNullOrWhiteSpace(curlCombined)
+                && !curlCombined.Contains("not found", StringComparison.OrdinalIgnoreCase)
+                && !curlCombined.Contains("No such file", StringComparison.OrdinalIgnoreCase))
+            {
+                return new SystemNetworkToolResult
+                {
+                    Tool = SystemNetworkToolKind.HttpHead,
+                    Host = host,
+                    ExitCode = curlExit,
+                    Output = curlCombined,
+                    Notes = "curl -sI",
+                };
+            }
+
+            try
+            {
+                using var handler = new HttpClientHandler
+                {
+                    AllowAutoRedirect = true,
+                    ServerCertificateCustomValidationCallback = static (_, _, _, _) => true,
+                };
+                using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
+                using var request = new HttpRequestMessage(HttpMethod.Head, url);
+                using HttpResponseMessage response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("HTTP/" + response.Version + " " + ((int)response.StatusCode) + " " + response.ReasonPhrase);
+                foreach (var header in response.Headers)
+                    sb.AppendLine(header.Key + ": " + string.Join(", ", header.Value));
+                foreach (var header in response.Content.Headers)
+                    sb.AppendLine(header.Key + ": " + string.Join(", ", header.Value));
+                return new SystemNetworkToolResult
+                {
+                    Tool = SystemNetworkToolKind.HttpHead,
+                    Host = host,
+                    ExitCode = response.IsSuccessStatusCode ? 0 : (int)response.StatusCode,
+                    Output = sb.ToString(),
+                    Notes = "HttpClient HEAD → " + url,
+                };
+            }
+            catch (Exception ex)
+            {
+                return new SystemNetworkToolResult
+                {
+                    Tool = SystemNetworkToolKind.HttpHead,
+                    Host = host,
+                    ExitCode = -1,
+                    Output = ex.Message,
+                    Notes = "HttpClient HEAD failed",
+                };
+            }
+        }
+
+        private static string SanitizeNetworkHost(string host)
+        {
+            if (string.IsNullOrWhiteSpace(host))
+                return null;
+            string trimmed = host.Trim();
+            // Allow hostnames, IPv4/IPv6, optional scheme/path for HTTP HEAD — strip shell metacharacters.
+            var sb = new System.Text.StringBuilder(trimmed.Length);
+            foreach (char c in trimmed)
+            {
+                if (char.IsLetterOrDigit(c)
+                    || c == '.' || c == '-' || c == '_' || c == ':' || c == '/'
+                    || c == '?' || c == '=' || c == '&' || c == '%' || c == '+' || c == '#'
+                    || c == '[' || c == ']')
+                {
+                    sb.Append(c);
+                }
+            }
+            string safe = sb.ToString();
+            return string.IsNullOrWhiteSpace(safe) ? null : safe;
+        }
+
+        private static string QuoteShellArg(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return "''";
+            return "'" + value.Replace("'", "'\\''") + "'";
+        }
+
+        private static string CombineStreams(string stdout, string stderr)
+        {
+            stdout ??= string.Empty;
+            stderr ??= string.Empty;
+            if (string.IsNullOrWhiteSpace(stderr))
+                return stdout;
+            if (string.IsNullOrWhiteSpace(stdout))
+                return stderr;
+            return stdout.TrimEnd() + "\n" + stderr;
         }
     }
 }

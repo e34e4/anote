@@ -3,6 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+using System.Threading;
 using System.Threading.Tasks;
 using SilentNotes.Models;
 
@@ -70,7 +71,17 @@ namespace SilentNotes.Services
         /// <summary>
         /// Dumps the current logcat buffer to a local snapshot file and returns parsed lines
         /// for searching on the System → Logcat tab.
+        /// Prefers <c>/sdcard/abro/logcat</c> when writable.
         /// </summary>
         Task<SystemLogcatSnapshot> CaptureLogcatAsync();
+
+        /// <summary>
+        /// Runs a network diagnostic tool (ping / traceroute / DNS / HTTP HEAD) against
+        /// <paramref name="host"/> and returns combined stdout/stderr.
+        /// </summary>
+        Task<SystemNetworkToolResult> RunNetworkToolAsync(
+            SystemNetworkToolKind tool,
+            string host,
+            CancellationToken cancellationToken = default);
     }
 }

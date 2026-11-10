@@ -68,6 +68,8 @@ namespace SilentNotes.Services
                 }
 
                 _cached = new AbroBookmarkStoreModel();
+                AbroBookmarkHtmlWriter.EnsureDefaultGoogleBookmark(_cached);
+                TrySaveUnlocked(_cached);
                 return _cached;
             }
         }
@@ -209,6 +211,7 @@ namespace SilentNotes.Services
                 if (!string.IsNullOrEmpty(directory))
                     Directory.CreateDirectory(directory);
 
+                AbroBookmarkHtmlWriter.EnsureDefaultGoogleBookmark(store);
                 string json = AbroBookmarkStoreFormat.Serialize(store);
                 string temp = StoreFilePath + ".tmp";
                 File.WriteAllText(temp, json, Encoding.UTF8);
@@ -216,6 +219,8 @@ namespace SilentNotes.Services
                     File.Delete(StoreFilePath);
                 File.Move(temp, StoreFilePath);
                 WriteLegacyTsv(store);
+                string bookmarksDir = Path.GetDirectoryName(StoreFilePath);
+                AbroBookmarkHtmlWriter.TryWrite(bookmarksDir, store);
                 _cached = store;
                 return true;
             }

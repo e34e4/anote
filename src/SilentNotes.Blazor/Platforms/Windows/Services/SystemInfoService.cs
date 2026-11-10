@@ -145,5 +145,21 @@ namespace SilentNotes.Platforms.Services
                 Notes = "Logcat is available on Android only.",
             });
         }
+
+        /// <inheritdoc/>
+        public Task<SystemNetworkToolResult> RunNetworkToolAsync(
+            SystemNetworkToolKind tool,
+            string host,
+            System.Threading.CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new SystemNetworkToolResult
+            {
+                Tool = tool,
+                Host = host,
+                ExitCode = -1,
+                Output = "Network tools are available on Android only.",
+                Notes = "not supported",
+            });
+        }
     }
 }

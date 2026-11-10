@@ -408,6 +408,12 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
+        public string GetPhotoFilePath(string fileName)
+        {
+            return ResolvePhotoPath(fileName);
+        }
+
+        /// <inheritdoc/>
         public Task<bool> OpenPhotoAsync(string fileName)
         {
             return Task.Run(() =>

@@ -280,4 +280,24 @@ namespace SilentNotes.Models
         public string Notes { get; set; }
         public List<SystemLogcatLine> Lines { get; set; } = new List<SystemLogcatLine>();
     }
+
+    /// <summary>Network diagnostic tools on System → Network → Tools.</summary>
+    public enum SystemNetworkToolKind
+    {
+        Ping = 0,
+        Traceroute = 1,
+        DnsLookup = 2,
+        HttpHead = 3,
+    }
+
+    /// <summary>Stdout/stderr capture from a network diagnostic tool run.</summary>
+    public class SystemNetworkToolResult
+    {
+        public SystemNetworkToolKind Tool { get; set; }
+        public string Host { get; set; }
+        public string Output { get; set; }
+        public int ExitCode { get; set; }
+        public string Notes { get; set; }
+        public bool Success => ExitCode == 0;
+    }
 }

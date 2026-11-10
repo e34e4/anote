@@ -56,6 +56,9 @@ namespace SilentNotes.Platforms.Services
         public Task<bool> OpenPhotoAsync(string fileName) => Task.FromResult(false);
 
         /// <inheritdoc/>
+        public string GetPhotoFilePath(string fileName) => null;
+
+        /// <inheritdoc/>
         public Task<string> SaveToPublicGalleryAsync(string fileName) => Task.FromResult<string>(null);
 
         /// <inheritdoc/>

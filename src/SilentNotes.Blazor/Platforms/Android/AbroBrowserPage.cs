@@ -92,6 +92,7 @@ namespace SilentNotes.Platforms
         private readonly string _aiDir;
         private readonly string _adblockDir;
         private readonly string _fontsDir;
+        private readonly string _pagesDir;
         private readonly string _tabsFile;
         private readonly Grid _webHost;
         private readonly HorizontalStackLayout _tabStrip;
@@ -135,8 +136,10 @@ namespace SilentNotes.Platforms
             _aiDir = Path.Combine(_rootDir, "ai");
             _adblockDir = Path.Combine(_rootDir, "adblock");
             _fontsDir = Path.Combine(_rootDir, "fonts");
+            _pagesDir = Path.Combine(_rootDir, "pages");
             _tabsFile = Path.Combine(_rootDir, "tabs.json");
             EnsureDirectories();
+            EnsureDefaultBookmarksPage();
             try
             {
                 Ioc.Instance.GetService<IAbroAdBlockService>()?.EnsureFilterLoaded();
@@ -455,7 +458,7 @@ namespace SilentNotes.Platforms
 
         private void EnsureDirectories()
         {
-            foreach (string dir in new[] { _rootDir, _historyDir, _bookmarksDir, _cookiesDir, _cacheDir, _filesDir, _aiDir, _adblockDir, _fontsDir })
+            foreach (string dir in new[] { _rootDir, _historyDir, _bookmarksDir, _cookiesDir, _cacheDir, _filesDir, _aiDir, _adblockDir, _fontsDir, _pagesDir })
             {
                 try
                 {
@@ -464,6 +467,30 @@ namespace SilentNotes.Platforms
                 catch
                 {
                 }
+            }
+        }
+
+        private void EnsureDefaultBookmarksPage()
+        {
+            try
+            {
+                IAbroBookmarkStoreService store = TryGetBookmarkStoreService();
+                if (store != null)
+                {
+                    AbroBookmarkStoreModel model = store.LoadOrDefault();
+                    if (AbroBookmarkHtmlWriter.EnsureDefaultGoogleBookmark(model))
+                        store.TrySave(model);
+                    else
+                        AbroBookmarkHtmlWriter.TryWrite(_bookmarksDir, model);
+                    return;
+                }
+
+                var fallback = new AbroBookmarkStoreModel();
+                AbroBookmarkHtmlWriter.EnsureDefaultGoogleBookmark(fallback);
+                AbroBookmarkHtmlWriter.TryWrite(_bookmarksDir, fallback);
+            }
+            catch
+            {
             }
         }
 
@@ -1077,7 +1104,7 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                if (!IsBlockImagesEnabled())
+                if (!ShouldBlockImagesForTab(tab))
                     return;
                 AWebView native = tab?.Native;
                 if (native == null)
@@ -1096,21 +1123,38 @@ namespace SilentNotes.Platforms
                 AWebView native = tab?.Native;
                 if (native == null)
                     return;
-                bool block = IsBlockImagesEnabled();
-                native.Settings.BlockNetworkImage = block;
-                native.Settings.LoadsImagesAutomatically = !block;
+                // Selective mode relies on request intercept + JS; only force WebSettings when enabled everywhere.
+                bool blockEverywhere = GetBlockImagesMode() == AbroBlockImagesMode.Enable;
+                native.Settings.BlockNetworkImage = blockEverywhere;
+                native.Settings.LoadsImagesAutomatically = !blockEverywhere;
             }
             catch
             {
             }
         }
 
-        private static bool IsBlockImagesEnabled()
+        private static AbroBlockImagesMode GetBlockImagesMode()
         {
             try
             {
                 IAbroBrowserSettingsService settings = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
-                return settings?.LoadOrDefault()?.BlockImages == true;
+                return settings?.LoadOrDefault()?.BlockImagesMode ?? AbroBlockImagesMode.Disable;
+            }
+            catch
+            {
+                return AbroBlockImagesMode.Disable;
+            }
+        }
+
+        private static bool ShouldBlockImagesForTab(BrowserTab tab)
+        {
+            try
+            {
+                IAbroBrowserSettingsService settings = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+                string url = tab?.Url;
+                if (string.IsNullOrEmpty(url))
+                    url = tab?.View?.Source?.ToString();
+                return settings?.ShouldApplyBlockImages(url) == true;
             }
             catch
             {
@@ -1191,10 +1235,11 @@ namespace SilentNotes.Platforms
             const string bookyAdd = "Add to Booky";
             const string passwords = "Passwords";
             const string proxy = "Proxy";
+            const string blockImages = "Block images";
+            const string savePdf = "Save webpage as PDF";
             const string clearCookies = "Clear cookies";
             const string clearCache = "Clear cache";
             const string openFiles = "Open files folder";
-            string blockImages = IsBlockImagesEnabled() ? "Load images" : "Block images";
 
             string choice = await ShowTwoColumnMenuAsync(
                 "Abro",
@@ -1210,6 +1255,7 @@ namespace SilentNotes.Platforms
                 passwords,
                 proxy,
                 blockImages,
+                savePdf,
                 clearCookies,
                 clearCache,
                 openFiles).ConfigureAwait(true);
@@ -1248,8 +1294,14 @@ namespace SilentNotes.Platforms
                 case proxy:
                     await ShowProxyMenuAsync().ConfigureAwait(true);
                     break;
-                case var _ when choice == blockImages:
-                    ToggleBlockImages();
+                case blockImages:
+                    await OpenSettingsPageAsync(() => new AbroBlockImagesSettingsPage(), "Block images").ConfigureAwait(true);
+                    RefreshBlockImagesOnAllTabs();
+                    break;
+                case savePdf:
+                    await OpenSettingsPageAsync(
+                        () => new AbroSavedPagesPage(_pagesDir, SaveCurrentPageAsPdfAsync),
+                        "Saved pages").ConfigureAwait(true);
                     break;
                 case clearCookies:
                     ClearCookies();
@@ -1263,44 +1315,67 @@ namespace SilentNotes.Platforms
             }
         }
 
-        private void ToggleBlockImages()
+        private void RefreshBlockImagesOnAllTabs()
         {
             try
             {
-                IAbroBrowserSettingsService service = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
-                if (service == null)
-                {
-                    ShowToast("Settings unavailable");
-                    return;
-                }
-
-                AbroBrowserSettingsModel settings = service.LoadOrDefault();
-                settings.BlockImages = !settings.BlockImages;
-                settings.Touch();
-                if (!service.TrySave(settings))
-                {
-                    ShowToast("Could not save settings");
-                    return;
-                }
-
                 foreach (BrowserTab tab in _tabs)
                 {
                     ApplyBlockImagesSetting(tab);
-                    if (settings.BlockImages)
-                        InjectBlockImagesIfNeeded(tab);
+                    InjectBlockImagesIfNeeded(tab);
                 }
-
-                ShowToast(settings.BlockImages
-                    ? "Images blocked — placeholders with links"
-                    : "Images loading enabled");
 
                 if (_current?.Native != null)
                     _current.Native.Reload();
+            }
+            catch
+            {
+            }
+        }
+
+        private async Task SaveCurrentPageAsPdfAsync()
+        {
+            try
+            {
+                AWebView native = _current?.Native;
+                if (native == null)
+                {
+                    ShowToast("No page loaded");
+                    return;
+                }
+
+                Directory.CreateDirectory(_pagesDir);
+                string title = SanitizeFileName(_current?.Title);
+                if (string.IsNullOrWhiteSpace(title))
+                    title = "page";
+                string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
+                string path = Path.Combine(_pagesDir, title + "_" + stamp + ".pdf");
+
+                ShowToast("Saving PDF…");
+                bool ok = await AbroWebViewPdfExporter.TryExportAsync(native, path).ConfigureAwait(true);
+                ShowToast(ok ? ("Saved " + Path.GetFileName(path)) : "Could not save PDF");
             }
             catch (Exception ex)
             {
                 ShowToast(ex.Message);
             }
+        }
+
+        private static string SanitizeFileName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+            var builder = new StringBuilder(value.Length);
+            foreach (char c in value.Trim())
+            {
+                if (char.IsLetterOrDigit(c) || c == '-' || c == '_')
+                    builder.Append(c);
+                else if (char.IsWhiteSpace(c))
+                    builder.Append('_');
+                if (builder.Length >= 40)
+                    break;
+            }
+            return builder.ToString().Trim('_');
         }
 
         private async Task ShowProxyMenuAsync()
@@ -2272,14 +2347,32 @@ namespace SilentNotes.Platforms
 
         private async Task ShowBookmarksAsync()
         {
-            var entries = ReadBookmarkEntries();
-            if (entries.Count == 0)
+            try
             {
-                ShowToast("No bookmarks yet");
-                return;
+                EnsureDefaultBookmarksPage();
+                string htmlPath = Path.Combine(_bookmarksDir, AbroBookmarkHtmlWriter.HtmlFileName);
+                if (!File.Exists(htmlPath))
+                {
+                    var entries = ReadBookmarkEntries();
+                    if (entries.Count == 0)
+                    {
+                        ShowToast("No bookmarks yet");
+                        return;
+                    }
+
+                    await PickAndOpenUrlAsync("Bookmarks", entries).ConfigureAwait(true);
+                    return;
+                }
+
+                string fileUrl = new Uri(htmlPath).AbsoluteUri;
+                OpenOrNavigate(fileUrl);
+            }
+            catch (Exception ex)
+            {
+                ShowToast(ex.Message);
             }
 
-            await PickAndOpenUrlAsync("Bookmarks", entries).ConfigureAwait(true);
+            await Task.CompletedTask.ConfigureAwait(true);
         }
 
         private List<(string Url, string Label)> ReadHistoryEntries()
@@ -2391,6 +2484,7 @@ namespace SilentNotes.Platforms
                         ShowToast("Could not save bookmark");
                         return;
                     }
+                    AbroBookmarkHtmlWriter.TryWrite(_bookmarksDir, store.LoadOrDefault());
                     ScheduleBookmarkSync();
                     ShowToast("Bookmark added");
                     return;
@@ -2399,6 +2493,17 @@ namespace SilentNotes.Platforms
                 Directory.CreateDirectory(_bookmarksDir);
                 string line = url + "\t" + title.Replace('\t', ' ') + Environment.NewLine;
                 File.AppendAllText(Path.Combine(_bookmarksDir, "bookmarks.txt"), line, Encoding.UTF8);
+                var fallback = new AbroBookmarkStoreModel();
+                foreach ((string Url, string Label) entry in ReadBookmarkEntries())
+                {
+                    fallback.Items.Add(new AbroBookmarkItemModel
+                    {
+                        Url = entry.Url,
+                        Title = entry.Label,
+                        ModifiedAt = DateTime.UtcNow,
+                    });
+                }
+                AbroBookmarkHtmlWriter.TryWrite(_bookmarksDir, fallback);
                 ShowToast("Bookmark added");
             }
             catch
@@ -2915,14 +3020,15 @@ namespace SilentNotes.Platforms
             awv.Settings.SetSupportZoom(true);
             awv.Settings.MixedContentMode = MixedContentHandling.CompatibilityMode;
             awv.Settings.CacheMode = CacheModes.Default;
-            awv.Settings.AllowFileAccess = false;
+            // Local Abro pages (bookmarks _f.html) need file access; remote pages stay sandboxed via intercept.
+            awv.Settings.AllowFileAccess = true;
             awv.Settings.AllowContentAccess = true;
             awv.Settings.MediaPlaybackRequiresUserGesture = true;
             try
             {
-                bool blockImages = IsBlockImagesEnabled();
-                awv.Settings.BlockNetworkImage = blockImages;
-                awv.Settings.LoadsImagesAutomatically = !blockImages;
+                bool blockEverywhere = GetBlockImagesMode() == AbroBlockImagesMode.Enable;
+                awv.Settings.BlockNetworkImage = blockEverywhere;
+                awv.Settings.LoadsImagesAutomatically = !blockEverywhere;
             }
             catch
             {
@@ -3323,7 +3429,7 @@ namespace SilentNotes.Platforms
                             new System.IO.MemoryStream(EmptyBody));
                     }
 
-                    if (IsBlockImagesEnabled() && IsImageRequest(request))
+                    if (ShouldBlockImagesForTab(_tab) && IsImageRequest(request))
                     {
                         return new WebResourceResponse(
                             "image/png",

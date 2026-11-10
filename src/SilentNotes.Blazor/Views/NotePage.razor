@@ -42,6 +42,114 @@
 		font-size: @(ViewModel.GetNoteBaseFontSize(SettingsService, false))px !important;
 		font-family: @(ViewModel.GetNoteFontFamily(SettingsService));
 	}
+	.note-src-root {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+		min-height: 240px;
+	}
+	.note-src-body {
+		display: flex;
+		flex: 1 1 auto;
+		min-height: 240px;
+		border: 1px solid #202020;
+		overflow: hidden;
+		background: #050505;
+		position: relative;
+	}
+	.note-src-body .rte-gutter {
+		flex: 0 0 auto;
+		min-width: 2.6rem;
+		padding: 8px 6px 8px 8px;
+		text-align: right;
+		font-family: ui-monospace, "Cascadia Code", "Noto Sans Mono", monospace;
+		font-size: 0.9rem;
+		line-height: 1.45;
+		color: #666;
+		background: #0a0a0a;
+		border-right: 1px solid #1a1a1a;
+		overflow: hidden;
+		user-select: none;
+		white-space: pre;
+		pointer-events: none !important;
+		z-index: 2;
+	}
+	.note-src-body .rte-surface {
+		flex: 1 1 auto;
+		position: relative;
+		overflow: hidden;
+		min-width: 0;
+	}
+	.note-src-body .rte-highlight,
+	.note-src-body .rte-textarea {
+		position: absolute;
+		inset: 0;
+		margin: 0;
+		padding: 8px;
+		border: 0;
+		outline: none;
+		resize: none;
+		font-family: ui-monospace, "Cascadia Code", "Noto Sans Mono", monospace;
+		font-size: 0.9rem;
+		line-height: 1.45;
+		tab-size: 4;
+		white-space: pre-wrap;
+		word-break: break-word;
+		overflow-wrap: anywhere;
+		overflow: auto;
+		box-sizing: border-box;
+		background: transparent;
+	}
+	.note-src-body .rte-highlight {
+		color: #e8e8e8;
+		pointer-events: none !important;
+		z-index: 1;
+	}
+	.note-src-body .rte-textarea {
+		z-index: 3;
+		color: rgba(232, 232, 232, 0.01);
+		caret-color: #ffffff;
+		-webkit-text-fill-color: rgba(232, 232, 232, 0.01);
+	}
+	.note-src-body .rte-textarea::selection {
+		background: rgba(144, 238, 144, 0.38);
+		color: transparent;
+	}
+	.note-src-body .rte-space { position: relative; }
+	.note-src-body .rte-space::after {
+		content: "·";
+		position: absolute;
+		left: 0;
+		top: 0;
+		opacity: 0.72;
+		color: #b0b0b0;
+		pointer-events: none;
+	}
+	.note-src-body .rte-tab { position: relative; }
+	.note-src-body .rte-tab::after {
+		content: "→";
+		position: absolute;
+		left: 0;
+		top: 0;
+		opacity: 0.55;
+		color: #a8a8a8;
+		pointer-events: none;
+	}
+	.note-src-body .rte-eol {
+		display: inline-block;
+		width: 0;
+		overflow: visible;
+		color: #9ccc65;
+		opacity: 0.9;
+		font-size: 0.85em;
+		vertical-align: baseline;
+		pointer-events: none;
+	}
+	.note-src-body .rte-keyword { color: #c792ea; }
+	.note-src-body .rte-string { color: #c3e88d; }
+	.note-src-body .rte-comment { color: #697098; font-style: italic; }
+	.note-src-body .rte-number { color: #f78c6c; }
+	.note-src-body .rte-tag { color: #82aaff; }
 </style>
 
 @* Main menu *@
@@ -106,6 +214,11 @@
 		Icon="@IconService.GetSvgLink(IconNames.Magnify)" Color="Color.Inherit"
 		Class="@Css.BuildClass(new CssClassIf(CssClasses.ButtonToggled, _searchToolbarOpen))"
 		title="@LanguageService["search"]" Edge="Edge.End" />
+
+	<MudIconButton OnClick="@(async () => await ToggleSourceViewAsync())"
+		Icon="@Icons.Material.Filled.Code" Color="Color.Inherit"
+		Class="@Css.BuildClass(new CssClassIf(CssClasses.ButtonToggled, _sourceViewActive))"
+		title="@LanguageService["note_source_view"]" Disabled="ViewModel.ShoppingModeActive" Edge="Edge.End" />
 
 	@if (_noteHasOpenableUrl)
 	{
@@ -269,9 +382,29 @@
 @* body *@
 <MudMainContent class="@ViewModel.LightOrDarkClass()">
 	<div id="content" class="d-flex flex-column" style="height: 100%">
-		<div id="note-editor-scroll" class="flex-1" style="overflow-y: auto">
+		<div id="note-editor-scroll" class="flex-1" style="overflow-y: auto;@(_sourceViewActive ? "display:none" : null)">
 			<div @ref="_editorContainer" id="myeditor" class="note-viewer detail-view @ViewModel.CssClassNoteType"></div>
 		</div>
+
+		@if (_sourceViewActive)
+		{
+			<div class="note-src-root flex-1">
+				<div class="note-src-body">
+					<pre @ref="_srcGutterRef" class="rte-gutter"></pre>
+					<div class="rte-surface">
+						<pre @ref="_srcHighlightRef" class="rte-highlight"></pre>
+						<textarea @ref="_srcTextareaRef"
+							class="rte-textarea"
+							spellcheck="false"
+							autocapitalize="off"
+							autocomplete="off"
+							autocorrect="off"
+							@oninput="OnSourceInput"
+							@onblur="OnSourceBlurAsync"></textarea>
+					</div>
+				</div>
+			</div>
+		}
 
 		@* Tags *@
 		<div id="tag-container" class="flex-none pa-2 mud-elevation-5">
@@ -419,6 +552,16 @@
 	private bool _allowNoteContentChanges;
 	private bool _noteHasOpenableUrl;
 	private bool _isPickingFile;
+	private bool _sourceViewActive;
+	private string _sourceText = string.Empty;
+	private string _sourceHighlightHtml = string.Empty;
+	private string _sourceLineNumbers = "1";
+	private ElementReference _srcTextareaRef;
+	private ElementReference _srcHighlightRef;
+	private ElementReference _srcGutterRef;
+	private IJSObjectReference _readerJsModule;
+	private bool _sourceListenersAttached;
+	private CancellationTokenSource _sourceHighlightCts;
 	private readonly System.Text.StringBuilder _contentChunks = new System.Text.StringBuilder();
 	private int _receivedContentChunks;
 
@@ -960,5 +1103,130 @@
 			UrlActionHelpers.OpenFirstUrl(NativeBrowserService, ViewModel.UnlockedHtmlContent);
 		else
 			UrlActionHelpers.OpenFirstUrl(NativeBrowserService, plainText);
+	}
+
+	private async Task ToggleSourceViewAsync()
+	{
+		if (ViewModel.ShoppingModeActive)
+			return;
+
+		if (_sourceViewActive)
+		{
+			await ApplySourceToEditorAsync();
+			_sourceViewActive = false;
+			StateHasChanged();
+			return;
+		}
+
+		string html = ViewModel.UnlockedHtmlContent ?? string.Empty;
+		try
+		{
+			if (_jsModule != null)
+				html = await _jsModule.InvokeAsync<string>("getHtml") ?? html;
+		}
+		catch
+		{
+		}
+
+		_sourceText = html ?? string.Empty;
+		RefreshSourceHighlight();
+		_sourceViewActive = true;
+		StateHasChanged();
+		await Task.Yield();
+		await EnsureSourceEditorReadyAsync();
+	}
+
+	private async Task EnsureSourceEditorReadyAsync()
+	{
+		try
+		{
+			_readerJsModule ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./reader-text-editor.js");
+			await _readerJsModule.InvokeVoidAsync("setTextareaValue", _srcTextareaRef, _sourceText);
+			await _readerJsModule.InvokeVoidAsync("setOverlay", _srcHighlightRef, _srcGutterRef, _sourceHighlightHtml, _sourceLineNumbers);
+			if (!_sourceListenersAttached)
+			{
+				await _readerJsModule.InvokeVoidAsync("attachEditorListeners", _srcTextareaRef, _srcHighlightRef, _srcGutterRef, null);
+				_sourceListenersAttached = true;
+			}
+		}
+		catch
+		{
+		}
+	}
+
+	private void OnSourceInput(ChangeEventArgs e)
+	{
+		_sourceText = e?.Value?.ToString() ?? string.Empty;
+		ScheduleSourceHighlight();
+	}
+
+	private async Task OnSourceBlurAsync()
+	{
+		await ApplySourceToEditorAsync();
+	}
+
+	private async Task ApplySourceToEditorAsync()
+	{
+		string html = _sourceText ?? string.Empty;
+		ViewModel.UnlockedHtmlContent = html;
+		RefreshNoteOpenableUrl(html);
+		try
+		{
+			if (_jsModule != null)
+				await _jsModule.InvokeVoidAsync("setNoteContent", html);
+		}
+		catch
+		{
+		}
+	}
+
+	private void ScheduleSourceHighlight()
+	{
+		_sourceHighlightCts?.Cancel();
+		_sourceHighlightCts = new CancellationTokenSource();
+		CancellationToken token = _sourceHighlightCts.Token;
+		_ = Task.Run(async () =>
+		{
+			try
+			{
+				await Task.Delay(80, token);
+				if (token.IsCancellationRequested)
+					return;
+				await InvokeAsync(async () =>
+				{
+					RefreshSourceHighlight();
+					if (_readerJsModule != null)
+					{
+						await _readerJsModule.InvokeVoidAsync(
+							"setOverlay", _srcHighlightRef, _srcGutterRef, _sourceHighlightHtml, _sourceLineNumbers);
+					}
+				});
+			}
+			catch (TaskCanceledException)
+			{
+			}
+		});
+	}
+
+	private void RefreshSourceHighlight()
+	{
+		_sourceHighlightHtml = ReaderSyntaxHighlighter.ToHighlightedHtml(_sourceText, "html");
+		int lines = 1;
+		string text = _sourceText ?? string.Empty;
+		for (int i = 0; i < text.Length; i++)
+		{
+			if (text[i] == '\n')
+				lines++;
+		}
+		if (string.IsNullOrEmpty(text))
+			lines = 1;
+		var sb = new System.Text.StringBuilder(lines * 4);
+		for (int i = 1; i <= lines; i++)
+		{
+			if (i > 1)
+				sb.Append('\n');
+			sb.Append(i);
+		}
+		_sourceLineNumbers = sb.ToString();
 	}
 }

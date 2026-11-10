@@ -259,6 +259,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Workers\UnitConverterEngine.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IWebdavFileService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\WebdavFileServiceBase.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IImageEditorService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IWebdavQuickSaveService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\WebdavQuickSaveService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IDevicePhoneService.cs" />
@@ -301,6 +302,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\AbroAiChatClient.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\AbroBookmarkItemModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\AbroBookmarkStoreModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroBookmarkHtmlWriter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroBookmarkStoreFormat.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroBookmarkStoreService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\AbroBookmarkStoreService.cs" />

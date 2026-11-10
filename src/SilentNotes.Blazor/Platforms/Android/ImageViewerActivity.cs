@@ -101,9 +101,25 @@ namespace SilentNotes
             closeButton.LayoutParameters = closeLp;
             closeButton.Click += (_, __) => Finish();
 
+            Button cropButton = new Button(this)
+            {
+                Text = "Crop",
+                TextSize = 13,
+            };
+            cropButton.SetTextColor(Color.White);
+            cropButton.SetBackgroundColor(Color.Argb(160, 36, 129, 204));
+            FrameLayout.LayoutParams cropLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WrapContent,
+                ViewGroup.LayoutParams.WrapContent);
+            cropLp.Gravity = GravityFlags.Top | GravityFlags.Right;
+            cropLp.SetMargins(0, 12, 120, 0);
+            cropButton.LayoutParameters = cropLp;
+            cropButton.Click += (_, __) => OpenCropEditor();
+
             root.AddView(_imageView);
             root.AddView(_titleView);
             root.AddView(_counterView);
+            root.AddView(cropButton);
             root.AddView(closeButton);
             SetContentView(root);
 
@@ -203,6 +219,32 @@ namespace SilentNotes
             catch (Exception ex)
             {
                 Toast.MakeText(this, "Cannot open image: " + ex.Message, ToastLength.Long).Show();
+            }
+        }
+
+        private void OpenCropEditor()
+        {
+            try
+            {
+                string pathOrUri = _paths[_index];
+                string path = pathOrUri;
+                if (pathOrUri.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
+                    && System.Uri.TryCreate(pathOrUri, UriKind.Absolute, out System.Uri fileUri))
+                {
+                    path = fileUri.LocalPath;
+                }
+
+                if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+                {
+                    Toast.MakeText(this, "Crop needs a local image file", ToastLength.Short).Show();
+                    return;
+                }
+
+                StartActivity(ImageEditorActivity.CreateIntent(this, path));
+            }
+            catch (Exception ex)
+            {
+                Toast.MakeText(this, ex.Message, ToastLength.Long).Show();
             }
         }
 

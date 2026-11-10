@@ -77,8 +77,22 @@ namespace SilentNotes.Workers
                 }
             }
 
-            if (obj["blockImages"] != null && obj["blockImages"].GetValueKind() == JsonValueKind.True)
-                settings.BlockImages = true;
+            settings.BlockImagesMode = ParseBlockImagesMode(GetString(obj, "blockImagesMode"), obj["blockImages"]);
+            if (obj["blockImagesDomains"] is JsonArray blockDomains)
+            {
+                foreach (JsonNode node in blockDomains)
+                {
+                    if (node == null || node.GetValueKind() != JsonValueKind.String)
+                        continue;
+                    string domain = AbroBrowserSettingsModel.NormalizeDomain(node.GetValue<string>());
+                    if (string.IsNullOrEmpty(domain))
+                        continue;
+                    if (settings.BlockImagesDomains.Exists(d => string.Equals(d, domain, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    settings.BlockImagesDomains.Add(domain);
+                }
+            }
+
             if (obj["socks5Enabled"] != null && obj["socks5Enabled"].GetValueKind() == JsonValueKind.True)
                 settings.Socks5Enabled = true;
             settings.Socks5Host = GetString(obj, "socks5Host") ?? string.Empty;
@@ -122,7 +136,8 @@ namespace SilentNotes.Workers
                 ["useCustomFont"] = settings.UseCustomFont,
                 ["customFontFileName"] = settings.CustomFontFileName ?? string.Empty,
                 ["blackMode"] = FormatBlackMode(settings.BlackMode),
-                ["blockImages"] = settings.BlockImages,
+                ["blockImagesMode"] = FormatBlockImagesMode(settings.BlockImagesMode),
+                ["blockImages"] = settings.BlockImagesMode == AbroBlockImagesMode.Enable,
                 ["socks5Enabled"] = settings.Socks5Enabled,
                 ["socks5Host"] = settings.Socks5Host ?? string.Empty,
                 ["socks5Port"] = settings.Socks5Port,
@@ -141,6 +156,16 @@ namespace SilentNotes.Workers
             }
 
             root["blackModeDomains"] = blackDomains;
+
+            var blockImageDomains = new JsonArray();
+            foreach (string domain in settings.BlockImagesDomains ?? new List<string>())
+            {
+                string normalized = AbroBrowserSettingsModel.NormalizeDomain(domain);
+                if (!string.IsNullOrEmpty(normalized))
+                    blockImageDomains.Add(normalized);
+            }
+
+            root["blockImagesDomains"] = blockImageDomains;
 
             var engines = new JsonArray();
             foreach (AbroSearchEngineModel engine in settings.Engines ?? new List<AbroSearchEngineModel>())
@@ -178,6 +203,37 @@ namespace SilentNotes.Workers
                 case AbroBlackMode.Enable:
                     return "enable";
                 case AbroBlackMode.Selectively:
+                    return "selectively";
+                default:
+                    return "disable";
+            }
+        }
+
+        private static AbroBlockImagesMode ParseBlockImagesMode(string value, JsonNode legacyBool)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                if (string.Equals(value, "enable", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(value, "enabled", StringComparison.OrdinalIgnoreCase))
+                    return AbroBlockImagesMode.Enable;
+                if (string.Equals(value, "selectively", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(value, "selective", StringComparison.OrdinalIgnoreCase))
+                    return AbroBlockImagesMode.Selectively;
+                return AbroBlockImagesMode.Disable;
+            }
+
+            if (legacyBool != null && legacyBool.GetValueKind() == JsonValueKind.True)
+                return AbroBlockImagesMode.Enable;
+            return AbroBlockImagesMode.Disable;
+        }
+
+        private static string FormatBlockImagesMode(AbroBlockImagesMode mode)
+        {
+            switch (mode)
+            {
+                case AbroBlockImagesMode.Enable:
+                    return "enable";
+                case AbroBlockImagesMode.Selectively:
                     return "selectively";
                 default:
                     return "disable";

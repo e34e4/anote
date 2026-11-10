@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -26,6 +27,8 @@ namespace SilentNotes.ViewModels
         private readonly IFilePickerService _filePickerService;
         private readonly ILanguageService _languageService;
         private readonly IFeedbackService _feedbackService;
+        private readonly IImageEditorService _imageEditorService;
+        private readonly HashSet<string> _selectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         private List<WebdavFileItemViewModel> _items = new List<WebdavFileItemViewModel>();
         private string _filter;
@@ -51,13 +54,15 @@ namespace SilentNotes.ViewModels
             ISettingsService settingsService,
             IFilePickerService filePickerService,
             ILanguageService languageService,
-            IFeedbackService feedbackService)
+            IFeedbackService feedbackService,
+            IImageEditorService imageEditorService = null)
         {
             _webdavService = webdavService;
             _settingsService = settingsService;
             _filePickerService = filePickerService;
             _languageService = languageService;
             _feedbackService = feedbackService;
+            _imageEditorService = imageEditorService;
 
             LoadCredentialsFromSettings();
             LoadPathTabsFromSettings();
@@ -100,6 +105,12 @@ namespace SilentNotes.ViewModels
         public ICommand AddPathTabCommand { get; }
         public ICommand ClosePathTabCommand { get; }
         public ICommand SelectPathTabCommand { get; }
+
+        /// <summary>Gets the number of selected items.</summary>
+        public int SelectedCount => _selectedNames.Count;
+
+        /// <summary>Gets whether any items are selected.</summary>
+        public bool HasSelection => _selectedNames.Count > 0;
 
         /// <summary>Gets a value indicating whether WebDAV server URL is configured.</summary>
         public bool IsConfigured => !string.IsNullOrWhiteSpace(EffectiveUrl);
@@ -570,6 +581,202 @@ namespace SilentNotes.ViewModels
             {
                 IsBusy = false;
             }
+        }
+
+        public bool IsSelected(WebdavFileItemViewModel item)
+        {
+            return item != null && _selectedNames.Contains(item.Name);
+        }
+
+        public void ToggleSelection(WebdavFileItemViewModel item)
+        {
+            if (item == null || item.IsDirectory)
+                return;
+            if (!_selectedNames.Add(item.Name))
+                _selectedNames.Remove(item.Name);
+            OnPropertyChanged(nameof(SelectedCount));
+            OnPropertyChanged(nameof(HasSelection));
+        }
+
+        public void ClearSelection()
+        {
+            if (_selectedNames.Count == 0)
+                return;
+            _selectedNames.Clear();
+            OnPropertyChanged(nameof(SelectedCount));
+            OnPropertyChanged(nameof(HasSelection));
+        }
+
+        public async Task ZipSelectedAsync()
+        {
+            List<WebdavFileItemViewModel> selected = GetSelectedFiles();
+            if (selected.Count == 0 || IsBusy)
+                return;
+
+            IsBusy = true;
+            LastError = null;
+            try
+            {
+                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
+                var entries = new List<CompressUtils.CompressEntry>();
+                foreach (WebdavFileItemViewModel item in selected)
+                {
+                    byte[] bytes = await _webdavService.DownloadFileAsync(
+                        EffectiveUrl, remoteFolder, item.Name, EffectiveUsername, EffectivePassword);
+                    entries.Add(new CompressUtils.CompressEntry { Name = item.Name, Data = bytes ?? Array.Empty<byte>() });
+                }
+
+                byte[] zip = CompressUtils.CreateZipArchive(entries);
+                string zipName = string.Format(CultureInfo.InvariantCulture, "archive_{0:yyyyMMdd_HHmmss}.zip", DateTime.Now);
+                await _webdavService.UploadFileAsync(
+                    EffectiveUrl, remoteFolder, zipName, zip, EffectiveUsername, EffectivePassword);
+                _feedbackService?.ShowToast(_languageService.LoadTextFmt("file_zipped", zipName));
+                ClearSelection();
+                await RefreshAsync();
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                _feedbackService?.ShowToast(_languageService["file_zip_failed"] + " — " + ex.Message, FeedbackSeverity.Warning);
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+
+        public async Task UnzipSelectedAsync()
+        {
+            List<WebdavFileItemViewModel> selected = GetSelectedFiles()
+                .Where(i => i.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (selected.Count == 0 || IsBusy)
+            {
+                _feedbackService?.ShowToast(_languageService["file_unzip_need_zip"], FeedbackSeverity.Warning);
+                return;
+            }
+
+            IsBusy = true;
+            LastError = null;
+            try
+            {
+                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
+                int count = 0;
+                foreach (WebdavFileItemViewModel item in selected)
+                {
+                    byte[] zipBytes = await _webdavService.DownloadFileAsync(
+                        EffectiveUrl, remoteFolder, item.Name, EffectiveUsername, EffectivePassword);
+                    foreach (CompressUtils.CompressEntry entry in CompressUtils.OpenZipArchive(zipBytes))
+                    {
+                        string name = Path.GetFileName(entry.Name.Replace('\\', '/'));
+                        if (string.IsNullOrWhiteSpace(name))
+                            continue;
+                        await _webdavService.UploadFileAsync(
+                            EffectiveUrl, remoteFolder, name, entry.Data ?? Array.Empty<byte>(), EffectiveUsername, EffectivePassword);
+                        count++;
+                    }
+                }
+
+                _feedbackService?.ShowToast(_languageService.LoadTextFmt("file_unzipped", count));
+                ClearSelection();
+                await RefreshAsync();
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                _feedbackService?.ShowToast(_languageService["file_unzip_failed"] + " — " + ex.Message, FeedbackSeverity.Warning);
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+
+        public async Task SplitSelectedAsync(int chunkSizeMb)
+        {
+            List<WebdavFileItemViewModel> selected = GetSelectedFiles();
+            if (selected.Count != 1 || IsBusy)
+            {
+                _feedbackService?.ShowToast(_languageService["file_split_need_one"], FeedbackSeverity.Warning);
+                return;
+            }
+
+            int chunkBytes = Math.Max(1, chunkSizeMb) * 1024 * 1024;
+            IsBusy = true;
+            LastError = null;
+            try
+            {
+                WebdavFileItemViewModel item = selected[0];
+                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
+                byte[] bytes = await _webdavService.DownloadFileAsync(
+                    EffectiveUrl, remoteFolder, item.Name, EffectiveUsername, EffectivePassword);
+                List<CompressUtils.CompressEntry> parts = CompressUtils.SplitFile(bytes, item.Name, chunkBytes);
+                foreach (CompressUtils.CompressEntry part in parts)
+                {
+                    await _webdavService.UploadFileAsync(
+                        EffectiveUrl, remoteFolder, part.Name, part.Data ?? Array.Empty<byte>(), EffectiveUsername, EffectivePassword);
+                }
+
+                _feedbackService?.ShowToast(_languageService.LoadTextFmt("file_split_ok", parts.Count));
+                ClearSelection();
+                await RefreshAsync();
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                _feedbackService?.ShowToast(_languageService["file_split_failed"] + " — " + ex.Message, FeedbackSeverity.Warning);
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+
+        public async Task CropImageAsync(WebdavFileItemViewModel item)
+        {
+            if (item == null || item.IsDirectory || _imageEditorService == null || !_imageEditorService.IsSupported || IsBusy)
+            {
+                _feedbackService?.ShowToast(_languageService["file_crop_unavailable"], FeedbackSeverity.Warning);
+                return;
+            }
+
+            if (!IsImageName(item.Name))
+            {
+                _feedbackService?.ShowToast(_languageService["file_crop_need_image"], FeedbackSeverity.Warning);
+                return;
+            }
+
+            IsBusy = true;
+            LastError = null;
+            try
+            {
+                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
+                byte[] bytes = await _webdavService.DownloadFileAsync(
+                    EffectiveUrl, remoteFolder, item.Name, EffectiveUsername, EffectivePassword);
+                string savedPath = await _webdavService.SaveDownloadedFileAsync(item.Name, bytes);
+                if (string.IsNullOrEmpty(savedPath) || !await _imageEditorService.OpenEditorAsync(savedPath))
+                    _feedbackService?.ShowToast(_languageService["file_crop_failed"], FeedbackSeverity.Warning);
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                _feedbackService?.ShowToast(_languageService["file_crop_failed"] + " — " + ex.Message, FeedbackSeverity.Warning);
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+
+        private List<WebdavFileItemViewModel> GetSelectedFiles()
+        {
+            return _items.Where(i => !i.IsDirectory && _selectedNames.Contains(i.Name)).ToList();
+        }
+
+        private static bool IsImageName(string name)
+        {
+            string ext = Path.GetExtension(name ?? string.Empty).ToLowerInvariant();
+            return ext is ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif" or ".bmp" or ".heic" or ".avif";
         }
 
         /// <summary>Deletes a remote file or folder after user confirmation.</summary>
