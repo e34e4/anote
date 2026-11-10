@@ -247,13 +247,13 @@ html, body {
   background: var(--bg); color: var(--text);
 }
 body { padding: 12px; }
-h1 { margin: 0 0 10px; font-size: 20px; font-weight: 600; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.row.tight { margin-bottom: 6px; }
 input, button, select {
   padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface); color: var(--text); font-size: 14px;
 }
-input { flex: 1; min-width: 120px; }
+input { flex: 1; min-width: 0; }
 button {
   background: var(--accent); color: #fff; border: none; font-weight: 500; cursor: pointer; flex-shrink: 0;
 }
@@ -261,20 +261,45 @@ button.secondary { background: #444; }
 button.danger { background: var(--danger); }
 #moveToTopToggleBtn[data-enabled="false"] { background: #555; }
 .hint { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
-#search { width: 100%; max-width: 480px; }
-.search-go { display: flex; gap: 8px; align-items: center; width: 100%; max-width: 480px; }
+#stats {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.add-bookmark-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.add-bookmark-section .add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+.add-bookmark-section #bookmarkNameInput { flex: 1 1 100px; min-width: 90px; }
+.add-bookmark-section #newBookmarkGroupSelect { flex: 0 1 120px; min-width: 90px; }
+.add-bookmark-section #bookmarkUrlInput {
+  width: 100%;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.search-go { display: flex; gap: 8px; align-items: center; width: 100%; }
 .search-go input { flex: 1; }
 .columns-wrapper {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 8px;
 }
 .bookmark {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; border-radius: 8px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 6px 6px 10px; border-radius: 8px;
   background: var(--surface); border: 1px solid var(--border);
-  min-height: 40px;
+  min-height: 36px;
 }
 .bookmark[data-group]:not([data-group=""]) {
   border-width: 2px;
@@ -290,28 +315,54 @@ button.danger { background: var(--danger); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px;
 }
 .bookmark-checkbox {
-  width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  margin: 0 2px 0 0;
+  padding: 0;
+  flex-shrink: 0;
+  align-self: center;
+  accent-color: var(--accent);
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1.5px solid #cfcfcf;
+  border-radius: 3px;
+  background: transparent;
+  display: inline-grid;
+  place-content: center;
 }
-#stats { margin-top: 12px; color: var(--muted); font-size: 12px; }
+.bookmark-checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.bookmark-checkbox:checked::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border-radius: 1px;
+}
 .hidden { display: none !important; }
 </style>
 </head>
 <body>
-<h1>Abro bookmarks</h1>
-<p class="hint">Portable page · export/import <code>/sdcard/abro/bookmarks.json</code> · links open in a new Abro tab</p>
+<p id="stats">Total bookmarks: 0</p>
 
-<div class="row">
+<div class="row tight">
   <button type="button" id="moveToTopToggleBtn" data-enabled="true" onclick="toggleMoveToTopMode()">Move to Top: ON</button>
   <button type="button" class="secondary" onclick="exportPortable()">Export bookmarks.json</button>
   <button type="button" class="secondary" onclick="importPortable()">Import bookmarks.json</button>
 </div>
 
-<div class="row add-bookmark-section">
-  <input id="bookmarkNameInput" type="text" placeholder="Name" autocomplete="off">
-  <input id="bookmarkUrlInput" type="text" placeholder="https://..." autocomplete="off">
-  <select id="newBookmarkGroupSelect"><option value="">No group</option></select>
-  <button type="button" id="addBookmarkBtn" onclick="saveBookmark()">Add</button>
-  <button type="button" class="danger" id="deleteClearBtn" onclick="deleteOrClear()">Delete/Clear</button>
+<div class="add-bookmark-section">
+  <div class="add-row">
+    <input id="bookmarkNameInput" type="text" placeholder="Name" autocomplete="off">
+    <select id="newBookmarkGroupSelect"><option value="">No group</option></select>
+    <button type="button" id="addBookmarkBtn" onclick="saveBookmark()">Add</button>
+    <button type="button" class="danger" id="deleteClearBtn" onclick="deleteOrClear()">Delete/Clear</button>
+  </div>
+  <div class="add-row">
+    <input id="bookmarkUrlInput" type="text" placeholder="https://..." autocomplete="off">
+  </div>
 </div>
 
 <div class="row">
@@ -331,7 +382,6 @@ button.danger { background: var(--danger); }
 </div>
 
 <div class="columns-wrapper" id="columnsContainer"></div>
-<p id="stats"></p>
 
 <script>
 const FAVICON_API = 'https://www.google.com/s2/favicons?sz=64&domain=';
