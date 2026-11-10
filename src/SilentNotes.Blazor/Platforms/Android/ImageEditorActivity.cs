@@ -18,6 +18,11 @@ using Android.Views;
 using Android.Widget;
 using AndroidX.ExifInterface.Media;
 using AButton = Android.Widget.Button;
+using APaint = Android.Graphics.Paint;
+using APath = Android.Graphics.Path;
+using APointF = Android.Graphics.PointF;
+using ARectF = Android.Graphics.RectF;
+using AView = Android.Views.View;
 using Color = Android.Graphics.Color;
 using IOPath = System.IO.Path;
 using MediaOrientation = Android.Media.Orientation;
@@ -208,7 +213,7 @@ namespace SilentNotes
             SetApplyCancelEnabled(false);
         }
 
-        private HorizontalScrollView WrapScroll(View child)
+        private HorizontalScrollView WrapScroll(AView child)
         {
             var scroll = new HorizontalScrollView(this);
             scroll.AddView(child);
@@ -264,19 +269,19 @@ namespace SilentNotes
             RefreshStatus();
         }
 
-        private void OnBrushStrokeFinished(IList<PointF> points, float strokeWidth, Color color)
+        private void OnBrushStrokeFinished(IList<APointF> points, float strokeWidth, Color color)
         {
             if (_bitmap == null || points == null || points.Count < 2)
                 return;
 
             PushHistory();
             using (var canvas = new Canvas(_bitmap))
-            using (var paint = new Paint { AntiAlias = true, StrokeWidth = strokeWidth, Color = color })
+            using (var paint = new APaint { AntiAlias = true, StrokeWidth = strokeWidth, Color = color })
             {
-                paint.SetStyle(Paint.Style.Stroke);
-                paint.StrokeCap = Paint.Cap.Round;
-                paint.StrokeJoin = Paint.Join.Round;
-                var path = new Path();
+                paint.SetStyle(APaint.Style.Stroke);
+                paint.StrokeCap = APaint.Cap.Round;
+                paint.StrokeJoin = APaint.Join.Round;
+                var path = new APath();
                 path.MoveTo(points[0].X, points[0].Y);
                 for (int i = 1; i < points.Count; i++)
                     path.LineTo(points[i].X, points[i].Y);
@@ -316,14 +321,14 @@ namespace SilentNotes
 
         private void ApplyCrop()
         {
-            RectF? rect = _canvas.GetImageSelectionRect();
+            ARectF? rect = _canvas.GetImageSelectionRect();
             if (rect == null)
             {
                 Toast.MakeText(this, "Drag a crop area first", ToastLength.Short).Show();
                 return;
             }
 
-            RectF r = rect.Value;
+            ARectF r = rect.Value;
             int x = Math.Max(0, (int)Math.Floor(r.Left));
             int y = Math.Max(0, (int)Math.Floor(r.Top));
             int w = Math.Max(1, (int)Math.Ceiling(r.Width()));
@@ -343,14 +348,14 @@ namespace SilentNotes
 
         private void ApplyBlur()
         {
-            RectF? rect = _canvas.GetImageSelectionRect();
+            ARectF? rect = _canvas.GetImageSelectionRect();
             if (rect == null)
             {
                 Toast.MakeText(this, "Drag a blur area first", ToastLength.Short).Show();
                 return;
             }
 
-            RectF r = rect.Value;
+            ARectF r = rect.Value;
             int x = Math.Max(0, (int)Math.Floor(r.Left));
             int y = Math.Max(0, (int)Math.Floor(r.Top));
             int w = Math.Max(1, (int)Math.Ceiling(r.Width()));
@@ -377,7 +382,7 @@ namespace SilentNotes
 
         private void ApplyTextOverlay()
         {
-            PointF? pos = _canvas.GetPlacementPoint();
+            APointF? pos = _canvas.GetPlacementPoint();
             if (pos == null || string.IsNullOrWhiteSpace(_pendingText))
             {
                 Toast.MakeText(this, "Tap to place text first", ToastLength.Short).Show();
@@ -386,7 +391,7 @@ namespace SilentNotes
 
             PushHistory();
             using (var canvas = new Canvas(_bitmap))
-            using (var paint = new Paint { AntiAlias = true, Color = Palette[_brushColorIndex], TextSize = Math.Max(12, _bitmap.Width / 18f) })
+            using (var paint = new APaint { AntiAlias = true, Color = Palette[_brushColorIndex], TextSize = Math.Max(12, _bitmap.Width / 18f) })
             {
                 paint.SetTypeface(_pendingTypeface ?? Typeface.Default);
                 canvas.DrawText(_pendingText, pos.Value.X, pos.Value.Y, paint);
@@ -399,7 +404,7 @@ namespace SilentNotes
 
         private void ApplyEmojiOverlay()
         {
-            PointF? pos = _canvas.GetPlacementPoint();
+            APointF? pos = _canvas.GetPlacementPoint();
             if (pos == null || string.IsNullOrEmpty(_pendingEmoji))
             {
                 Toast.MakeText(this, "Tap to place emoji first", ToastLength.Short).Show();
@@ -409,7 +414,7 @@ namespace SilentNotes
             float textSize = 24f + (_emojiSizeStep * 12f);
             PushHistory();
             using (var canvas = new Canvas(_bitmap))
-            using (var paint = new Paint { AntiAlias = true, TextSize = textSize, Color = Color.White })
+            using (var paint = new APaint { AntiAlias = true, TextSize = textSize, Color = Color.White })
             {
                 canvas.DrawText(_pendingEmoji, pos.Value.X, pos.Value.Y, paint);
             }
@@ -421,7 +426,7 @@ namespace SilentNotes
 
         private void ApplyArrowOverlay()
         {
-            (PointF Start, PointF End)? arrow = _canvas.GetArrowPoints();
+            (APointF Start, APointF End)? arrow = _canvas.GetArrowPoints();
             if (arrow == null)
             {
                 Toast.MakeText(this, "Drag to draw an arrow first", ToastLength.Short).Show();
@@ -431,10 +436,10 @@ namespace SilentNotes
             float stroke = 2f + (_arrowSizeStep * 2f);
             PushHistory();
             using (var canvas = new Canvas(_bitmap))
-            using (var paint = new Paint { AntiAlias = true, StrokeWidth = stroke, Color = Palette[_arrowColorIndex] })
+            using (var paint = new APaint { AntiAlias = true, StrokeWidth = stroke, Color = Palette[_arrowColorIndex] })
             {
-                paint.SetStyle(Paint.Style.Stroke);
-                paint.StrokeCap = Paint.Cap.Round;
+                paint.SetStyle(APaint.Style.Stroke);
+                paint.StrokeCap = APaint.Cap.Round;
                 DrawArrow(canvas, paint, arrow.Value.Start, arrow.Value.End, stroke);
             }
             _canvas.SetBitmap(_bitmap);
@@ -443,7 +448,7 @@ namespace SilentNotes
             UpdateHistoryButtons();
         }
 
-        private static void DrawArrow(Canvas canvas, Paint paint, PointF start, PointF end, float stroke)
+        private static void DrawArrow(Canvas canvas, APaint paint, APointF start, APointF end, float stroke)
         {
             canvas.DrawLine(start.X, start.Y, end.X, end.Y, paint);
             double angle = Math.Atan2(end.Y - start.Y, end.X - start.X);
@@ -1199,14 +1204,14 @@ namespace SilentNotes
         /// <summary>
         /// Canvas that maps touch to image coordinates and supports crop/brush/blur/text/emoji/arrow overlays.
         /// </summary>
-        private sealed class EditorCanvasView : View
+        private sealed class EditorCanvasView : AView
         {
             private Bitmap _bitmap;
-            private readonly Paint _bitmapPaint = new Paint { FilterBitmap = true, AntiAlias = true };
-            private readonly Paint _overlayPaint = new Paint { AntiAlias = true };
-            private readonly Paint _handlePaint = new Paint { AntiAlias = true };
+            private readonly APaint _bitmapPaint = new APaint { FilterBitmap = true, AntiAlias = true };
+            private readonly APaint _overlayPaint = new APaint { AntiAlias = true };
+            private readonly APaint _handlePaint = new APaint { AntiAlias = true };
 
-            private RectF _dst = new RectF();
+            private ARectF _dst = new ARectF();
             private float _scale = 1f;
             private float _offsetX;
             private float _offsetY;
@@ -1216,13 +1221,13 @@ namespace SilentNotes
             private float _startY;
             private float _curX;
             private float _curY;
-            private RectF _selection = new RectF();
+            private ARectF _selection = new ARectF();
             private bool _hasSelection;
 
-            private readonly List<PointF> _stroke = new List<PointF>();
-            private PointF? _placement;
-            private PointF? _arrowStart;
-            private PointF? _arrowEnd;
+            private readonly List<APointF> _stroke = new List<APointF>();
+            private APointF? _placement;
+            private APointF? _arrowStart;
+            private APointF? _arrowEnd;
             private int _arrowDragTarget; // 0 none, 1 start, 2 end, 3 whole create
 
             public ToolMode Mode { get; set; } = ToolMode.None;
@@ -1232,16 +1237,16 @@ namespace SilentNotes
             public Color ArrowColor { get; set; } = Color.Yellow;
 
             public event Action SelectionFinished;
-            public event Action<IList<PointF>, float, Color> StrokeFinished;
+            public event Action<IList<APointF>, float, Color> StrokeFinished;
 
             public EditorCanvasView(Context context)
                 : base(context)
             {
                 SetBackgroundColor(Color.Rgb(20, 20, 20));
-                _overlayPaint.SetStyle(Paint.Style.Stroke);
+                _overlayPaint.SetStyle(APaint.Style.Stroke);
                 _overlayPaint.StrokeWidth = 3f;
                 _overlayPaint.Color = Color.Argb(220, 36, 129, 204);
-                _handlePaint.SetStyle(Paint.Style.Fill);
+                _handlePaint.SetStyle(APaint.Style.Fill);
                 _handlePaint.Color = Color.White;
             }
 
@@ -1264,7 +1269,7 @@ namespace SilentNotes
                 Invalidate();
             }
 
-            public RectF? GetImageSelectionRect()
+            public ARectF? GetImageSelectionRect()
             {
                 if (!_hasSelection || _bitmap == null)
                     return null;
@@ -1274,16 +1279,16 @@ namespace SilentNotes
                 float bottom = Math.Max(_selection.Top, _selection.Bottom);
                 if (right - left < 2 || bottom - top < 2)
                     return null;
-                return new RectF(
+                return new ARectF(
                     Math.Clamp(left, 0, _bitmap.Width),
                     Math.Clamp(top, 0, _bitmap.Height),
                     Math.Clamp(right, 0, _bitmap.Width),
                     Math.Clamp(bottom, 0, _bitmap.Height));
             }
 
-            public PointF? GetPlacementPoint() => _placement;
+            public APointF? GetPlacementPoint() => _placement;
 
-            public (PointF Start, PointF End)? GetArrowPoints()
+            public (APointF Start, APointF End)? GetArrowPoints()
             {
                 if (_arrowStart == null || _arrowEnd == null)
                     return null;
@@ -1311,7 +1316,7 @@ namespace SilentNotes
                 _dst.Set(_offsetX, _offsetY, _offsetX + dw, _offsetY + dh);
             }
 
-            private PointF? ScreenToImage(float x, float y)
+            private APointF? ScreenToImage(float x, float y)
             {
                 if (_bitmap == null || _scale <= 0)
                     return null;
@@ -1321,18 +1326,18 @@ namespace SilentNotes
                     x = Math.Clamp(x, _dst.Left, _dst.Right);
                     y = Math.Clamp(y, _dst.Top, _dst.Bottom);
                 }
-                return new PointF((x - _offsetX) / _scale, (y - _offsetY) / _scale);
+                return new APointF((x - _offsetX) / _scale, (y - _offsetY) / _scale);
             }
 
-            private PointF ImageToScreen(PointF p) =>
-                new PointF(p.X * _scale + _offsetX, p.Y * _scale + _offsetY);
+            private APointF ImageToScreen(APointF p) =>
+                new APointF(p.X * _scale + _offsetX, p.Y * _scale + _offsetY);
 
             public override bool OnTouchEvent(MotionEvent e)
             {
                 if (_bitmap == null || Mode == ToolMode.None)
                     return false;
 
-                PointF? img = ScreenToImage(e.GetX(), e.GetY());
+                APointF? img = ScreenToImage(e.GetX(), e.GetY());
                 if (img == null)
                     return true;
 
@@ -1357,7 +1362,7 @@ namespace SilentNotes
                 return true;
             }
 
-            private void HandleSelectionTouch(MotionEvent e, PointF img)
+            private void HandleSelectionTouch(MotionEvent e, APointF img)
             {
                 switch (e.ActionMasked)
                 {
@@ -1388,7 +1393,7 @@ namespace SilentNotes
                 }
             }
 
-            private void HandleBrushTouch(MotionEvent e, PointF img)
+            private void HandleBrushTouch(MotionEvent e, APointF img)
             {
                 switch (e.ActionMasked)
                 {
@@ -1415,7 +1420,7 @@ namespace SilentNotes
                 }
             }
 
-            private void HandlePlacementTouch(MotionEvent e, PointF img)
+            private void HandlePlacementTouch(MotionEvent e, APointF img)
             {
                 if (e.ActionMasked == MotionEventActions.Down
                     || e.ActionMasked == MotionEventActions.Move)
@@ -1425,7 +1430,7 @@ namespace SilentNotes
                 }
             }
 
-            private void HandleArrowTouch(MotionEvent e, PointF img)
+            private void HandleArrowTouch(MotionEvent e, APointF img)
             {
                 const float hit = 48f;
                 switch (e.ActionMasked)
@@ -1434,8 +1439,8 @@ namespace SilentNotes
                         _dragging = true;
                         if (_arrowStart != null && _arrowEnd != null)
                         {
-                            PointF s = ImageToScreen(_arrowStart.Value);
-                            PointF en = ImageToScreen(_arrowEnd.Value);
+                            APointF s = ImageToScreen(_arrowStart.Value);
+                            APointF en = ImageToScreen(_arrowEnd.Value);
                             float ds = Dist(e.GetX(), e.GetY(), s.X, s.Y);
                             float de = Dist(e.GetX(), e.GetY(), en.X, en.Y);
                             if (ds <= hit || de <= hit)
@@ -1499,16 +1504,16 @@ namespace SilentNotes
 
                 if (Mode == ToolMode.Brush && _stroke.Count > 1)
                 {
-                    using var paint = new Paint { AntiAlias = true, StrokeWidth = BrushSize * _scale, Color = BrushColor };
-                    paint.SetStyle(Paint.Style.Stroke);
-                    paint.StrokeCap = Paint.Cap.Round;
-                    paint.StrokeJoin = Paint.Join.Round;
-                    var path = new Path();
-                    PointF p0 = ImageToScreen(_stroke[0]);
+                    using var paint = new APaint { AntiAlias = true, StrokeWidth = BrushSize * _scale, Color = BrushColor };
+                    paint.SetStyle(APaint.Style.Stroke);
+                    paint.StrokeCap = APaint.Cap.Round;
+                    paint.StrokeJoin = APaint.Join.Round;
+                    var path = new APath();
+                    APointF p0 = ImageToScreen(_stroke[0]);
                     path.MoveTo(p0.X, p0.Y);
                     for (int i = 1; i < _stroke.Count; i++)
                     {
-                        PointF p = ImageToScreen(_stroke[i]);
+                        APointF p = ImageToScreen(_stroke[i]);
                         path.LineTo(p.X, p.Y);
                     }
                     canvas.DrawPath(path, paint);
@@ -1516,7 +1521,7 @@ namespace SilentNotes
 
                 if (_placement != null && (Mode == ToolMode.Text || Mode == ToolMode.Emoji))
                 {
-                    PointF s = ImageToScreen(_placement.Value);
+                    APointF s = ImageToScreen(_placement.Value);
                     canvas.DrawCircle(s.X, s.Y, 10f, _handlePaint);
                     _overlayPaint.Color = Color.Argb(200, 255, 255, 255);
                     canvas.DrawCircle(s.X, s.Y, 12f, _overlayPaint);
@@ -1524,11 +1529,11 @@ namespace SilentNotes
 
                 if (Mode == ToolMode.Arrow && _arrowStart != null && _arrowEnd != null)
                 {
-                    PointF s = ImageToScreen(_arrowStart.Value);
-                    PointF en = ImageToScreen(_arrowEnd.Value);
-                    using var paint = new Paint { AntiAlias = true, StrokeWidth = Math.Max(2f, ArrowStroke * _scale), Color = ArrowColor };
-                    paint.SetStyle(Paint.Style.Stroke);
-                    paint.StrokeCap = Paint.Cap.Round;
+                    APointF s = ImageToScreen(_arrowStart.Value);
+                    APointF en = ImageToScreen(_arrowEnd.Value);
+                    using var paint = new APaint { AntiAlias = true, StrokeWidth = Math.Max(2f, ArrowStroke * _scale), Color = ArrowColor };
+                    paint.SetStyle(APaint.Style.Stroke);
+                    paint.StrokeCap = APaint.Cap.Round;
                     canvas.DrawLine(s.X, s.Y, en.X, en.Y, paint);
                     double angle = Math.Atan2(en.Y - s.Y, en.X - s.X);
                     float head = Math.Max(14f, paint.StrokeWidth * 3.5f);
