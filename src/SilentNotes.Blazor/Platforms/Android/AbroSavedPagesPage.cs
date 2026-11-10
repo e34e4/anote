@@ -211,13 +211,13 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                var context = Android.App.Application.Context;
+                var context = global::Android.App.Application.Context;
                 var shareDir = new Java.IO.File(context.CacheDir, "reader_share");
                 shareDir.Mkdirs();
                 var shareFile = new Java.IO.File(shareDir, Path.GetFileName(path));
                 File.Copy(path, shareFile.AbsolutePath, overwrite: true);
 
-                Android.Net.Uri uri = AndroidX.Core.Content.FileProvider.GetUriForFile(
+                global::Android.Net.Uri uri = AndroidX.Core.Content.FileProvider.GetUriForFile(
                     context, context.PackageName + ".fileprovider", shareFile);
 
                 var intent = new Intent(Intent.ActionSend);

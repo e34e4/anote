@@ -44,7 +44,7 @@ namespace SilentNotes.Platforms.Services
 
                 Context context = _appContext.Context;
                 Intent intent = ImageEditorActivity.CreateIntent(context, path);
-                if (!(context is Android.App.Activity))
+                if (context is not global::Android.App.Activity)
                     intent.AddFlags(ActivityFlags.NewTask);
                 context.StartActivity(intent);
                 return Task.FromResult(true);

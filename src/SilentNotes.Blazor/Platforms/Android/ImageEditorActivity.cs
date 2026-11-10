@@ -14,7 +14,9 @@ using Android.OS;
 using Android.Views;
 using Android.Widget;
 using AndroidX.ExifInterface.Media;
+using AButton = Android.Widget.Button;
 using Color = Android.Graphics.Color;
+using IOPath = System.IO.Path;
 using MediaOrientation = Android.Media.Orientation;
 using SysUri = System.Uri;
 
@@ -107,7 +109,7 @@ namespace SilentNotes
             };
             title.SetTextColor(Color.White);
             title.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
-            var close = new Button(this) { Text = "✕" };
+            var close = new AButton(this) { Text = "✕" };
             close.Click += (_, __) => Finish();
             header.AddView(title);
             header.AddView(close);
@@ -133,7 +135,7 @@ namespace SilentNotes
                 ("Size +10%", () => { _resizePercent = Math.Min(200, _resizePercent + 10); RefreshPreview(); }),
                 ("Clear GPS", () => { _clearGps = true; RefreshPreview(); })));
 
-            var exifEdit = new Button(this) { Text = "Set EXIF datetime (now)" };
+            var exifEdit = new AButton(this) { Text = "Set EXIF datetime (now)" };
             exifEdit.Click += (_, __) =>
             {
                 _exifDateTime = DateTime.Now.ToString("yyyy:MM:dd HH:mm:ss", CultureInfo.InvariantCulture);
@@ -141,7 +143,7 @@ namespace SilentNotes
             };
             root.AddView(exifEdit);
 
-            var save = new Button(this) { Text = "Save" };
+            var save = new AButton(this) { Text = "Save" };
             save.Click += (_, __) => SaveAndFinish();
             root.AddView(save);
 
@@ -153,7 +155,7 @@ namespace SilentNotes
             var row = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
             foreach ((string label, Action action) in items)
             {
-                var btn = new Button(this) { Text = label };
+                var btn = new AButton(this) { Text = label };
                 btn.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
                 Action captured = action;
                 btn.Click += (_, __) => captured();
@@ -258,7 +260,7 @@ namespace SilentNotes
                     return;
                 }
 
-                string ext = Path.GetExtension(_path)?.ToLowerInvariant() ?? ".jpg";
+                string ext = IOPath.GetExtension(_path)?.ToLowerInvariant() ?? ".jpg";
                 Bitmap.CompressFormat format = ext switch
                 {
                     ".png" => Bitmap.CompressFormat.Png,

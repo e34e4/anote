@@ -6,51 +6,46 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using Android.Graphics;
+using Android.Graphics.Pdf;
 using Android.OS;
-using Android.Print;
 using AWebView = Android.Webkit.WebView;
-using Java.IO;
 using File = System.IO.File;
-using IOException = System.IO.IOException;
+using IOPath = System.IO.Path;
 
 namespace SilentNotes.Platforms
 {
     /// <summary>
-    /// Writes the current WebView contents to a PDF file via the print adapter (no system dialog).
+    /// Writes the current WebView contents to a PDF file by drawing pages into <see cref="PdfDocument"/>.
+    /// Avoids PrintDocumentAdapter callbacks (no usable public ctor in current .NET Android bindings).
     /// </summary>
     internal static class AbroWebViewPdfExporter
     {
+        private const int PageWidth = 595;  // A4 @ 72dpi
+        private const int PageHeight = 842;
+
         public static Task<bool> TryExportAsync(AWebView webView, string outputPath)
         {
-            var tcs = new TaskCompletionSource<bool>();
             if (webView == null || string.IsNullOrWhiteSpace(outputPath))
-            {
-                tcs.TrySetResult(false);
-                return tcs.Task;
-            }
+                return Task.FromResult(false);
 
+            var tcs = new TaskCompletionSource<bool>();
             try
             {
-                string directory = Path.GetDirectoryName(outputPath);
-                if (!string.IsNullOrEmpty(directory))
-                    Directory.CreateDirectory(directory);
-
-                string jobName = Path.GetFileNameWithoutExtension(outputPath) ?? "abro-page";
-                PrintDocumentAdapter adapter = webView.CreatePrintDocumentAdapter(jobName);
-                var attributes = new PrintAttributes.Builder()
-                    .SetMediaSize(PrintAttributes.MediaSize.IsoA4)
-                    .SetResolution(new PrintAttributes.Resolution("pdf", "pdf", 600, 600))
-                    .SetMinMargins(PrintAttributes.Margins.NoMargins)
-                    .Build();
-
-                adapter.OnLayout(
-                    null,
-                    attributes,
-                    null,
-                    new LayoutCallback(adapter, outputPath, tcs),
-                    new Bundle());
+                // WebView drawing must run on the UI thread.
+                new Handler(Looper.MainLooper).Post(() =>
+                {
+                    try
+                    {
+                        tcs.TrySetResult(ExportOnUiThread(webView, outputPath));
+                    }
+                    catch
+                    {
+                        tcs.TrySetResult(false);
+                    }
+                });
             }
-            catch (Exception)
+            catch
             {
                 tcs.TrySetResult(false);
             }
@@ -58,123 +53,87 @@ namespace SilentNotes.Platforms
             return tcs.Task;
         }
 
-        private sealed class LayoutCallback : PrintDocumentAdapter.LayoutResultCallback
+        private static bool ExportOnUiThread(AWebView webView, string outputPath)
         {
-            private readonly PrintDocumentAdapter _adapter;
-            private readonly string _outputPath;
-            private readonly TaskCompletionSource<bool> _tcs;
+            string directory = IOPath.GetDirectoryName(outputPath);
+            if (!string.IsNullOrEmpty(directory))
+                Directory.CreateDirectory(directory);
 
-            public LayoutCallback(PrintDocumentAdapter adapter, string outputPath, TaskCompletionSource<bool> tcs)
-            {
-                _adapter = adapter;
-                _outputPath = outputPath;
-                _tcs = tcs;
-            }
+            int contentWidth = Math.Max(webView.Width, 1);
+            int contentHeight = Math.Max(
+                (int)Math.Ceiling(webView.ContentHeight * webView.Scale),
+                Math.Max(webView.Height, 1));
 
-            public override void OnLayoutFinished(PrintDocumentInfo info, bool changed)
+            // Cap extreme pages to keep memory reasonable (~8k CSS px).
+            contentHeight = Math.Min(contentHeight, 8000);
+
+            Bitmap bitmap = null;
+            PdfDocument document = null;
+            string temp = outputPath + ".tmp";
+            try
             {
-                try
+                bitmap = Bitmap.CreateBitmap(contentWidth, contentHeight, Bitmap.Config.Argb8888);
+                var canvas = new Canvas(bitmap);
+                canvas.DrawColor(Color.White);
+                webView.Draw(canvas);
+
+                document = new PdfDocument();
+                float scale = (float)PageWidth / contentWidth;
+                int scaledHeight = Math.Max(1, (int)Math.Ceiling(contentHeight * scale));
+                int pageCount = Math.Max(1, (int)Math.Ceiling(scaledHeight / (double)PageHeight));
+
+                for (int pageIndex = 0; pageIndex < pageCount; pageIndex++)
                 {
-                    string temp = _outputPath + ".tmp";
-                    if (File.Exists(temp))
-                        File.Delete(temp);
-
-                    var javaFile = new Java.IO.File(temp);
-                    ParcelFileDescriptor descriptor = ParcelFileDescriptor.Open(
-                        javaFile,
-                        ParcelFileMode.ReadWrite | ParcelFileMode.Create | ParcelFileMode.Truncate);
-
-                    var pages = new PageRange[] { PageRange.AllPages };
-                    _adapter.OnWrite(
-                        pages,
-                        descriptor,
-                        new CancellationSignal(),
-                        new WriteCallback(descriptor, temp, _outputPath, _tcs));
+                    PdfDocument.PageInfo pageInfo = new PdfDocument.PageInfo.Builder(
+                        PageWidth, PageHeight, pageIndex + 1).Create();
+                    PdfDocument.Page page = document.StartPage(pageInfo);
+                    Canvas pdfCanvas = page.Canvas;
+                    pdfCanvas.Save();
+                    pdfCanvas.Scale(scale, scale);
+                    float srcTop = pageIndex * PageHeight / scale;
+                    pdfCanvas.Translate(0, -srcTop);
+                    pdfCanvas.DrawBitmap(bitmap, 0, 0, null);
+                    pdfCanvas.Restore();
+                    document.FinishPage(page);
                 }
-                catch (Exception)
+
+                if (File.Exists(temp))
+                    File.Delete(temp);
+                using (var stream = File.Open(temp, FileMode.Create, FileAccess.Write))
                 {
-                    _tcs.TrySetResult(false);
+                    document.WriteTo(stream);
                 }
-            }
 
-            public override void OnLayoutCancelled()
-            {
-                _tcs.TrySetResult(false);
-            }
+                if (!File.Exists(temp) || new FileInfo(temp).Length <= 0)
+                {
+                    TryDelete(temp);
+                    return false;
+                }
 
-            public override void OnLayoutFailed(Java.Lang.ICharSequence error)
+                if (File.Exists(outputPath))
+                    File.Delete(outputPath);
+                File.Move(temp, outputPath);
+                temp = null; // moved; skip cleanup delete
+                return true;
+            }
+            finally
             {
-                _tcs.TrySetResult(false);
+                try { document?.Close(); } catch { }
+                try { bitmap?.Recycle(); } catch { }
+                if (temp != null)
+                    TryDelete(temp);
             }
         }
 
-        private sealed class WriteCallback : PrintDocumentAdapter.WriteResultCallback
+        private static void TryDelete(string path)
         {
-            private readonly ParcelFileDescriptor _descriptor;
-            private readonly string _tempPath;
-            private readonly string _outputPath;
-            private readonly TaskCompletionSource<bool> _tcs;
-
-            public WriteCallback(
-                ParcelFileDescriptor descriptor,
-                string tempPath,
-                string outputPath,
-                TaskCompletionSource<bool> tcs)
+            try
             {
-                _descriptor = descriptor;
-                _tempPath = tempPath;
-                _outputPath = outputPath;
-                _tcs = tcs;
+                if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                    File.Delete(path);
             }
-
-            public override void OnWriteFinished(PageRange[] pages)
+            catch
             {
-                try
-                {
-                    _descriptor?.Close();
-                    if (!File.Exists(_tempPath) || new System.IO.FileInfo(_tempPath).Length <= 0)
-                    {
-                        TryDelete(_tempPath);
-                        _tcs.TrySetResult(false);
-                        return;
-                    }
-
-                    if (File.Exists(_outputPath))
-                        File.Delete(_outputPath);
-                    File.Move(_tempPath, _outputPath);
-                    _tcs.TrySetResult(true);
-                }
-                catch (Exception)
-                {
-                    TryDelete(_tempPath);
-                    _tcs.TrySetResult(false);
-                }
-            }
-
-            public override void OnWriteCancelled()
-            {
-                try { _descriptor?.Close(); } catch (IOException) { }
-                TryDelete(_tempPath);
-                _tcs.TrySetResult(false);
-            }
-
-            public override void OnWriteFailed(Java.Lang.ICharSequence error)
-            {
-                try { _descriptor?.Close(); } catch (IOException) { }
-                TryDelete(_tempPath);
-                _tcs.TrySetResult(false);
-            }
-
-            private static void TryDelete(string path)
-            {
-                try
-                {
-                    if (!string.IsNullOrEmpty(path) && File.Exists(path))
-                        File.Delete(path);
-                }
-                catch
-                {
-                }
             }
         }
     }
