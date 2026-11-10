@@ -1,0 +1,4 @@
+• Image editor: freehand crop, undo/redo, canvas Size +10% (black borders)
+• Image editor: Brush, Blur, Text, Emoji, Arrow tools
+• Image editor: Clear EXIF, Convert (jpg/png/webp + quality), Save / Save as
+• Image editor: show file path, name, and size in the header

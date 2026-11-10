@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 namespace SilentNotes.Services
 {
     /// <summary>
-    /// Opens the built-in image editor (rotate / crop / resize / EXIF) for a local image file.
+    /// Opens the built-in image editor (crop, draw, convert, EXIF) for a local image file.
     /// </summary>
     public interface IImageEditorService
     {
