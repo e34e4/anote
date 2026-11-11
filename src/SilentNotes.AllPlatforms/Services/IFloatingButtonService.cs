@@ -47,5 +47,10 @@ namespace SilentNotes.Services
         /// Returns false when unsupported or the accessibility service is not running.
         /// </summary>
         bool TryShowFloatingImage(string path, string title = null) => false;
+
+        /// <summary>
+        /// Shows a movable floating video window (accessibility overlay). Returns false when unsupported.
+        /// </summary>
+        bool TryShowFloatingVideo(string path, string title = null) => false;
     }
 }

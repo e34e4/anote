@@ -46,6 +46,7 @@
 @inject IScreenRecorderService ScreenRecorderService
 @inject IScreenshotGalleryService ScreenshotGalleryService
 @inject IWebdavFileService WebdavFileService
+@inject ICloudStorageClientFactory CloudStorageClientFactory
 @inject IDevicePhoneService DevicePhoneService
 @inject IPhoneSpamService PhoneSpamService
 @inject ICameraService CameraService
@@ -647,7 +648,7 @@
 		<VoiceTab ViewModel="_voiceViewModel" />
 	}
 
-	<ScrollJumpButtons />
+	<ScrollJumpButtons OnBack="HandleScrollJumpBackAsync" />
 </MudMainContent>
 
 @* Declare icons which can be reused multiple times, to reduce page size *@
@@ -809,7 +810,8 @@
 			FilePickerService,
 			LanguageService,
 			FeedbackService,
-			ImageEditorService);
+			ImageEditorService,
+			CloudStorageClientFactory);
 		_phoneViewModel = new PhoneViewModel(
 			DevicePhoneService,
 			PhoneSpamService,
@@ -1292,6 +1294,41 @@
 			_passwordViewModel.ImportCommand.Execute(null);
 		_passwordViewModel.EnsureLoaded();
 		StateHasChanged();
+	}
+
+	private async Task HandleScrollJumpBackAsync()
+	{
+		if (_activeTab == 10 && _fileViewModel != null && _fileViewModel.CanNavigateUp)
+		{
+			if (_fileViewModel.NavigateUpCommand is IAsyncRelayCommand asyncCommand)
+				await asyncCommand.ExecuteAsync(null);
+			else
+				_fileViewModel.NavigateUpCommand.Execute(null);
+			StateHasChanged();
+			return;
+		}
+
+		if (_activeTab == 14 && _playerViewModel != null && _playerViewModel.CanNavigateUp)
+		{
+			_playerViewModel.NavigateUpCommand.Execute(null);
+			StateHasChanged();
+			return;
+		}
+
+		if (_activeTab == 15 && _readerViewModel != null && _readerViewModel.CanNavigateUp && !_readerViewModel.HasOpenDocument)
+		{
+			_readerViewModel.NavigateUpCommand.Execute(null);
+			StateHasChanged();
+			return;
+		}
+
+		try
+		{
+			await JSRuntime.InvokeVoidAsync("anoteScrollJump.goBack");
+		}
+		catch
+		{
+		}
 	}
 
 	private async Task RefreshRssAsync()

@@ -216,7 +216,7 @@ namespace SilentNotes.Services
 
         /// <summary>
         /// Downloads media referenced by <paramref name="mediaRef"/> into the external tg root
-        /// (e.g. /sdcard/tg). Does not auto-download; only called explicitly.
+        /// (e.g. <see cref="Workers.AnotePaths.Tg"/>). Does not auto-download; only called explicitly.
         /// </summary>
         Task<TelegramOperationResult> DownloadMediaAsync(TelegramMediaRef mediaRef, CancellationToken cancellationToken = default);
 

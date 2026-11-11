@@ -80,5 +80,9 @@ namespace SilentNotes.Services
         /// <param name="text">Full file contents to write.</param>
         /// <returns>True when the file was written.</returns>
         Task<bool> SaveActiveTextAsync(string text);
+
+        /// <summary>Deletes a file or folder at <paramref name="path"/> on the device.</summary>
+        /// <returns>True when the item was removed.</returns>
+        bool TryDeletePath(string path, bool isDirectory);
     }
 }

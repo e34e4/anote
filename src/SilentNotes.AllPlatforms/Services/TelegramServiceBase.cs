@@ -122,7 +122,7 @@ namespace SilentNotes.Services
         protected abstract string GetStoreDirectory();
 
         /// <summary>
-        /// External tg root (Android: /sdcard/tg). Downloads go here; cache/sessions under root/cache.
+        /// External tg root (<see cref="Workers.AnotePaths.Tg"/>). Downloads go here; cache/sessions under root/cache.
         /// </summary>
         protected abstract string GetExternalTgRoot();
 
@@ -2762,7 +2762,7 @@ namespace SilentNotes.Services
             {
                 model.ReplyToMsgId = replyHdr.reply_to_msg_id;
                 if (!string.IsNullOrEmpty(replyHdr.quote_text))
-                    model.ReplyPreview = TelegramTextUtils.ReplaceEmojisWithSymbolic(replyHdr.quote_text);
+                    model.ReplyPreview = TelegramTextUtils.FormatPlainPreview(replyHdr.quote_text);
 
                 if (replyHdr.flags.HasFlag(MessageReplyHeader.Flags.has_reply_from) && replyHdr.reply_from != null)
                 {
@@ -2854,7 +2854,7 @@ namespace SilentNotes.Services
                 preview = replied.MediaLabel;
             if (string.IsNullOrWhiteSpace(preview))
                 preview = "#" + replied.Id.ToString(CultureInfo.InvariantCulture);
-            model.ReplyPreview = TelegramTextUtils.ReplaceEmojisWithSymbolic(preview);
+            model.ReplyPreview = TelegramTextUtils.FormatPlainPreview(preview);
             if (model.ReplyPreview.Length > 160)
                 model.ReplyPreview = model.ReplyPreview.Substring(0, 157) + "…";
         }

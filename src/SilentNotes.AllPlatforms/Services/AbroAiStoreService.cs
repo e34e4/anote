@@ -161,27 +161,9 @@ namespace SilentNotes.Services
         }
 
         /// <summary>
-        /// Resolves the Abro root directory the same way as the Android browser page.
+        /// Resolves the Abro root directory (<see cref="AnotePaths.Abro"/>).
         /// </summary>
-        internal static string ResolveRootDirectory()
-        {
-            string preferred = Path.Combine("/sdcard", "abro");
-            if (IsWritableDirectory(preferred))
-                return preferred;
-
-            string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            if (string.IsNullOrEmpty(local))
-                local = Path.GetTempPath();
-            string fallback = Path.Combine(local, "abro");
-            try
-            {
-                Directory.CreateDirectory(fallback);
-            }
-            catch (Exception)
-            {
-            }
-            return fallback;
-        }
+        internal static string ResolveRootDirectory() => AnotePaths.Abro;
 
         private static bool SameProviderEndpoint(AbroAiProviderModel a, AbroAiProviderModel b)
         {
@@ -237,20 +219,5 @@ namespace SilentNotes.Services
             return changed;
         }
 
-        private static bool IsWritableDirectory(string path)
-        {
-            try
-            {
-                Directory.CreateDirectory(path);
-                string probe = Path.Combine(path, ".probe");
-                File.WriteAllText(probe, "1");
-                File.Delete(probe);
-                return true;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
     }
 }

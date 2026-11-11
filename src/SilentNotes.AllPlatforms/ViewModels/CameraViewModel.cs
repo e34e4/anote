@@ -55,6 +55,7 @@ namespace SilentNotes.ViewModels
 
             GrantPermissionCommand = new AsyncRelayCommand(GrantPermissionAsync);
             TakePhotoCommand = new AsyncRelayCommand(TakePhotoAsync);
+            RecordVideoCommand = new AsyncRelayCommand(RecordVideoAsync);
             TakeSystemPhotoCommand = new AsyncRelayCommand(TakeSystemPhotoAsync);
             ConvertImageCommand = new AsyncRelayCommand(ConvertImageAsync);
             SelectFormatCommand = new RelayCommand<string>(SelectFormat);
@@ -79,6 +80,7 @@ namespace SilentNotes.ViewModels
 
         public ICommand GrantPermissionCommand { get; }
         public ICommand TakePhotoCommand { get; }
+        public ICommand RecordVideoCommand { get; }
         public ICommand TakeSystemPhotoCommand { get; }
         public ICommand ConvertImageCommand { get; }
         public ICommand SelectFormatCommand { get; }
@@ -194,7 +196,7 @@ namespace SilentNotes.ViewModels
             }
         }
 
-        /// <summary>Gets or sets a value indicating whether captured photos are also saved to Pictures/aNote.</summary>
+        /// <summary>Gets or sets a value indicating whether captured photos are also saved to <see cref="Workers.AnotePaths.Pic"/>.</summary>
         public bool AutoSaveToGallery
         {
             get => _settings.CameraAutoSaveToGallery;
@@ -243,7 +245,75 @@ namespace SilentNotes.ViewModels
         public bool HasNoMatches => !IsEmpty && FilteredPhotos.Count == 0;
 
         /// <summary>Gets the total photo count summary text.</summary>
-        public string CountText => _languageService.LoadTextFmt("camera_count", _photos.Count);
+        public string CountText => _languageService.LoadTextFmt("camera_count_items", _photos.Count);
+
+        /// <summary>Gets or sets the video recording resolution ("720" or "1080").</summary>
+        public string VideoResolution
+        {
+            get
+            {
+                string res = (_settings.CameraVideoResolution ?? "720").Trim();
+                return res == "1080" ? "1080" : "720";
+            }
+            set
+            {
+                string normalized = value == "1080" ? "1080" : "720";
+                if (!string.Equals(_settings.CameraVideoResolution, normalized, StringComparison.Ordinal))
+                {
+                    _settings.CameraVideoResolution = normalized;
+                    SaveSettings();
+                    OnPropertyChanged(nameof(VideoResolution), nameof(VideoResolutionLabel));
+                }
+            }
+        }
+
+        /// <summary>Gets a display label for the current video resolution.</summary>
+        public string VideoResolutionLabel => VideoResolution + "p";
+
+        /// <summary>Gets or sets the video encoding bitrate in Mbps.</summary>
+        public int VideoBitrateMbps
+        {
+            get
+            {
+                int mbps = _settings.CameraVideoBitrateMbps;
+                if (mbps != 1 && mbps != 2 && mbps != 4 && mbps != 8)
+                    mbps = 2;
+                return mbps;
+            }
+            set
+            {
+                int clamped = value switch
+                {
+                    1 => 1,
+                    4 => 4,
+                    8 => 8,
+                    _ => 2,
+                };
+                if (_settings.CameraVideoBitrateMbps != clamped)
+                {
+                    _settings.CameraVideoBitrateMbps = clamped;
+                    SaveSettings();
+                    OnPropertyChanged(nameof(VideoBitrateMbps));
+                }
+            }
+        }
+
+        /// <summary>Gets or sets a value indicating whether video recordings include microphone audio.</summary>
+        public bool VideoRecordAudio
+        {
+            get => _settings.CameraVideoRecordAudio;
+            set
+            {
+                if (_settings.CameraVideoRecordAudio != value)
+                {
+                    _settings.CameraVideoRecordAudio = value;
+                    SaveSettings();
+                    OnPropertyChanged(nameof(VideoRecordAudio));
+                }
+            }
+        }
+
+        public static readonly IReadOnlyList<int> VideoBitratePresets = new[] { 1, 2, 4, 8 };
 
         /// <summary>Gets or sets the draft name when renaming a photo.</summary>
         public string DraftNewName
@@ -316,6 +386,48 @@ namespace SilentNotes.ViewModels
                 "torch" => "off",
                 _ => "auto",
             };
+        }
+
+        public void SelectVideoResolution(string resolution)
+        {
+            if (!string.IsNullOrWhiteSpace(resolution))
+                VideoResolution = resolution;
+        }
+
+        public void SelectVideoBitrate(int bitrateMbps)
+        {
+            VideoBitrateMbps = bitrateMbps;
+        }
+
+        public async Task RecordVideoAsync()
+        {
+            if (IsBusy || !_cameraService.IsSupported)
+                return;
+
+            IsBusy = true;
+            try
+            {
+                CameraPhotoModel captured = await _cameraService.RecordVideoAsync(
+                    VideoResolution,
+                    VideoBitrateMbps,
+                    UseFrontLens,
+                    FlashMode,
+                    VideoRecordAudio,
+                    AutoSaveToGallery);
+                if (captured != null)
+                {
+                    Reload();
+                    _feedbackService?.ShowToast(_languageService.LoadTextFmt(
+                        "camera_video_saved_fmt",
+                        captured.FileName,
+                        captured.Format.ToUpperInvariant(),
+                        captured.Quality));
+                }
+            }
+            finally
+            {
+                IsBusy = false;
+            }
         }
 
         public async Task TakePhotoAsync()
@@ -572,7 +684,13 @@ namespace SilentNotes.ViewModels
 
         public string FormatBadge => (Model.Format ?? "jpg").ToUpperInvariant();
 
-        public string QualityText => Model.Quality + "%";
+        public bool IsVideo => string.Equals(Model.Format, "mp4", StringComparison.OrdinalIgnoreCase);
+
+        public string QualityText => IsVideo
+            ? (Model.Quality > 0
+                ? string.Format(CultureInfo.InvariantCulture, "{0} Mbps", Model.Quality)
+                : "MP4")
+            : Model.Quality + "%";
 
         public string DimensionsText => (Model.Width > 0 && Model.Height > 0)
             ? string.Format(CultureInfo.InvariantCulture, "{0}×{1}", Model.Width, Model.Height)

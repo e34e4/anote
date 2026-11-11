@@ -69,5 +69,14 @@ namespace SilentNotes.Platforms.Services
 
         /// <inheritdoc/>
         public bool DeletePhoto(string fileName) => false;
+
+        /// <inheritdoc/>
+        public Task<CameraPhotoModel> RecordVideoAsync(
+            string resolution,
+            int bitrateMbps,
+            bool useFrontCamera,
+            string flashMode,
+            bool recordAudio,
+            bool autoSaveToGallery) => Task.FromResult<CameraPhotoModel>(null);
     }
 }

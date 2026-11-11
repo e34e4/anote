@@ -51,6 +51,7 @@ namespace SilentNotes.ViewModels
         private readonly List<RssArticleViewModel> _allArticles = new List<RssArticleViewModel>();
         private readonly Dictionary<Guid, List<RssArticleViewModel>> _articlesByFeed =
             new Dictionary<Guid, List<RssArticleViewModel>>();
+        private readonly HashSet<string> _selectedArticleKeys = new HashSet<string>(StringComparer.Ordinal);
 
         /// <summary>
         /// Initializes a new instance of the <see cref="RssViewModel"/> class.
@@ -93,6 +94,7 @@ namespace SilentNotes.ViewModels
             ImportOpmlCommand = new AsyncRelayCommand(ImportOpmlAsync);
             SaveArticleToWebdavCommand = new AsyncRelayCommand(SaveOpenedArticleToWebdavAsync);
             SaveArticleItemToWebdavCommand = new AsyncRelayCommand<RssArticleViewModel>(SaveArticleToWebdavAsync);
+            DeleteSelectedArticlesCommand = new AsyncRelayCommand(DeleteSelectedArticlesAsync);
         }
 
         /// <summary>Raised when the UI should re-render after async work.</summary>
@@ -115,6 +117,44 @@ namespace SilentNotes.ViewModels
         public ICommand ImportOpmlCommand { get; }
         public ICommand SaveArticleToWebdavCommand { get; }
         public ICommand SaveArticleItemToWebdavCommand { get; }
+        public ICommand DeleteSelectedArticlesCommand { get; }
+
+        public bool HasArticleSelection => _selectedArticleKeys.Count > 0;
+
+        public int SelectedArticleCount => _selectedArticleKeys.Count;
+
+        public bool IsArticleSelected(RssArticleViewModel article)
+            => article != null && !string.IsNullOrEmpty(article.ItemKey) && _selectedArticleKeys.Contains(article.ItemKey);
+
+        public void ToggleArticleSelection(RssArticleViewModel article)
+        {
+            if (article == null || string.IsNullOrEmpty(article.ItemKey))
+                return;
+            if (!_selectedArticleKeys.Add(article.ItemKey))
+                _selectedArticleKeys.Remove(article.ItemKey);
+            OnPropertyChanged(nameof(HasArticleSelection), nameof(SelectedArticleCount));
+            RaiseStateChanged();
+        }
+
+        public void SelectAllVisibleArticles()
+        {
+            foreach (RssArticleViewModel article in VisibleArticles)
+            {
+                if (!string.IsNullOrEmpty(article.ItemKey))
+                    _selectedArticleKeys.Add(article.ItemKey);
+            }
+            OnPropertyChanged(nameof(HasArticleSelection), nameof(SelectedArticleCount));
+            RaiseStateChanged();
+        }
+
+        public void ClearArticleSelection()
+        {
+            if (_selectedArticleKeys.Count == 0)
+                return;
+            _selectedArticleKeys.Clear();
+            OnPropertyChanged(nameof(HasArticleSelection), nameof(SelectedArticleCount));
+            RaiseStateChanged();
+        }
 
         public string Filter
         {
@@ -413,6 +453,53 @@ namespace SilentNotes.ViewModels
             CancelFeedEdit();
             NotifyFeedsChanged();
             await RefreshAsync();
+        }
+
+        public async Task DeleteSelectedArticlesAsync()
+        {
+            if (_selectedArticleKeys.Count == 0)
+                return;
+
+            MessageBoxResult answer = await _feedbackService.ShowMessageAsync(
+                _languageService.LoadTextFmt("rss_delete_articles_confirm", _selectedArticleKeys.Count),
+                _languageService["delete"],
+                MessageBoxButtons.YesNoCancel,
+                false);
+            if (answer != MessageBoxResult.Yes)
+                return;
+
+            var targets = VisibleArticles
+                .Where(a => _selectedArticleKeys.Contains(a.ItemKey))
+                .ToList();
+            if (targets.Count == 0)
+            {
+                ClearArticleSelection();
+                return;
+            }
+
+            if (OpenedArticle != null && _selectedArticleKeys.Contains(OpenedArticle.ItemKey))
+                OpenedArticle = null;
+
+            foreach (var group in targets.GroupBy(a => a.FeedId))
+            {
+                var keys = group.Select(a => a.ItemKey).ToList();
+                try
+                {
+                    _articleCache.RemoveArticles(group.Key, keys);
+                }
+                catch (Exception)
+                {
+                }
+
+                if (_articlesByFeed.TryGetValue(group.Key, out List<RssArticleViewModel> list))
+                    list.RemoveAll(a => keys.Contains(a.ItemKey));
+            }
+
+            _allArticles.RemoveAll(a => _selectedArticleKeys.Contains(a.ItemKey));
+            ClearArticleSelection();
+            NotifyListChanged();
+            RaiseStateChanged();
+            _feedbackService?.ShowToast(_languageService.LoadTextFmt("rss_articles_removed", targets.Count));
         }
 
         private void DeleteFeed(RssFeedItemViewModel feed)

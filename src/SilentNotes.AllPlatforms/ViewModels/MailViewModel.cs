@@ -55,6 +55,7 @@ namespace SilentNotes.ViewModels
         private string _composeSubject = string.Empty;
         private string _composeBody = string.Empty;
         private readonly List<(string FileName, byte[] Content)> _composeAttachments = new List<(string FileName, byte[] Content)>();
+        private readonly HashSet<string> _selectedMessageIds = new HashSet<string>(StringComparer.Ordinal);
 
         // Account editor fields
         private string _editAccountId;
@@ -431,6 +432,65 @@ namespace SilentNotes.ViewModels
             }
             _mailService?.SaveStore(_store);
             NotifyChanged();
+        }
+
+        public bool HasMessageSelection => _selectedMessageIds.Count > 0;
+
+        public int SelectedMessageCount => _selectedMessageIds.Count;
+
+        public bool IsMessageSelected(MailMessageItemViewModel item)
+            => item?.Model != null && !string.IsNullOrEmpty(item.Model.Id) && _selectedMessageIds.Contains(item.Model.Id);
+
+        public void ToggleMessageSelection(MailMessageItemViewModel item)
+        {
+            if (item?.Model == null || string.IsNullOrEmpty(item.Model.Id))
+                return;
+            if (!_selectedMessageIds.Add(item.Model.Id))
+                _selectedMessageIds.Remove(item.Model.Id);
+            OnPropertyChanged(nameof(HasMessageSelection), nameof(SelectedMessageCount));
+            NotifyChanged();
+        }
+
+        public void SelectAllVisibleMessages()
+        {
+            foreach (MailMessageItemViewModel item in FilteredMessages)
+            {
+                if (!string.IsNullOrEmpty(item.Model.Id))
+                    _selectedMessageIds.Add(item.Model.Id);
+            }
+            OnPropertyChanged(nameof(HasMessageSelection), nameof(SelectedMessageCount));
+            NotifyChanged();
+        }
+
+        public void ClearMessageSelection()
+        {
+            if (_selectedMessageIds.Count == 0)
+                return;
+            _selectedMessageIds.Clear();
+            OnPropertyChanged(nameof(HasMessageSelection), nameof(SelectedMessageCount));
+            NotifyChanged();
+        }
+
+        public async Task DeleteSelectedMessagesAsync()
+        {
+            if (_selectedMessageIds.Count == 0)
+                return;
+
+            MessageBoxResult answer = await _feedbackService.ShowMessageAsync(
+                _languageService.LoadTextFmt("mail_delete_selected_confirm", _selectedMessageIds.Count),
+                _languageService["delete"],
+                MessageBoxButtons.YesNoCancel,
+                false);
+            if (answer != MessageBoxResult.Yes)
+                return;
+
+            var targets = FilteredMessages
+                .Where(m => _selectedMessageIds.Contains(m.Model.Id))
+                .ToList();
+            foreach (MailMessageItemViewModel item in targets)
+                DeleteOrTrashMessage(item);
+
+            ClearMessageSelection();
         }
 
         public void DeleteOrTrashMessage(MailMessageItemViewModel item)

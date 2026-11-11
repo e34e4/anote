@@ -11,11 +11,12 @@ using Android.Content;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.Platforms
 {
     /// <summary>
-    /// Lists PDFs saved under <c>/sdcard/abro/pages</c> with share / WebDAV actions.
+    /// Lists PDFs saved under <see cref="AnotePaths.Abro"/>/pages with share / WebDAV actions.
     /// </summary>
     internal sealed class AbroSavedPagesPage : ContentPage
     {
@@ -27,7 +28,7 @@ namespace SilentNotes.Platforms
         public AbroSavedPagesPage(string pagesDir, Func<Task> saveCurrentPageAsync)
         {
             BackgroundColor = Colors.Black;
-            _pagesDir = pagesDir ?? "/sdcard/abro/pages";
+            _pagesDir = pagesDir ?? Path.Combine(AnotePaths.Abro, "pages");
             _saveCurrentPageAsync = saveCurrentPageAsync;
 
             Button backButton = CreateIconButton("←", 22);
@@ -70,7 +71,7 @@ namespace SilentNotes.Platforms
 
             _emptyLabel = new Label
             {
-                Text = "No saved PDFs yet. Files go to /sdcard/abro/pages.",
+                Text = "No saved PDFs yet. Files go to " + Path.Combine(AnotePaths.Abro, "pages") + ".",
                 TextColor = Color.FromArgb("#8e8e93"),
                 FontSize = 13,
                 Margin = new Thickness(16, 8, 16, 0),

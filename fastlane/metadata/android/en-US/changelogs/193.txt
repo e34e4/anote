@@ -1,0 +1,7 @@
+• Camera can record video (720p/1080p, bitrate, optional sound)
+• Floating image/video viewer; viewer Crop renamed to Edit with video cut/convert
+• All app data under /sdcard/anote (pic, down, tg, abro, ffmpeg, yt-dlp)
+• Extra cloud locations (WebDAV/Dropbox/Drive/OneDrive/Mega) in File tab
+• SOCKS5 proxy settings with optional AI routing; narrower settings sliders
+• Multi-select delete in Player/Reader/Mail/RSS; scroll-jump back arrow
+• TG message formatting renders bold/italic as HTML; note EOL markers hidden

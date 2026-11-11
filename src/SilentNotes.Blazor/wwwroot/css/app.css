@@ -403,15 +403,7 @@ div.ProseMirror:focus {
 	pointer-events: none;
 }
 .note-viewer .pm-eol {
-	display: inline-block;
-	width: 0;
-	overflow: visible;
-	color: #9ccc65;
-	opacity: 0.9;
-	font-size: 0.85em;
-	vertical-align: baseline;
-	pointer-events: none;
-	user-select: none;
+	display: none;
 }
 
 .mud-main-content

@@ -92,6 +92,27 @@
 	.player-row:active {
 		background-color: #151515;
 	}
+	.player-row.selected {
+		background: rgba(36, 129, 204, 0.18);
+	}
+	.player-selection-bar {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		padding: 4px 4px 10px 4px;
+		border-bottom: 1px solid #202020;
+		align-items: center;
+	}
+	.player-sel-btn {
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background-color: #0c0c0c;
+		color: #ffffff;
+		height: 34px;
+		padding: 0 12px;
+		font-size: 0.82rem;
+		cursor: pointer;
+	}
 	.player-row-main {
 		flex-grow: 1;
 		overflow: hidden;
@@ -202,6 +223,16 @@
 
 		<MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">@ViewModel.CountText</MudText>
 
+		@if (ViewModel.HasSelection)
+		{
+			<div class="player-selection-bar">
+				<span>@ViewModel.SelectedCount</span>
+				<button type="button" class="player-sel-btn" @onclick="DeleteSelectedAsync">@LanguageService["delete"]</button>
+				<button type="button" class="player-sel-btn" @onclick="SelectAllVisible">@LanguageService["list_select_all"]</button>
+				<button type="button" class="player-sel-btn" @onclick="ClearSelection">@LanguageService["file_clear_selection"]</button>
+			</div>
+		}
+
 		@if (ViewModel.IsBusy)
 		{
 			<div class="d-flex justify-center align-center pa-8">
@@ -224,7 +255,9 @@
 		{
 			@foreach (var item in ViewModel.FilteredItems)
 			{
-				<div class="player-row" @key="item.Path">
+				<div class="player-row @(ViewModel.IsSelected(item) ? "selected" : null)" @key="item.Path">
+					<MudCheckBox T="bool" Dense="true" Value="@ViewModel.IsSelected(item)"
+						ValueChanged="@((bool _) => ToggleSelection(item))" @onclick:stopPropagation="true" />
 					<div class="player-kind-icon" @onclick="() => OpenItemAsync(item)">
 						<MudIcon Icon="@GetKindIcon(item.Kind)" Size="Size.Small" Color="Color.Inherit" />
 					</div>
@@ -281,6 +314,30 @@
 			await asyncCmd.ExecuteAsync(null);
 		else
 			ViewModel.PickFileCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private void ToggleSelection(MediaItemViewModel item)
+	{
+		ViewModel.ToggleSelection(item);
+		StateHasChanged();
+	}
+
+	private void SelectAllVisible()
+	{
+		ViewModel.SelectAllVisible();
+		StateHasChanged();
+	}
+
+	private void ClearSelection()
+	{
+		ViewModel.ClearSelection();
+		StateHasChanged();
+	}
+
+	private async Task DeleteSelectedAsync()
+	{
+		await ViewModel.DeleteSelectedAsync();
 		StateHasChanged();
 	}
 

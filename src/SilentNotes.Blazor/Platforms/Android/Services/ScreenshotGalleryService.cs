@@ -13,6 +13,7 @@ using Android.OS;
 using Android.Provider;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 using Path = System.IO.Path;
 
 namespace SilentNotes.Platforms.Services
@@ -21,7 +22,6 @@ namespace SilentNotes.Platforms.Services
     internal class ScreenshotGalleryService : IScreenshotGalleryService
     {
         private const string FolderName = "screenshots";
-        private const string PublicGalleryFolder = "aNote";
         private const string ShareFolder = "shot_share";
         private readonly IAppContextService _appContext;
 
@@ -117,29 +117,7 @@ namespace SilentNotes.Platforms.Services
                     string displayName = Path.GetFileName(fileName);
                     string mime = GuessMime(displayName);
 
-                    if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
-                    {
-                        var values = new ContentValues();
-                        values.Put("_display_name", displayName);
-                        values.Put("mime_type", mime);
-                        values.Put("relative_path", "Pictures/" + PublicGalleryFolder);
-                        global::Android.Net.Uri uri = context.ContentResolver.Insert(
-                            MediaStore.Images.Media.ExternalContentUri, values);
-                        if (uri == null)
-                            return null;
-                        using (Stream input = File.OpenRead(sourcePath))
-                        using (Stream output = context.ContentResolver.OpenOutputStream(uri))
-                        {
-                            input.CopyTo(output);
-                        }
-
-                        return "Pictures/" + PublicGalleryFolder + "/" + displayName;
-                    }
-
-                    string dir = Path.Combine(
-                        global::Android.OS.Environment.GetExternalStoragePublicDirectory(
-                            global::Android.OS.Environment.DirectoryPictures).AbsolutePath,
-                        PublicGalleryFolder);
+                    string dir = AnotePaths.Pic;
                     Directory.CreateDirectory(dir);
                     string target = Path.Combine(dir, displayName);
                     File.Copy(sourcePath, target, overwrite: true);

@@ -105,5 +105,9 @@ namespace SilentNotes.Services
 
         /// <summary>Lets the user pick a media file via the system picker and plays/opens it.</summary>
         Task PickAndOpenAsync();
+
+        /// <summary>Deletes a file or folder at <paramref name="path"/> on the device.</summary>
+        /// <returns>True when the item was removed.</returns>
+        bool TryDeletePath(string path, bool isDirectory);
     }
 }

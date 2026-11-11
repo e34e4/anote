@@ -86,8 +86,17 @@
 		}
 	}
 
+	function goBack() {
+		try {
+			if (window.history && typeof window.history.back === "function")
+				window.history.back();
+		} catch (_) {
+		}
+	}
+
 	window.anoteScrollJump = {
 		toTop: function () { jump("top"); },
 		toBottom: function () { jump("bottom"); },
+		goBack: goBack,
 	};
 })();

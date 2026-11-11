@@ -90,5 +90,8 @@ namespace SilentNotes.Platforms.Services
 
         /// <inheritdoc/>
         public Task<bool> SaveActiveTextAsync(string text) => Task.FromResult(false);
+
+        /// <inheritdoc/>
+        public bool TryDeletePath(string path, bool isDirectory) => false;
     }
 }

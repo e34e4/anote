@@ -120,5 +120,8 @@ namespace SilentNotes.Platforms.Services
 
         /// <inheritdoc/>
         public Task PickAndOpenAsync() => Task.CompletedTask;
+
+        /// <inheritdoc/>
+        public bool TryDeletePath(string path, bool isDirectory) => false;
     }
 }

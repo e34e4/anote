@@ -16,6 +16,7 @@ using Android.Provider;
 using Microsoft.Maui.ApplicationModel;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 using AndroidEnv = Android.OS.Environment;
 using AndroidUri = Android.Net.Uri;
 using Settings = Android.Provider.Settings;
@@ -195,6 +196,11 @@ namespace SilentNotes.Platforms.Services
             if (!string.IsNullOrEmpty(internalRoot))
                 roots.Add(("internal", "Storage", internalRoot));
 
+            AddRootPathIfExists(roots, "anote_down", "aNote Down", AnotePaths.Down);
+            AddRootPathIfExists(roots, "anote_pic", "aNote Pic", AnotePaths.Pic);
+            AddRootPathIfExists(roots, "anote_tg", "aNote TG", AnotePaths.Tg);
+            AddRootPathIfExists(roots, "anote_abro", "aNote Abro", AnotePaths.Abro);
+
             AddRootIfExists(roots, "music", "Music", AndroidEnv.DirectoryMusic);
             AddRootIfExists(roots, "movies", "Movies", AndroidEnv.DirectoryMovies);
             AddRootIfExists(roots, "dcim", "DCIM", AndroidEnv.DirectoryDcim);
@@ -301,7 +307,7 @@ namespace SilentNotes.Platforms.Services
             string title = displayName ?? GuessDisplayName(normalized);
 
             if (kind == MediaKind.Image)
-                return OpenImagePath(normalized, title, floating: false);
+                return OpenImagePath(normalized, title, floating: PreferFloatingLocalViewer(normalized));
 
             if (kind == MediaKind.Video)
             {
@@ -314,8 +320,7 @@ namespace SilentNotes.Platforms.Services
                 _duration = TimeSpan.Zero;
                 RaiseStateChanged();
                 bool useWebView = NeedsWebViewPlayback(normalized);
-                SilentNotes.VideoPlayerActivity.Start(GetLaunchContext(), normalized, title, useWebView);
-                return Task.CompletedTask;
+                return OpenVideoPath(normalized, title, useWebView, PreferFloatingLocalViewer(normalized) && !useWebView);
             }
 
             // Default / audio
@@ -388,7 +393,7 @@ namespace SilentNotes.Platforms.Services
         {
             if (item == null)
                 return Task.CompletedTask;
-            return OpenImagePath(item.Path, item.Name, floating: false);
+            return OpenImagePath(item.Path, item.Name, floating: PreferFloatingLocalViewer(item.Path));
         }
 
         /// <inheritdoc/>
@@ -401,26 +406,13 @@ namespace SilentNotes.Platforms.Services
 
         private Task OpenImagePath(string pathOrUri, string title, bool floating)
         {
-            List<string> gallery;
-            int index;
-            if (floating)
+            List<string> gallery = GetSiblingImages(pathOrUri);
+            int index = gallery.FindIndex(p => string.Equals(p, pathOrUri, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
             {
-                // TG / overlay opens: show only the requested image in a floating window.
-                gallery = new List<string>();
-                if (!string.IsNullOrEmpty(pathOrUri))
+                if (!string.IsNullOrEmpty(pathOrUri) && gallery.Count == 0)
                     gallery.Add(pathOrUri);
-                index = 0;
-            }
-            else
-            {
-                gallery = GetSiblingImages(pathOrUri);
-                index = gallery.FindIndex(p => string.Equals(p, pathOrUri, StringComparison.OrdinalIgnoreCase));
-                if (index < 0)
-                {
-                    if (!string.IsNullOrEmpty(pathOrUri) && gallery.Count == 0)
-                        gallery.Add(pathOrUri);
-                    index = Math.Max(0, gallery.Count - 1);
-                }
+                index = Math.Max(0, gallery.Count - 1);
             }
 
             // TG downloads resume on a background thread; overlay/activity start must run on the UI thread.
@@ -450,6 +442,50 @@ namespace SilentNotes.Platforms.Services
                     index,
                     floating);
             });
+        }
+
+        private Task OpenVideoPath(string pathOrUri, string title, bool useWebView, bool floating)
+        {
+            return MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                string displayTitle = title ?? Path.GetFileName(pathOrUri);
+
+                if (floating && !useWebView)
+                {
+                    string localPath = pathOrUri;
+                    if (localPath.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
+                        && Uri.TryCreate(localPath, UriKind.Absolute, out Uri fileUri))
+                    {
+                        localPath = fileUri.LocalPath;
+                    }
+
+                    if (!string.IsNullOrEmpty(localPath) &&
+                        !localPath.StartsWith("content:", StringComparison.OrdinalIgnoreCase) &&
+                        !IsHttpUrl(localPath) &&
+                        _environmentService?.FloatingButton?.TryShowFloatingVideo(localPath, displayTitle) == true)
+                    {
+                        return;
+                    }
+                }
+
+                SilentNotes.VideoPlayerActivity.Start(
+                    GetLaunchContext(),
+                    pathOrUri,
+                    displayTitle,
+                    useWebView,
+                    floating && !useWebView);
+            });
+        }
+
+        private static bool PreferFloatingLocalViewer(string pathOrUri)
+        {
+            if (string.IsNullOrEmpty(pathOrUri))
+                return false;
+            if (IsHttpUrl(pathOrUri))
+                return false;
+            if (pathOrUri.StartsWith("content:", StringComparison.OrdinalIgnoreCase))
+                return false;
+            return true;
         }
 
         private Context GetLaunchContext()
@@ -771,6 +807,24 @@ namespace SilentNotes.Platforms.Services
             return "/storage/emulated/0";
         }
 
+        private static void AddRootPathIfExists(
+            List<(string Key, string Label, string Path)> roots,
+            string key,
+            string label,
+            string directoryPath)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(directoryPath))
+                    return;
+                if (Directory.Exists(directoryPath))
+                    roots.Add((key, label, directoryPath));
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         private static void AddRootIfExists(
             List<(string Key, string Label, string Path)> roots,
             string key,
@@ -785,6 +839,37 @@ namespace SilentNotes.Platforms.Services
             }
             catch (Exception)
             {
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool TryDeletePath(string path, bool isDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+
+            try
+            {
+                if (isDirectory)
+                {
+                    if (!Directory.Exists(path))
+                        return false;
+                    Directory.Delete(path, recursive: true);
+                }
+                else
+                {
+                    if (!File.Exists(path))
+                        return false;
+                    File.Delete(path);
+                }
+
+                if (string.Equals(_activePath, path, StringComparison.OrdinalIgnoreCase))
+                    Stop();
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
             }
         }
     }

@@ -681,6 +681,38 @@ namespace SilentNotes.Platforms.Services
             };
         }
 
+        /// <inheritdoc/>
+        public bool TryDeletePath(string path, bool isDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+
+            try
+            {
+                if (isDirectory)
+                {
+                    if (!Directory.Exists(path))
+                        return false;
+                    Directory.Delete(path, recursive: true);
+                }
+                else
+                {
+                    if (!File.Exists(path))
+                        return false;
+                    File.Delete(path);
+                }
+
+                if (ActiveDocument != null
+                    && string.Equals(ActiveDocument.Path, path, StringComparison.OrdinalIgnoreCase))
+                    CloseDocument();
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         /// <summary>Used by intent parsing to decide if a VIEW should go to the Reader tab.</summary>
         internal static DocumentKind DetectKind(string uriOrPath, string mimeType) =>
             DocumentTextExtractor.DetectKind(uriOrPath, mimeType);

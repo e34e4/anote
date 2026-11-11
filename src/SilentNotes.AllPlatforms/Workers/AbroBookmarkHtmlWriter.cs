@@ -17,7 +17,7 @@ namespace SilentNotes.Workers
 {
     /// <summary>
     /// Writes Abro bookmarks as a portable <c>_f.html</c> + <c>_f.bookmarks.json</c> pair
-    /// (same idea as desktop linqs/_f.html), plus <c>/sdcard/abro/bookmarks.json</c>.
+    /// (same idea as desktop linqs/_f.html), plus portable <c>anote/abro/bookmarks.json</c>.
     /// </summary>
     public static class AbroBookmarkHtmlWriter
     {
@@ -58,7 +58,7 @@ namespace SilentNotes.Workers
             }
         }
 
-        /// <summary>Writes linqs-style JSON to <paramref name="portablePath"/> (e.g. /sdcard/abro/bookmarks.json).</summary>
+        /// <summary>Writes linqs-style JSON to <paramref name="portablePath"/> (e.g. anote/abro/bookmarks.json).</summary>
         public static bool TryWritePortableFile(string portablePath, AbroBookmarkStoreModel store)
         {
             if (string.IsNullOrWhiteSpace(portablePath))
@@ -457,7 +457,7 @@ function exportPortable() {
   if (hasBridge() && typeof window.AbroBm.exportFile === 'function') {
     try {
       const ok = window.AbroBm.exportFile();
-      alert(ok ? 'Exported to /sdcard/abro/bookmarks.json' : 'Export failed');
+      alert(ok ? 'Exported to /sdcard/anote/abro/bookmarks.json' : 'Export failed');
       return;
     } catch (e) {}
   }
@@ -468,7 +468,7 @@ function importPortable() {
   if (hasBridge() && typeof window.AbroBm.importFile === 'function') {
     try {
       const json = window.AbroBm.importFile();
-      if (!json) { alert('No /sdcard/abro/bookmarks.json found'); return; }
+      if (!json) { alert('No /sdcard/anote/abro/bookmarks.json found'); return; }
       const norm = normalizeBookmarkPayload(JSON.parse(json));
       groups = norm.groups;
       allBookmarks = norm.bookmarks;
@@ -478,7 +478,7 @@ function importPortable() {
       renderGroups();
       updateMoveToTopButton();
       filterBookmarks(searchInput.value);
-      alert('Imported from /sdcard/abro/bookmarks.json');
+      alert('Imported from /sdcard/anote/abro/bookmarks.json');
       return;
     } catch (e) {
       alert('Import failed: ' + e);

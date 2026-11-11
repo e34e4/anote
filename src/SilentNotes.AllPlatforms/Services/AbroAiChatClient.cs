@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using SilentNotes.Models;
+using SilentNotes.Workers;
 
 namespace SilentNotes.Services
 {
@@ -20,10 +21,21 @@ namespace SilentNotes.Services
     /// </summary>
     public class AbroAiChatClient
     {
+        private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(2);
         private static readonly HttpClient SharedHttpClient = new HttpClient
         {
-            Timeout = TimeSpan.FromMinutes(2),
+            Timeout = DefaultTimeout,
         };
+
+        private readonly ISettingsService _settingsService;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AbroAiChatClient"/> class.
+        /// </summary>
+        public AbroAiChatClient(ISettingsService settingsService = null)
+        {
+            _settingsService = settingsService;
+        }
 
         /// <summary>
         /// Usage mode sent to Command Code / compatible gateways so Studio meters the call as
@@ -143,42 +155,64 @@ namespace SilentNotes.Services
             if (!string.IsNullOrWhiteSpace(provider.ApiKey))
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", provider.ApiKey.Trim());
 
-            using HttpResponseMessage response = await SharedHttpClient
-                .SendAsync(request, cancellationToken)
-                .ConfigureAwait(false);
-            string responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
+            HttpClient httpClient = CreateHttpClient();
+            bool disposeClient = !ReferenceEquals(httpClient, SharedHttpClient);
+            try
             {
-                string snippet = responseText;
-                if (snippet != null && snippet.Length > 400)
-                    snippet = snippet.Substring(0, 400) + "…";
-                throw new InvalidOperationException(
-                    "API error " + (int)response.StatusCode + ": " + (snippet ?? response.ReasonPhrase));
-            }
-
-            using JsonDocument document = JsonDocument.Parse(responseText);
-            JsonElement root = document.RootElement;
-            if (root.TryGetProperty("choices", out JsonElement choices)
-                && choices.ValueKind == JsonValueKind.Array
-                && choices.GetArrayLength() > 0)
-            {
-                JsonElement first = choices[0];
-                if (first.TryGetProperty("message", out JsonElement message)
-                    && message.TryGetProperty("content", out JsonElement content)
-                    && content.ValueKind == JsonValueKind.String)
+                using HttpResponseMessage response = await httpClient
+                    .SendAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
+                string responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
                 {
-                    return content.GetString() ?? string.Empty;
+                    string snippet = responseText;
+                    if (snippet != null && snippet.Length > 400)
+                        snippet = snippet.Substring(0, 400) + "…";
+                    throw new InvalidOperationException(
+                        "API error " + (int)response.StatusCode + ": " + (snippet ?? response.ReasonPhrase));
                 }
 
-                // Some providers put the reply in text instead of message.content
-                if (first.TryGetProperty("text", out JsonElement text)
-                    && text.ValueKind == JsonValueKind.String)
+                using JsonDocument document = JsonDocument.Parse(responseText);
+                JsonElement root = document.RootElement;
+                if (root.TryGetProperty("choices", out JsonElement choices)
+                    && choices.ValueKind == JsonValueKind.Array
+                    && choices.GetArrayLength() > 0)
                 {
-                    return text.GetString() ?? string.Empty;
+                    JsonElement first = choices[0];
+                    if (first.TryGetProperty("message", out JsonElement message)
+                        && message.TryGetProperty("content", out JsonElement content)
+                        && content.ValueKind == JsonValueKind.String)
+                    {
+                        return content.GetString() ?? string.Empty;
+                    }
+
+                    // Some providers put the reply in text instead of message.content
+                    if (first.TryGetProperty("text", out JsonElement text)
+                        && text.ValueKind == JsonValueKind.String)
+                    {
+                        return text.GetString() ?? string.Empty;
+                    }
                 }
+
+                throw new InvalidOperationException("API response did not contain a chat message.");
+            }
+            finally
+            {
+                if (disposeClient)
+                    httpClient.Dispose();
+            }
+        }
+
+        private HttpClient CreateHttpClient()
+        {
+            SettingsModel settings = _settingsService?.LoadSettingsOrDefault();
+            if (settings != null && settings.Socks5Enabled && settings.AiUseProxy && settings.HasSocks5Config)
+            {
+                HttpMessageHandler handler = Socks5Helper.CreateHttpHandler(settings);
+                return new HttpClient(handler, disposeHandler: true) { Timeout = DefaultTimeout };
             }
 
-            throw new InvalidOperationException("API response did not contain a chat message.");
+            return SharedHttpClient;
         }
     }
 }

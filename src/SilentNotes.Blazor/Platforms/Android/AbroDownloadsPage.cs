@@ -8,7 +8,9 @@ using System.Threading.Tasks;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using SilentNotes.Models;
+using System.IO;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.Platforms
 {
@@ -221,7 +223,7 @@ namespace SilentNotes.Platforms
             string current = _downloads.GetDownloadDirectory();
             string path = await DisplayPromptAsync(
                 "Download location",
-                "Absolute folder path (empty = default /sdcard/abro/down)",
+                "Absolute folder path (empty = default " + Path.Combine(AnotePaths.Abro, "down") + ")",
                 "Save",
                 "Cancel",
                 current,

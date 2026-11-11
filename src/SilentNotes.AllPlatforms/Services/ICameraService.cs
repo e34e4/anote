@@ -66,7 +66,7 @@ namespace SilentNotes.Services
         /// <summary>Returns the absolute filesystem path of a stored photo, or null.</summary>
         string GetPhotoFilePath(string fileName);
 
-        /// <summary>Exports the photo to the public device gallery (Pictures/aNote) keeping its format.</summary>
+        /// <summary>Exports the photo to the anote pic folder keeping its format.</summary>
         Task<string> SaveToPublicGalleryAsync(string fileName);
 
         /// <summary>Shares the photo with other apps using the system share sheet.</summary>
@@ -77,5 +77,17 @@ namespace SilentNotes.Services
 
         /// <summary>Deletes a stored photo.</summary>
         bool DeletePhoto(string fileName);
+
+        /// <summary>
+        /// Opens the live camera viewfinder to record a video (720p/1080p, H.264 in MP4). Optional
+        /// microphone audio is recorded only when <paramref name="recordAudio"/> is true.
+        /// </summary>
+        Task<CameraPhotoModel> RecordVideoAsync(
+            string resolution,
+            int bitrateMbps,
+            bool useFrontCamera,
+            string flashMode,
+            bool recordAudio,
+            bool autoSaveToGallery);
     }
 }

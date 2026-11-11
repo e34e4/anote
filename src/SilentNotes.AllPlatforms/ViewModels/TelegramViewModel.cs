@@ -1350,7 +1350,7 @@ namespace SilentNotes.ViewModels
                     // paint "Saved…" and so StartActivity runs after the download continuation.
                     IsBusy = false;
                     NotifyChanged();
-                    await TryOpenDownloadedImageAsync(message, result.LocalPath);
+                    await TryOpenDownloadedMediaAsync(message, result.LocalPath);
                 }
                 else
                 {
@@ -1364,18 +1364,20 @@ namespace SilentNotes.ViewModels
             }
         }
 
-        private async Task TryOpenDownloadedImageAsync(TelegramMessageModel message, string localPath)
+        private async Task TryOpenDownloadedMediaAsync(TelegramMessageModel message, string localPath)
         {
             if (_mediaPlayerService == null || string.IsNullOrWhiteSpace(localPath))
                 return;
 
-            if (!IsViewableImageDownload(message, localPath))
+            bool isImage = IsViewableImageDownload(message, localPath);
+            bool isVideo = IsViewableVideoDownload(message, localPath);
+            if (!isImage && !isVideo)
                 return;
 
             try
             {
                 // Brief delay + readiness wait: download ends on a background thread and the file
-                // may not be fully visible to the image decoder for a moment.
+                // may not be fully visible to the decoder for a moment.
                 await Task.Delay(300).ConfigureAwait(true);
                 if (!await WaitForReadableFileAsync(localPath).ConfigureAwait(true))
                     return;
@@ -1383,7 +1385,11 @@ namespace SilentNotes.ViewModels
                 string title = !string.IsNullOrWhiteSpace(message?.MediaFileName)
                     ? message.MediaFileName
                     : System.IO.Path.GetFileName(localPath);
-                await _mediaPlayerService.OpenImagePathAsync(localPath, title, floating: true).ConfigureAwait(true);
+
+                if (isImage)
+                    await _mediaPlayerService.OpenImagePathAsync(localPath, title, floating: true).ConfigureAwait(true);
+                else
+                    await _mediaPlayerService.PlayUriAsync(localPath, "video/*", title).ConfigureAwait(true);
             }
             catch
             {
@@ -1421,6 +1427,19 @@ namespace SilentNotes.ViewModels
 
             string ext = System.IO.Path.GetExtension(localPath)?.ToLowerInvariant();
             return ext is ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif" or ".bmp" or ".heic" or ".heif";
+        }
+
+        private static bool IsViewableVideoDownload(TelegramMessageModel message, string localPath)
+        {
+            if (message != null &&
+                (string.Equals(message.MediaKind, TelegramMediaKinds.Video, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(message.MediaKind, TelegramMediaKinds.Gif, StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+
+            string ext = System.IO.Path.GetExtension(localPath)?.ToLowerInvariant();
+            return ext is ".mp4" or ".mkv" or ".avi" or ".webm" or ".mov" or ".3gp" or ".m4v" or ".wmv" or ".flv" or ".ts" or ".mpeg" or ".mpg";
         }
 
         public async Task ClickBotButtonAsync(TelegramBotButtonModel button)

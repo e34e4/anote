@@ -30,6 +30,7 @@ using AView = Android.Views.View;
 using Color = Android.Graphics.Color;
 using IOPath = System.IO.Path;
 using MediaOrientation = Android.Media.Orientation;
+using SilentNotes.Workers;
 using SysUri = System.Uri;
 using ViewOrientation = Android.Widget.Orientation;
 
@@ -50,7 +51,7 @@ namespace SilentNotes
         public const string ExtraFloating = "silentnotes.imageeditor.floating";
 
         private const int MaxHistory = 20;
-        private const string AbroFontsDir = "/sdcard/abro/fonts";
+        private static readonly string AbroFontsDir = IOPath.Combine(AnotePaths.Abro, "fonts");
 
         private static readonly Color[] Palette =
         {

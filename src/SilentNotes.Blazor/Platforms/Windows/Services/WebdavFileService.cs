@@ -7,6 +7,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.Platforms.Services
 {
@@ -21,8 +22,7 @@ namespace SilentNotes.Platforms.Services
             try
             {
                 string safeName = Path.GetFileName(fileName);
-                string downloads = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+                string downloads = AnotePaths.Down;
                 Directory.CreateDirectory(downloads);
                 string path = Path.Combine(downloads, safeName);
                 File.WriteAllBytes(path, content);

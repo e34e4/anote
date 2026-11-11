@@ -36,10 +36,10 @@ namespace SilentNotes.Services
         /// </summary>
         bool ReplaceFromPortableJson(string portableJson);
 
-        /// <summary>Exports the current store as linqs-style JSON to <c>/sdcard/abro/bookmarks.json</c>.</summary>
+        /// <summary>Exports the current store as linqs-style JSON to the portable Abro bookmarks file.</summary>
         bool TryExportPortableFile();
 
-        /// <summary>Imports linqs-style JSON from <c>/sdcard/abro/bookmarks.json</c>.</summary>
+        /// <summary>Imports linqs-style JSON from the portable Abro bookmarks file.</summary>
         bool TryImportPortableFile();
 
         /// <summary>Gets the absolute path of the portable export file.</summary>

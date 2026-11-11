@@ -4,11 +4,14 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using System;
+using System.IO;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
+using Android.Graphics.Drawables;
 using Android.Media;
 using Android.OS;
+using Android.Util;
 using Android.Views;
 using Android.Webkit;
 using Android.Widget;
@@ -35,8 +38,11 @@ namespace SilentNotes
         public const string ExtraPath = "silentnotes.video.path";
         public const string ExtraTitle = "silentnotes.video.title";
         public const string ExtraUseWebView = "silentnotes.video.usewebview";
+        public const string ExtraFloating = "silentnotes.video.floating";
 
         private VideoView _videoView;
+        private bool _floating;
+        private string _localPath;
         private global::Android.Webkit.WebView _webView;
         private FrameLayout _webRoot;
         private global::Android.Views.View _customView;
@@ -51,9 +57,17 @@ namespace SilentNotes
 
         protected override void OnCreate(Bundle savedInstanceState)
         {
+            _floating = Intent?.GetBooleanExtra(ExtraFloating, false) ?? false;
+            if (_floating)
+                SetTheme(global::Android.Resource.Style.ThemeDeviceDefaultDialogNoActionBar);
+
             base.OnCreate(savedInstanceState);
             RequestWindowFeature(WindowFeatures.NoTitle);
-            Window?.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
+
+            if (_floating)
+                ConfigureFloatingWindow();
+            else
+                Window?.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
 
             if (Intent?.GetBooleanExtra(ExtraUseWebView, false) == true)
             {
@@ -128,6 +142,15 @@ namespace SilentNotes
             _timeView.SetPadding(12, 0, 0, 0);
             _timeView.Text = "0:00 / 0:00";
 
+            var editButton = new Button(this)
+            {
+                Text = "Edit",
+                TextSize = 11,
+            };
+            editButton.SetTextColor(Color.White);
+            editButton.SetBackgroundColor(Color.Argb(160, 36, 129, 204));
+            editButton.Click += (_, __) => OpenVideoEditor();
+
             ImageButton closeButton = new ImageButton(this);
             closeButton.SetBackgroundColor(Color.Transparent);
             closeButton.SetImageResource(global::Android.Resource.Drawable.IcMenuCloseClearCancel);
@@ -136,6 +159,7 @@ namespace SilentNotes
             controls.AddView(_playPauseButton);
             controls.AddView(_seekBar);
             controls.AddView(_timeView);
+            controls.AddView(editButton);
             controls.AddView(closeButton);
 
             root.AddView(_titleView);
@@ -149,10 +173,18 @@ namespace SilentNotes
 
             string uriText = Intent?.GetStringExtra(ExtraUri);
             string path = Intent?.GetStringExtra(ExtraPath);
+            _localPath = path;
             try
             {
                 if (!string.IsNullOrEmpty(uriText))
+                {
                     _videoView.SetVideoURI(Uri.Parse(uriText));
+                    if (uriText.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
+                        && System.Uri.TryCreate(uriText, UriKind.Absolute, out System.Uri fileUri))
+                    {
+                        _localPath = fileUri.LocalPath;
+                    }
+                }
                 else if (!string.IsNullOrEmpty(path))
                     _videoView.SetVideoPath(path);
                 else
@@ -429,6 +461,47 @@ namespace SilentNotes
             return string.Format("{0}:{1:D2}", (int)t.TotalMinutes, t.Seconds);
         }
 
+        private void ConfigureFloatingWindow()
+        {
+            if (Window == null)
+                return;
+
+            SetFinishOnTouchOutside(true);
+            Window.SetBackgroundDrawable(new ColorDrawable(Color.Transparent));
+            Window.AddFlags(WindowManagerFlags.DimBehind | WindowManagerFlags.KeepScreenOn);
+            Window.ClearFlags(WindowManagerFlags.Fullscreen);
+
+            WindowManagerLayoutParams lp = Window.Attributes;
+            if (lp != null)
+            {
+                DisplayMetrics metrics = Resources.DisplayMetrics;
+                lp.DimAmount = 0.55f;
+                lp.Width = (int)(metrics.WidthPixels * 0.94f);
+                lp.Height = (int)(metrics.HeightPixels * 0.72f);
+                lp.Gravity = GravityFlags.Center;
+                Window.Attributes = lp;
+            }
+        }
+
+        private void OpenVideoEditor()
+        {
+            try
+            {
+                string path = _localPath;
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                {
+                    Toast.MakeText(this, "Edit needs a local video file", ToastLength.Short).Show();
+                    return;
+                }
+
+                StartActivity(VideoEditorActivity.CreateIntent(this, path, _floating));
+            }
+            catch (Exception ex)
+            {
+                Toast.MakeText(this, ex.Message, ToastLength.Long).Show();
+            }
+        }
+
         protected override void OnPause()
         {
             _webView?.OnPause();
@@ -472,7 +545,7 @@ namespace SilentNotes
         /// Starts the fullscreen video player for a path or content URI. With
         /// <paramref name="useWebView"/> the url is shown in a fullscreen WebView instead.
         /// </summary>
-        public static void Start(Context context, string pathOrUri, string title, bool useWebView = false)
+        public static void Start(Context context, string pathOrUri, string title, bool useWebView = false, bool floating = false)
         {
             Intent intent = new Intent(context, typeof(VideoPlayerActivity));
             // Stay in the same task as MainActivity so back returns to the Player tab.
@@ -490,6 +563,7 @@ namespace SilentNotes
             }
             intent.PutExtra(ExtraTitle, title ?? "Video");
             intent.PutExtra(ExtraUseWebView, useWebView);
+            intent.PutExtra(ExtraFloating, floating);
             context.StartActivity(intent);
         }
     }

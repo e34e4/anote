@@ -46,6 +46,12 @@
 		visibility: collapse;
 	}
 
+	.settings-slider-wrap {
+		max-width: 200px;
+		width: 55%;
+		touch-action: pan-y;
+	}
+
 	.color-swatch {
 		height: 44px;
 		margin-top: 4px;
@@ -234,16 +240,20 @@
 				<div></div>
 				<div>
 					<label for="FontSizeStep">@LanguageService["gui_font_size"]</label>
-					<MudSlider id="FontSizeStep" @bind-Value="ViewModel.FontSizeStep"
-						Min="-3" Max="4" Step="1" Color="Color.Tertiary"></MudSlider>
+					<div class="settings-slider-wrap">
+						<MudSlider id="FontSizeStep" @bind-Value="ViewModel.FontSizeStep"
+							Min="-3" Max="4" Step="1" Color="Color.Tertiary"></MudSlider>
+					</div>
 				</div>
 
 				@* Note height *@
 				<div><MudIcon Icon="@Icons.Material.Filled.Expand" Color="Color.Secondary" /></div>
 				<div>
 					<label for="NoteMaxHeightStep">@LanguageService["gui_note_max_size"]</label>
-					<MudSlider id="NoteMaxHeightStep" @bind-Value="ViewModel.NoteMaxHeightStep"
-						Min="-4" Max="4" Step="1" Color="Color.Tertiary"></MudSlider>
+					<div class="settings-slider-wrap">
+						<MudSlider id="NoteMaxHeightStep" @bind-Value="ViewModel.NoteMaxHeightStep"
+							Min="-4" Max="4" Step="1" Color="Color.Tertiary"></MudSlider>
+					</div>
 				</div>
 
 				@* Insert at top bottom *@
@@ -286,8 +296,10 @@
 					<div><MudIcon Icon="@Icons.Material.Outlined.Timer" Color="Color.Secondary" /></div>
 					<div>
 						<label for="KeepScreenOnDurationTitle">@ViewModel.KeepScreenOnDurationTitle</label>
-						<MudSlider id="KeepScreenOnDurationTitle" @bind-Value="ViewModel.KeepScreenOnDuration"
-							Min="1" Max="30" Step="1" Color="Color.Tertiary"></MudSlider>
+						<div class="settings-slider-wrap">
+							<MudSlider id="KeepScreenOnDurationTitle" @bind-Value="ViewModel.KeepScreenOnDuration"
+								Min="1" Max="30" Step="1" Color="Color.Tertiary"></MudSlider>
+						</div>
 					</div>
 				}
 
@@ -361,8 +373,10 @@
 							</MudSelect>
 							<div>
 								<label for="ScreenshotQuality">@LanguageService["gui_screenshot_quality"] (@(ViewModel.ScreenshotQuality)%)</label>
-								<MudSlider id="ScreenshotQuality" @bind-Value="ViewModel.ScreenshotQuality"
-									Min="1" Max="100" Step="1" Color="Color.Tertiary"></MudSlider>
+								<div class="settings-slider-wrap">
+									<MudSlider id="ScreenshotQuality" @bind-Value="ViewModel.ScreenshotQuality"
+										Min="1" Max="100" Step="1" Color="Color.Tertiary"></MudSlider>
+								</div>
 							</div>
 							<MudSelect T="string" Label="@LanguageService["gui_screenshot_editor"]" @bind-Value="ViewModel.ScreenshotEditorPackageName" Variant="Variant.Outlined" Margin="Margin.Dense">
 								@foreach (var item in ViewModel.ScreenshotEditorOptions)
@@ -392,8 +406,10 @@
 					<div><MudIcon Icon="@Icons.Material.Filled.History" Color="Color.Secondary" /></div>
 					<div>
 						<label for="ClipboardHistorySize">@LanguageService["gui_clipboard_history_size"]</label>
-						<MudSlider id="ClipboardHistorySize" @bind-Value="ViewModel.ClipboardHistorySize"
-							Min="50" Max="2000" Step="50" Color="Color.Tertiary"></MudSlider>
+						<div class="settings-slider-wrap">
+							<MudSlider id="ClipboardHistorySize" @bind-Value="ViewModel.ClipboardHistorySize"
+								Min="50" Max="2000" Step="50" Color="Color.Tertiary"></MudSlider>
+						</div>
 					</div>
 					<div><MudIcon Icon="@Icons.Material.Filled.CloudUpload" Color="Color.Secondary" /></div>
 					<div>
@@ -461,6 +477,26 @@
 							</MudButton>
 						</MudStack>
 					</MudPaper>
+				</div>
+
+				@* SOCKS5 proxy *@
+				<div><MudIcon Icon="@Icons.Material.Filled.VpnKey" Color="Color.Secondary" /></div>
+				<div>
+					<MudText Typo="Typo.subtitle2" Class="mb-2">@LanguageService["settings_proxy_title"]</MudText>
+					<MudStack Spacing="2">
+						<MudSwitch @bind-Value="@ViewModel.Socks5Enabled" Label="@LanguageService["settings_socks5_enabled"]"
+							Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
+						<MudTextField T="string" @bind-Value="ViewModel.Socks5Host" Label="@LanguageService["settings_socks5_host"]"
+							Variant="Variant.Outlined" Margin="Margin.Dense" />
+						<MudTextField T="int" @bind-Value="ViewModel.Socks5Port" Label="@LanguageService["settings_socks5_port"]"
+							Variant="Variant.Outlined" Margin="Margin.Dense" />
+						<MudTextField T="string" @bind-Value="ViewModel.Socks5Username" Label="@LanguageService["settings_socks5_username"]"
+							Variant="Variant.Outlined" Margin="Margin.Dense" />
+						<MudTextField T="string" @bind-Value="ViewModel.Socks5Password" Label="@LanguageService["settings_socks5_password"]"
+							InputType="InputType.Password" Variant="Variant.Outlined" Margin="Margin.Dense" />
+						<MudSwitch @bind-Value="@ViewModel.AiUseProxy" Label="@LanguageService["settings_ai_use_proxy"]"
+							Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
+					</MudStack>
 				</div>
 			</div>
 

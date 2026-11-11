@@ -38,6 +38,11 @@ namespace SilentNotes.Services
         void RemoveFeed(Guid feedId);
 
         /// <summary>
+        /// Removes cached articles by stable item keys within a feed subscription.
+        /// </summary>
+        void RemoveArticles(Guid feedId, IReadOnlyList<string> itemKeys);
+
+        /// <summary>
         /// Deletes oldest articles until the approximate stored size is under <paramref name="maxCacheBytes"/>.
         /// </summary>
         void EnforceSizeLimit(long maxCacheBytes = DefaultMaxCacheBytes);

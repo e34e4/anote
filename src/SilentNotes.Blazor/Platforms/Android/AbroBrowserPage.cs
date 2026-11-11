@@ -33,7 +33,7 @@ namespace SilentNotes.Platforms
 {
     /// <summary>
     /// Full-screen light multi-tab web browser ("Abro"). History, a cookie dump, the cache and
-    /// downloaded files are stored in a visible folder (<c>/sdcard/abro</c>), the open tabs are
+    /// downloaded files are stored in a visible folder (<see cref="AnotePaths.Abro"/>), the open tabs are
     /// persisted in <c>tabs.json</c> and restored the next time the browser is opened.
     /// </summary>
     internal sealed class AbroBrowserPage : ContentPage
@@ -311,6 +311,9 @@ namespace SilentNotes.Platforms
 
         private Microsoft.Maui.Controls.View CreateScrollJumpOverlay()
         {
+            Button back = CreateChromeButton("←");
+            back.Clicked += (s, e) => GoBack();
+
             Button up = CreateChromeButton("↑");
             up.Clicked += async (s, e) => await ScrollWebViewExtremeAsync(toTop: true).ConfigureAwait(true);
 
@@ -323,7 +326,7 @@ namespace SilentNotes.Platforms
                 HorizontalOptions = LayoutOptions.Start,
                 VerticalOptions = LayoutOptions.Center,
                 Margin = new Thickness(10, 0, 0, 0),
-                Children = { up, down },
+                Children = { back, up, down },
             };
         }
 
@@ -422,21 +425,12 @@ namespace SilentNotes.Platforms
 
         private static string ResolveRootDirectory()
         {
-            string external = null;
-            try
-            {
-                external = global::Android.OS.Environment.ExternalStorageDirectory?.AbsolutePath;
-            }
-            catch
-            {
-            }
-
-            string preferred = Path.Combine(string.IsNullOrEmpty(external) ? "/sdcard" : external, "abro");
+            string preferred = AnotePaths.Abro;
             if (IsWritableDirectory(preferred))
                 return preferred;
 
             // No (all-files) storage access: fall back to the private app directory.
-            string fallback = Path.Combine(FileSystem.AppDataDirectory, "abro");
+            string fallback = Path.Combine(FileSystem.AppDataDirectory, AnotePaths.RootFolderName, "abro");
             Directory.CreateDirectory(fallback);
             return fallback;
         }

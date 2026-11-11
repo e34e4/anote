@@ -19,5 +19,12 @@ namespace SilentNotes.Models
         /// <summary>Gets or sets a short label shown on the session chip.</summary>
         [XmlAttribute("label")]
         public string Label { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the <see cref="CloudFileLocationModel.Id"/> for this session, or empty for
+        /// the primary File WebDAV target.
+        /// </summary>
+        [XmlAttribute("location_id")]
+        public string LocationId { get; set; } = string.Empty;
     }
 }

@@ -6,6 +6,9 @@
 @inject ILanguageService LanguageService
 
 <div class="scroll-jump" @onclick:stopPropagation="true">
+	<button type="button" class="scroll-jump-btn" title="@LanguageService["scroll_go_back"]" @onclick="GoBackAsync">
+		<MudIcon Icon="@Icons.Material.Filled.KeyboardArrowLeft" Size="Size.Small" />
+	</button>
 	<button type="button" class="scroll-jump-btn" title="@LanguageService["scroll_to_top"]" @onclick="ScrollTopAsync">
 		<MudIcon Icon="@Icons.Material.Filled.KeyboardArrowUp" Size="Size.Small" />
 	</button>
@@ -15,6 +18,27 @@
 </div>
 
 @code {
+	/// <summary>Optional app-specific back (e.g. parent folder). Falls back to browser history.</summary>
+	[Parameter]
+	public EventCallback OnBack { get; set; }
+
+	private async Task GoBackAsync()
+	{
+		try
+		{
+			if (OnBack.HasDelegate)
+			{
+				await OnBack.InvokeAsync();
+				return;
+			}
+
+			await JSRuntime.InvokeVoidAsync("anoteScrollJump.goBack");
+		}
+		catch
+		{
+		}
+	}
+
 	private async Task ScrollTopAsync()
 	{
 		try

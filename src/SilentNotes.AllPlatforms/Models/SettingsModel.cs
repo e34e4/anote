@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Xml.Serialization;
 using SilentNotes.Crypto.KeyDerivation;
 using SilentNotes.Crypto.SymmetricEncryption;
+using SilentNotes.Services;
 using VanillaCloudStorageClient;
 
 namespace SilentNotes.Models
@@ -15,7 +16,7 @@ namespace SilentNotes.Models
     /// Serializeable model of the applications settings.
     /// </summary>
     [XmlRoot(ElementName = "silentnotes_settings")]
-    public class SettingsModel
+    public class SettingsModel : IProxySettings
     {
         /// <summary>The highest revision of the settings which can be handled by this application.</summary>
         public const int NewestSupportedRevision = 3;
@@ -98,6 +99,9 @@ namespace SilentNotes.Models
             CameraUseFrontLens = false;
             CameraFlashMode = "auto";
             CameraAutoSaveToGallery = true;
+            CameraVideoResolution = "720";
+            CameraVideoBitrateMbps = 2;
+            CameraVideoRecordAudio = false;
             FloatingGestureSwipeUp = string.Empty;
             FloatingGestureSwipeDown = string.Empty;
             FloatingGestureSwipeLeft = string.Empty;
@@ -113,6 +117,13 @@ namespace SilentNotes.Models
             ReaderEditorWordWrap = true;
             ReaderEditorFontFileName = string.Empty;
             ReaderEditorFontDisplayName = string.Empty;
+            CloudFileLocations = new List<CloudFileLocationModel>();
+            Socks5Enabled = false;
+            Socks5Host = string.Empty;
+            Socks5Port = 1080;
+            Socks5Username = string.Empty;
+            Socks5Password = string.Empty;
+            AiUseProxy = false;
         }
 
         /// <summary>
@@ -657,10 +668,28 @@ namespace SilentNotes.Models
 
         /// <summary>
         /// Gets or sets a value indicating whether captured photos are automatically saved to the
-        /// public device gallery (Pictures/aNote).
+        /// the anote pic folder on external storage.
         /// </summary>
         [XmlElement("camera_auto_save_gallery")]
         public bool CameraAutoSaveToGallery { get; set; }
+
+        /// <summary>
+        /// Gets or sets the preferred video recording resolution ("720" or "1080").
+        /// </summary>
+        [XmlElement("camera_video_resolution")]
+        public string CameraVideoResolution { get; set; }
+
+        /// <summary>
+        /// Gets or sets the video encoding bitrate in Mbps for camera recordings.
+        /// </summary>
+        [XmlElement("camera_video_bitrate_mbps")]
+        public int CameraVideoBitrateMbps { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether camera video recordings include microphone audio.
+        /// </summary>
+        [XmlElement("camera_video_record_audio")]
+        public bool CameraVideoRecordAudio { get; set; }
 
         /// <summary>
         /// Gets or sets the package name or action to execute when swiping the floating button up.
@@ -774,6 +803,52 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("reader_editor_font_name")]
         public string ReaderEditorFontDisplayName { get; set; }
+
+        /// <summary>Gets or sets additional File tab cloud/WebDAV locations.</summary>
+        [XmlArray("cloud_file_locations")]
+        [XmlArrayItem("location")]
+        public List<CloudFileLocationModel> CloudFileLocations { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether SOCKS5 proxy is enabled.</summary>
+        [XmlElement("socks5_enabled")]
+        public bool Socks5Enabled { get; set; }
+
+        /// <summary>Gets or sets the SOCKS5 proxy host.</summary>
+        [XmlElement("socks5_host")]
+        public string Socks5Host { get; set; }
+
+        /// <summary>Gets or sets the SOCKS5 proxy port.</summary>
+        [XmlElement("socks5_port")]
+        public int Socks5Port { get; set; }
+
+        /// <summary>Gets or sets the optional SOCKS5 username.</summary>
+        [XmlElement("socks5_username")]
+        public string Socks5Username { get; set; }
+
+        /// <summary>Gets or sets the SOCKS5 password in plain text (not serialized directly).</summary>
+        [XmlIgnore]
+        public string Socks5Password { get; set; }
+
+        /// <summary>Gets or sets the encrypted SOCKS5 password on device.</summary>
+        [XmlElement("socks5_password")]
+        public string SerializeableSocks5Password { get; set; }
+
+        /// <summary>Gets a value indicating whether the encrypted SOCKS5 password should be serialized.</summary>
+        public bool SerializeableSocks5PasswordSpecified
+        {
+            get { return !string.IsNullOrEmpty(SerializeableSocks5Password); }
+        }
+
+        /// <summary>Gets or sets a value indicating whether Abro AI should use the SOCKS5 proxy.</summary>
+        [XmlElement("ai_use_proxy")]
+        public bool AiUseProxy { get; set; }
+
+        /// <inheritdoc/>
+        [XmlIgnore]
+        public bool HasSocks5Config =>
+            !string.IsNullOrWhiteSpace(Socks5Host)
+            && Socks5Port > 0
+            && Socks5Port <= 65535;
 
         /// <summary>
         /// Gets a value indicating whether a cloud storage is set.

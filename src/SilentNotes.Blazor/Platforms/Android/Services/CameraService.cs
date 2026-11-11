@@ -30,6 +30,7 @@ using Microsoft.Maui.ApplicationModel;
 using SilentNotes;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 using Color = Android.Graphics.Color;
 using Image = Android.Media.Image;
 using Orientation = Android.Widget.Orientation;
@@ -50,7 +51,6 @@ namespace SilentNotes.Platforms.Services
     {
         private const string PhotosFolderName = "photos";
         private const string ShareFolder = "clipboard";
-        private const string PublicGalleryFolder = "aNote";
 
         private readonly IAppContextService _appContext;
         private readonly IActivityResultAwaiter _activityResultAwaiter;
@@ -171,6 +171,86 @@ namespace SilentNotes.Platforms.Services
                     bitmap?.Recycle();
                 }
             });
+        }
+
+        private bool HasAudioPermission
+        {
+            get
+            {
+                Context context = _appContext.Context;
+                return (context != null)
+                    && (ContextCompat.CheckSelfPermission(context, global::Android.Manifest.Permission.RecordAudio) == Permission.Granted);
+            }
+        }
+
+        private async Task<bool> RequestAudioPermissionAsync()
+        {
+            try
+            {
+                if (HasAudioPermission)
+                    return true;
+                PermissionStatus status = await MainThread.InvokeOnMainThreadAsync(
+                    () => Permissions.RequestAsync<Permissions.Microphone>());
+                return status == PermissionStatus.Granted;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task<CameraPhotoModel> RecordVideoAsync(
+            string resolution,
+            int bitrateMbps,
+            bool useFrontCamera,
+            string flashMode,
+            bool recordAudio,
+            bool autoSaveToGallery)
+        {
+            if (!HasPermission && !await RequestPermissionAsync())
+                return null;
+
+            bool includeAudio = recordAudio;
+            if (includeAudio && !HasAudioPermission)
+                includeAudio = await RequestAudioPermissionAsync();
+
+            Activity activity = _appContext.RootActivity;
+            if (activity == null)
+                return null;
+
+            string normalizedResolution = NormalizeVideoResolution(resolution);
+            int clampedBitrate = NormalizeVideoBitrateMbps(bitrateMbps);
+            string photosDir = GetPhotosDirectory();
+            Directory.CreateDirectory(photosDir);
+
+            var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                try
+                {
+                    var dialog = new LiveVideoCameraDialog(
+                        activity,
+                        photosDir,
+                        normalizedResolution,
+                        clampedBitrate,
+                        useFrontCamera,
+                        flashMode,
+                        includeAudio,
+                        tcs);
+                    dialog.Show();
+                }
+                catch (Exception)
+                {
+                    tcs.TrySetResult(null);
+                }
+            });
+
+            string savedPath = await tcs.Task;
+            if (string.IsNullOrEmpty(savedPath) || !File.Exists(savedPath))
+                return null;
+
+            return await Task.Run(() => BuildVideoModelFromFile(savedPath, clampedBitrate, autoSaveToGallery));
         }
 
         /// <inheritdoc/>
@@ -316,7 +396,7 @@ namespace SilentNotes.Platforms.Services
 
             var supportedExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                ".jpg", ".jpeg", ".png", ".webp",
+                ".jpg", ".jpeg", ".png", ".webp", ".mp4",
             };
 
             foreach (string filePath in Directory.EnumerateFiles(dir))
@@ -329,24 +409,38 @@ namespace SilentNotes.Platforms.Services
                 if (!seenNames.Add(info.Name))
                     continue;
 
-                var options = new BitmapFactory.Options { InJustDecodeBounds = true };
-                BitmapFactory.DecodeFile(filePath, options);
-
                 string fmt = ext.TrimStart('.').ToLowerInvariant();
                 if (fmt == "jpeg")
                     fmt = "jpg";
+
+                int width = 0;
+                int height = 0;
+                int quality = ParseQualityFromFileName(info.Name);
+
+                if (fmt == "mp4")
+                {
+                    quality = ParseVideoBitrateFromFileName(info.Name);
+                    TryReadVideoDimensions(filePath, out width, out height);
+                }
+                else
+                {
+                    var options = new BitmapFactory.Options { InJustDecodeBounds = true };
+                    BitmapFactory.DecodeFile(filePath, options);
+                    width = Math.Max(0, options.OutWidth);
+                    height = Math.Max(0, options.OutHeight);
+                }
 
                 result.Add(new CameraPhotoModel
                 {
                     FileName = info.Name,
                     FilePath = filePath,
                     Format = fmt,
-                    Quality = ParseQualityFromFileName(info.Name),
-                    Width = Math.Max(0, options.OutWidth),
-                    Height = Math.Max(0, options.OutHeight),
+                    Quality = quality,
+                    Width = width,
+                    Height = height,
                     SizeBytes = info.Length,
                     CreatedAtUtc = info.CreationTimeUtc,
-                    PublicGalleryPath = dir.IndexOf(PublicGalleryFolder, StringComparison.OrdinalIgnoreCase) >= 0
+                    PublicGalleryPath = IsPublicPicDirectory(dir)
                         ? filePath
                         : null,
                 });
@@ -365,6 +459,9 @@ namespace SilentNotes.Platforms.Services
                     string path = ResolvePhotoPath(fileName);
                     if (path == null)
                         return null;
+
+                    if (Path.GetExtension(path).Equals(".mp4", StringComparison.OrdinalIgnoreCase))
+                        return BuildVideoThumbnailDataUrl(path, maxDimension);
 
                     var bounds = new BitmapFactory.Options { InJustDecodeBounds = true };
                     BitmapFactory.DecodeFile(path, bounds);
@@ -424,6 +521,19 @@ namespace SilentNotes.Platforms.Services
                     if (sourcePath == null)
                         return false;
 
+                    string ext = Path.GetExtension(fileName);
+                    if (ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase))
+                    {
+                        MainThread.BeginInvokeOnMainThread(() =>
+                        {
+                            SilentNotes.VideoPlayerActivity.Start(
+                                _appContext.Context,
+                                sourcePath,
+                                Path.GetFileNameWithoutExtension(fileName));
+                        });
+                        return true;
+                    }
+
                     Context context = _appContext.Context;
                     var shareDir = new Java.IO.File(context.CacheDir, ShareFolder);
                     shareDir.Mkdirs();
@@ -458,6 +568,9 @@ namespace SilentNotes.Platforms.Services
                     if (sourcePath == null)
                         return null;
 
+                    string ext = Path.GetExtension(fileName);
+                    if (ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase))
+                        return WriteFileToPublicVideoGallery(sourcePath, Path.GetFileName(fileName));
                     return WriteFileToPublicGallery(sourcePath, Path.GetFileName(fileName));
                 }
                 catch (Exception)
@@ -637,40 +750,11 @@ namespace SilentNotes.Platforms.Services
         {
             try
             {
-                Context context = _appContext.Context;
-                string ext = Path.GetExtension(displayName);
-                string mime = GetMimeTypeForExtension(ext);
-
-                if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
-                {
-                    var values = new ContentValues();
-                    values.Put("_display_name", displayName);
-                    values.Put("mime_type", mime);
-                    values.Put("relative_path", "Pictures/" + PublicGalleryFolder);
-
-                    global::Android.Net.Uri uri = context.ContentResolver.Insert(
-                        MediaStore.Images.Media.ExternalContentUri, values);
-                    if (uri == null)
-                        return null;
-
-                    using (Stream input = File.OpenRead(sourcePath))
-                    using (Stream output = context.ContentResolver.OpenOutputStream(uri))
-                    {
-                        input.CopyTo(output);
-                    }
-                    return "Pictures/" + PublicGalleryFolder + "/" + displayName;
-                }
-                else
-                {
-                    string publicDir = Path.Combine(
-                        global::Android.OS.Environment.GetExternalStoragePublicDirectory(
-                            global::Android.OS.Environment.DirectoryPictures).AbsolutePath,
-                        PublicGalleryFolder);
-                    Directory.CreateDirectory(publicDir);
-                    string target = Path.Combine(publicDir, displayName);
-                    File.Copy(sourcePath, target, overwrite: true);
-                    return target;
-                }
+                string publicDir = AnotePaths.Pic;
+                Directory.CreateDirectory(publicDir);
+                string target = Path.Combine(publicDir, displayName);
+                File.Copy(sourcePath, target, overwrite: true);
+                return target;
             }
             catch (Exception)
             {
@@ -707,8 +791,157 @@ namespace SilentNotes.Platforms.Services
                     return "image/png";
                 case ".webp":
                     return "image/webp";
+                case ".mp4":
+                    return "video/mp4";
                 default:
                     return "image/jpeg";
+            }
+        }
+
+        private static string NormalizeVideoResolution(string resolution)
+        {
+            string res = (resolution ?? "720").Trim();
+            return res == "1080" ? "1080" : "720";
+        }
+
+        private static int NormalizeVideoBitrateMbps(int bitrateMbps)
+        {
+            return bitrateMbps switch
+            {
+                1 => 1,
+                4 => 4,
+                8 => 8,
+                _ => 2,
+            };
+        }
+
+        private static int ParseVideoBitrateFromFileName(string fileName)
+        {
+            try
+            {
+                string name = Path.GetFileNameWithoutExtension(fileName);
+                int idx = name.LastIndexOf("_", StringComparison.Ordinal);
+                if (idx >= 0 && idx + 1 < name.Length)
+                {
+                    string tail = name.Substring(idx + 1);
+                    if (tail.EndsWith("mbps", StringComparison.OrdinalIgnoreCase)
+                        && int.TryParse(tail.Substring(0, tail.Length - 4), NumberStyles.Integer, CultureInfo.InvariantCulture, out int mbps))
+                    {
+                        return NormalizeVideoBitrateMbps(mbps);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            return 2;
+        }
+
+        private static void TryReadVideoDimensions(string filePath, out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            MediaMetadataRetriever retriever = null;
+            try
+            {
+                retriever = new MediaMetadataRetriever();
+                retriever.SetDataSource(filePath);
+                string w = retriever.ExtractMetadata(MetadataKey.VideoWidth);
+                string h = retriever.ExtractMetadata(MetadataKey.VideoHeight);
+                if (int.TryParse(w, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedW))
+                    width = parsedW;
+                if (int.TryParse(h, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedH))
+                    height = parsedH;
+            }
+            catch (Exception)
+            {
+            }
+            finally
+            {
+                try { retriever?.Release(); } catch (Exception) { }
+            }
+        }
+
+        private static string BuildVideoThumbnailDataUrl(string filePath, int maxDimension)
+        {
+            MediaMetadataRetriever retriever = null;
+            Bitmap frame = null;
+            Bitmap scaled = null;
+            try
+            {
+                retriever = new MediaMetadataRetriever();
+                retriever.SetDataSource(filePath);
+                frame = retriever.GetFrameAtTime(0, Option.ClosestSync);
+                if (frame == null)
+                    return null;
+
+                int w = frame.Width;
+                int h = frame.Height;
+                Bitmap target = frame;
+                if (Math.Max(w, h) > maxDimension && w > 0 && h > 0)
+                {
+                    float ratio = (float)maxDimension / Math.Max(w, h);
+                    int nw = Math.Max(1, (int)(w * ratio));
+                    int nh = Math.Max(1, (int)(h * ratio));
+                    scaled = Bitmap.CreateScaledBitmap(frame, nw, nh, true);
+                    target = scaled ?? frame;
+                }
+
+                using (var ms = new MemoryStream())
+                {
+                    target.Compress(Bitmap.CompressFormat.Jpeg, 80, ms);
+                    return "data:image/jpeg;base64," + Convert.ToBase64String(ms.ToArray());
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+            finally
+            {
+                scaled?.Recycle();
+                frame?.Recycle();
+                try { retriever?.Release(); } catch (Exception) { }
+            }
+        }
+
+        private CameraPhotoModel BuildVideoModelFromFile(string fullPath, int bitrateMbps, bool autoSaveToGallery)
+        {
+            TryReadVideoDimensions(fullPath, out int width, out int height);
+            string fileName = Path.GetFileName(fullPath);
+            string publicPath = null;
+            if (autoSaveToGallery)
+                publicPath = WriteFileToPublicVideoGallery(fullPath, fileName);
+
+            var info = new FileInfo(fullPath);
+            return new CameraPhotoModel
+            {
+                FileName = fileName,
+                FilePath = fullPath,
+                Format = "mp4",
+                Quality = bitrateMbps,
+                Width = width,
+                Height = height,
+                SizeBytes = info.Exists ? info.Length : 0,
+                CreatedAtUtc = DateTime.UtcNow,
+                PublicGalleryPath = publicPath,
+            };
+        }
+
+        private string WriteFileToPublicVideoGallery(string sourcePath, string displayName)
+        {
+            try
+            {
+                string publicDir = AnotePaths.Pic;
+                Directory.CreateDirectory(publicDir);
+                string target = Path.Combine(publicDir, displayName);
+                File.Copy(sourcePath, target, overwrite: true);
+                return target;
+            }
+            catch (Exception)
+            {
+                return null;
             }
         }
 
@@ -807,18 +1040,21 @@ namespace SilentNotes.Platforms.Services
             return Path.Combine(baseDir, PhotosFolderName);
         }
 
-        private static string GetPublicGalleryDirectory()
+        private static string GetPublicGalleryDirectory() => AnotePaths.Pic;
+
+        private static bool IsPublicPicDirectory(string dir)
         {
+            if (string.IsNullOrWhiteSpace(dir))
+                return false;
             try
             {
-                return Path.Combine(
-                    global::Android.OS.Environment.GetExternalStoragePublicDirectory(
-                        global::Android.OS.Environment.DirectoryPictures).AbsolutePath,
-                    PublicGalleryFolder);
+                string pic = Path.GetFullPath(AnotePaths.Pic.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                string normalized = Path.GetFullPath(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                return string.Equals(normalized, pic, StringComparison.OrdinalIgnoreCase);
             }
             catch (Exception)
             {
-                return null;
+                return false;
             }
         }
 
@@ -2086,6 +2322,747 @@ namespace SilentNotes.Platforms.Services
                 public void OnImageAvailable(ImageReader reader)
                 {
                     _dialog.OnStillJpegAvailable(reader);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Full-screen Camera2 viewfinder for recording H.264 MP4 video via <see cref="MediaRecorder"/>.
+        /// </summary>
+        private class LiveVideoCameraDialog : Dialog, TextureView.ISurfaceTextureListener
+        {
+            private const int VideoFrameRate = 30;
+
+            private readonly Activity _activity;
+            private readonly string _photosDir;
+            private readonly string _targetResolution;
+            private readonly int _bitrateMbps;
+            private readonly bool _recordAudio;
+            private readonly TaskCompletionSource<string> _tcs;
+
+            private readonly TextureView _textureView;
+            private readonly TextView _recordButton;
+            private readonly TextView _flashButton;
+            private readonly TextView _hintText;
+
+            private bool _useFrontCamera;
+            private string _flashMode;
+            private float _zoomLevel = 1.0f;
+            private float _maxZoom = 4.0f;
+            private Rect _sensorArraySize;
+            private int _sensorOrientation = 90;
+
+            private HandlerThread _backgroundThread;
+            private Handler _backgroundHandler;
+            private CameraDevice _cameraDevice;
+            private CameraCaptureSession _captureSession;
+            private CaptureRequest.Builder _previewRequestBuilder;
+            private Surface _previewSurface;
+            private Size _previewSize = new Size(1280, 720);
+            private Size _videoSize = new Size(1280, 720);
+
+            private MediaRecorder _mediaRecorder;
+            private string _outputPath;
+            private bool _isRecording;
+            private bool _isCompleted;
+
+            public LiveVideoCameraDialog(
+                Activity activity,
+                string photosDir,
+                string targetResolution,
+                int bitrateMbps,
+                bool useFrontCamera,
+                string flashMode,
+                bool recordAudio,
+                TaskCompletionSource<string> tcs)
+                : base(activity, global::Android.Resource.Style.ThemeBlackNoTitleBarFullScreen)
+            {
+                _activity = activity;
+                _photosDir = photosDir;
+                _targetResolution = targetResolution;
+                _bitrateMbps = bitrateMbps;
+                _useFrontCamera = useFrontCamera;
+                _flashMode = string.IsNullOrEmpty(flashMode) ? "auto" : flashMode;
+                _recordAudio = recordAudio;
+                _tcs = tcs;
+
+                int targetW = _targetResolution == "1080" ? 1920 : 1280;
+                int targetH = _targetResolution == "1080" ? 1080 : 720;
+                _videoSize = new Size(targetW, targetH);
+
+                float density = activity.Resources.DisplayMetrics.Density;
+                int pad = (int)(12 * density);
+
+                var root = new FrameLayout(activity);
+                root.SetBackgroundColor(Color.Black);
+
+                _textureView = new TextureView(activity) { SurfaceTextureListener = this };
+                root.AddView(_textureView, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent,
+                    ViewGroup.LayoutParams.MatchParent,
+                    GravityFlags.Center));
+
+                var topContainer = new LinearLayout(activity) { Orientation = Orientation.Vertical };
+                topContainer.SetBackgroundColor(Color.ParseColor("#AA000000"));
+                topContainer.SetPadding(pad, pad, pad, pad);
+
+                var topRow = new LinearLayout(activity) { Orientation = Orientation.Horizontal };
+                topRow.SetGravity(GravityFlags.CenterVertical);
+
+                TextView closeBtn = CreateHudPill(activity, "✕", density);
+                closeBtn.Click += (s, e) => FinishWithResult(null);
+                topRow.AddView(closeBtn);
+                topRow.AddView(CreateSpacer(activity));
+
+                _flashButton = CreateHudPill(activity, GetFlashLabel(_flashMode), density);
+                _flashButton.Click += (s, e) => CycleFlash();
+                topRow.AddView(_flashButton);
+                topRow.AddView(CreateSpacer(activity));
+
+                TextView switchCamBtn = CreateHudPill(activity, "🔄", density);
+                switchCamBtn.Click += (s, e) => SwitchCamera();
+                topRow.AddView(switchCamBtn);
+                topContainer.AddView(topRow);
+
+                _hintText = new TextView(activity)
+                {
+                    Text = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "{0}p · {1} Mbps · {2} fps{3}",
+                        _targetResolution,
+                        _bitrateMbps,
+                        VideoFrameRate,
+                        _recordAudio ? " · mic" : string.Empty),
+                    TextSize = 13f,
+                };
+                _hintText.SetTextColor(Color.ParseColor("#CCCCCC"));
+                _hintText.SetPadding(0, (int)(6 * density), 0, 0);
+                topContainer.AddView(_hintText);
+
+                root.AddView(topContainer, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent,
+                    ViewGroup.LayoutParams.WrapContent,
+                    GravityFlags.Top));
+
+                var bottomContainer = new LinearLayout(activity)
+                {
+                    Orientation = Orientation.Vertical,
+                };
+                bottomContainer.SetBackgroundColor(Color.ParseColor("#AA000000"));
+                bottomContainer.SetPadding(pad, pad, pad, (int)(24 * density));
+                bottomContainer.SetGravity(GravityFlags.CenterHorizontal);
+
+                _recordButton = new TextView(activity)
+                {
+                    Text = "● REC",
+                    TextSize = 18f,
+                    Gravity = GravityFlags.Center,
+                };
+                _recordButton.SetTextColor(Color.White);
+                var recordBg = new GradientDrawable();
+                recordBg.SetShape(ShapeType.Rectangle);
+                recordBg.SetCornerRadius(12 * density);
+                recordBg.SetColor(Color.ParseColor("#CCB91C1C"));
+                recordBg.SetStroke((int)(2 * density), Color.White);
+                _recordButton.Background = recordBg;
+                int btnH = (int)(54 * density);
+                _recordButton.Click += (s, e) => ToggleRecording();
+                bottomContainer.AddView(_recordButton, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, btnH));
+
+                root.AddView(bottomContainer, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent,
+                    ViewGroup.LayoutParams.WrapContent,
+                    GravityFlags.Bottom));
+
+                SetContentView(root);
+                SetCanceledOnTouchOutside(false);
+            }
+
+            protected override void OnStart()
+            {
+                base.OnStart();
+                StartBackgroundThread();
+                if (_textureView.IsAvailable)
+                    OpenCamera();
+            }
+
+            protected override void OnStop()
+            {
+                CloseCamera();
+                StopBackgroundThread();
+                base.OnStop();
+            }
+
+            public override void OnBackPressed()
+            {
+                if (_isRecording)
+                    StopRecording();
+                else
+                    FinishWithResult(null);
+            }
+
+            public void OnSurfaceTextureAvailable(SurfaceTexture surface, int width, int height)
+            {
+                ConfigureTransform(width, height);
+                OpenCamera();
+            }
+
+            public void OnSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height)
+            {
+                ConfigureTransform(width, height);
+            }
+
+            public bool OnSurfaceTextureDestroyed(SurfaceTexture surface)
+            {
+                CloseCamera();
+                return true;
+            }
+
+            public void OnSurfaceTextureUpdated(SurfaceTexture surface)
+            {
+            }
+
+            private void ToggleRecording()
+            {
+                if (_isRecording)
+                    StopRecording();
+                else
+                    StartRecording();
+            }
+
+            private void StartRecording()
+            {
+                if (_isCompleted || _isRecording || _mediaRecorder == null)
+                    return;
+
+                try
+                {
+                    _mediaRecorder.Start();
+                    _isRecording = true;
+                    _recordButton.Text = "■ STOP";
+                    _recordButton.SetTextColor(Color.ParseColor("#FFEEEE"));
+                }
+                catch (Exception)
+                {
+                    FinishWithResult(null);
+                }
+            }
+
+            private void StopRecording()
+            {
+                if (!_isRecording)
+                    return;
+
+                _isRecording = false;
+                string path = _outputPath;
+                try
+                {
+                    _mediaRecorder?.Stop();
+                }
+                catch (Exception)
+                {
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                            File.Delete(path);
+                    }
+                    catch (Exception)
+                    {
+                    }
+                    path = null;
+                }
+
+                FinishWithResult(path);
+            }
+
+            private void FinishWithResult(string path)
+            {
+                if (_isCompleted)
+                    return;
+                _isCompleted = true;
+
+                try
+                {
+                    CloseCamera();
+                    StopBackgroundThread();
+                    Dismiss();
+                }
+                catch (Exception)
+                {
+                }
+
+                _tcs.TrySetResult(path);
+            }
+
+            private void CycleFlash()
+            {
+                if (_isRecording)
+                    return;
+                _flashMode = _flashMode switch
+                {
+                    "auto" => "on",
+                    "on" => "torch",
+                    "torch" => "off",
+                    _ => "auto",
+                };
+                _flashButton.Text = GetFlashLabel(_flashMode);
+                ApplyPreviewParameters();
+            }
+
+            private void SwitchCamera()
+            {
+                if (_isRecording)
+                    return;
+                _useFrontCamera = !_useFrontCamera;
+                CloseCamera();
+                OpenCamera();
+            }
+
+            private void OpenCamera()
+            {
+                try
+                {
+                    var manager = (CameraManager)_activity.GetSystemService(Context.CameraService);
+                    if (manager == null)
+                        return;
+
+                    string selectedId = SelectCameraId(manager, _useFrontCamera);
+                    if (string.IsNullOrEmpty(selectedId))
+                        return;
+
+                    CameraCharacteristics chars = manager.GetCameraCharacteristics(selectedId);
+                    _sensorArraySize = chars.Get(CameraCharacteristics.SensorInfoActiveArraySize) as Rect;
+                    var maxZoomFloat = chars.Get(CameraCharacteristics.ScalerAvailableMaxDigitalZoom) as Java.Lang.Float;
+                    _maxZoom = maxZoomFloat != null ? Math.Max(1.0f, maxZoomFloat.FloatValue()) : 4.0f;
+                    var orientationInt = chars.Get(CameraCharacteristics.SensorOrientation) as Java.Lang.Integer;
+                    _sensorOrientation = orientationInt != null ? orientationInt.IntValue() : 90;
+
+                    var map = chars.Get(CameraCharacteristics.ScalerStreamConfigurationMap) as StreamConfigurationMap;
+                    if (map != null)
+                    {
+                        Size[] recorderSizes = map.GetOutputSizes(Java.Lang.Class.FromType(typeof(MediaRecorder)));
+                        if (recorderSizes != null && recorderSizes.Length > 0)
+                            _videoSize = ChooseVideoSize(recorderSizes, _videoSize.Width, _videoSize.Height);
+
+                        Size[] sizes = map.GetOutputSizes(Java.Lang.Class.FromType(typeof(SurfaceTexture)));
+                        if (sizes != null && sizes.Length > 0)
+                        {
+                            double targetRatio = (_videoSize.Height > 0)
+                                ? (double)_videoSize.Width / _videoSize.Height
+                                : (16.0 / 9.0);
+                            _previewSize = sizes
+                                .Where(s => s.Width <= 1920 && s.Height <= 1920)
+                                .OrderBy(s => Math.Abs(((double)s.Width / s.Height) - targetRatio))
+                                .ThenByDescending(s => (long)s.Width * s.Height)
+                                .FirstOrDefault() ?? sizes[0];
+                        }
+                    }
+
+                    _activity.RunOnUiThread(() => ConfigureTransform(_textureView.Width, _textureView.Height));
+                    manager.OpenCamera(selectedId, new VideoCameraStateListener(this), _backgroundHandler);
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            private static Size ChooseVideoSize(Size[] choices, int targetWidth, int targetHeight)
+            {
+                if (choices == null || choices.Length == 0)
+                    return new Size(targetWidth, targetHeight);
+
+                return choices
+                    .OrderBy(s => Math.Abs(s.Width - targetWidth) + Math.Abs(s.Height - targetHeight))
+                    .ThenByDescending(s => (long)s.Width * s.Height)
+                    .First();
+            }
+
+            private void StartPreviewSession()
+            {
+                try
+                {
+                    if (_cameraDevice == null || !_textureView.IsAvailable)
+                        return;
+
+                    if (!SetupMediaRecorder())
+                        return;
+
+                    SurfaceTexture texture = _textureView.SurfaceTexture;
+                    if (texture == null)
+                        return;
+
+                    texture.SetDefaultBufferSize(_previewSize.Width, _previewSize.Height);
+                    _previewSurface?.Release();
+                    _previewSurface = new Surface(texture);
+
+                    _previewRequestBuilder = _cameraDevice.CreateCaptureRequest(CameraTemplate.Record);
+                    _previewRequestBuilder.AddTarget(_previewSurface);
+                    _previewRequestBuilder.AddTarget(_mediaRecorder.Surface);
+
+                    var outputs = new List<Surface> { _previewSurface, _mediaRecorder.Surface };
+
+                    #pragma warning disable CS0618
+                    _cameraDevice.CreateCaptureSession(
+                        outputs,
+                        new VideoCaptureSessionListener(this),
+                        _backgroundHandler);
+                    #pragma warning restore CS0618
+                }
+                catch (Exception)
+                {
+                    FinishWithResult(null);
+                }
+            }
+
+            private bool SetupMediaRecorder()
+            {
+                try
+                {
+                    ReleaseMediaRecorder();
+
+                    Directory.CreateDirectory(_photosDir);
+                    string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss_fff", CultureInfo.InvariantCulture);
+                    string fileName = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "VID_{0}_{1}p_{2}mbps.mp4",
+                        timestamp,
+                        _targetResolution,
+                        _bitrateMbps);
+                    _outputPath = Path.Combine(_photosDir, fileName);
+
+#pragma warning disable CA1422
+                    _mediaRecorder = Build.VERSION.SdkInt >= BuildVersionCodes.S
+                        ? new MediaRecorder(_activity)
+                        : new MediaRecorder();
+#pragma warning restore CA1422
+
+                    if (_recordAudio)
+                    {
+                        _mediaRecorder.SetAudioSource(AudioSource.Mic);
+                    }
+
+                    _mediaRecorder.SetVideoSource(VideoSource.Surface);
+                    _mediaRecorder.SetOutputFormat(OutputFormat.Mpeg4);
+                    if (_recordAudio)
+                    {
+                        _mediaRecorder.SetAudioEncoder(AudioEncoder.Aac);
+                        _mediaRecorder.SetAudioEncodingBitRate(128000);
+                        _mediaRecorder.SetAudioSamplingRate(44100);
+                    }
+
+                    _mediaRecorder.SetVideoEncoder(VideoEncoder.H264);
+                    _mediaRecorder.SetVideoSize(_videoSize.Width, _videoSize.Height);
+                    _mediaRecorder.SetVideoFrameRate(VideoFrameRate);
+                    _mediaRecorder.SetVideoEncodingBitRate(_bitrateMbps * 1_000_000);
+                    _mediaRecorder.SetOutputFile(_outputPath);
+                    _mediaRecorder.SetOrientationHint(GetVideoOrientationHint());
+                    _mediaRecorder.Prepare();
+                    return true;
+                }
+                catch (Exception)
+                {
+                    ReleaseMediaRecorder();
+                    return false;
+                }
+            }
+
+            private void ReleaseMediaRecorder()
+            {
+                if (_mediaRecorder == null)
+                    return;
+                try
+                {
+                    if (_isRecording)
+                        _mediaRecorder.Stop();
+                }
+                catch (Exception)
+                {
+                }
+
+                try { _mediaRecorder.Reset(); } catch (Exception) { }
+                try { _mediaRecorder.Release(); } catch (Exception) { }
+                _mediaRecorder = null;
+                _isRecording = false;
+            }
+
+            private void ApplyPreviewParameters()
+            {
+                try
+                {
+                    if (_captureSession == null || _previewRequestBuilder == null)
+                        return;
+
+                    _previewRequestBuilder.Set(
+                        CaptureRequest.ControlAfMode,
+                        (int)ControlAFMode.ContinuousVideo);
+                    _previewRequestBuilder.Set(
+                        CaptureRequest.ControlAeTargetFpsRange,
+                        new Range(VideoFrameRate, VideoFrameRate));
+
+                    if (_flashMode == "torch")
+                    {
+                        _previewRequestBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
+                        _previewRequestBuilder.Set(CaptureRequest.FlashMode, (int)global::Android.Hardware.Camera2.FlashMode.Torch);
+                    }
+                    else if (_flashMode == "on")
+                    {
+                        _previewRequestBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.OnAlwaysFlash);
+                        _previewRequestBuilder.Set(CaptureRequest.FlashMode, (int)global::Android.Hardware.Camera2.FlashMode.Off);
+                    }
+                    else if (_flashMode == "auto")
+                    {
+                        _previewRequestBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.OnAutoFlash);
+                        _previewRequestBuilder.Set(CaptureRequest.FlashMode, (int)global::Android.Hardware.Camera2.FlashMode.Off);
+                    }
+                    else
+                    {
+                        _previewRequestBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
+                        _previewRequestBuilder.Set(CaptureRequest.FlashMode, (int)global::Android.Hardware.Camera2.FlashMode.Off);
+                    }
+
+                    if (_sensorArraySize != null && _zoomLevel > 1.0f)
+                    {
+                        int cropW = (int)(_sensorArraySize.Width() / _zoomLevel);
+                        int cropH = (int)(_sensorArraySize.Height() / _zoomLevel);
+                        int cropX = (_sensorArraySize.Width() - cropW) / 2;
+                        int cropY = (_sensorArraySize.Height() - cropH) / 2;
+                        _previewRequestBuilder.Set(
+                            CaptureRequest.ScalerCropRegion,
+                            new Rect(cropX, cropY, cropX + cropW, cropY + cropH));
+                    }
+
+                    _captureSession.SetRepeatingRequest(_previewRequestBuilder.Build(), null, _backgroundHandler);
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            private int GetVideoOrientationHint()
+            {
+                int degrees = GetDisplayRotation() switch
+                {
+                    SurfaceOrientation.Rotation0 => 0,
+                    SurfaceOrientation.Rotation90 => 90,
+                    SurfaceOrientation.Rotation180 => 180,
+                    SurfaceOrientation.Rotation270 => 270,
+                    _ => 0,
+                };
+
+                if (_useFrontCamera)
+                    return (_sensorOrientation + degrees) % 360;
+                return (_sensorOrientation - degrees + 360) % 360;
+            }
+
+            private void ConfigureTransform(int viewWidth, int viewHeight)
+            {
+                if (_textureView == null || viewWidth <= 0 || viewHeight <= 0 || _previewSize == null)
+                    return;
+
+                try
+                {
+                    SurfaceOrientation rotation = GetDisplayRotation();
+                    var matrix = new Matrix();
+                    var viewRect = new RectF(0, 0, viewWidth, viewHeight);
+                    float centerX = viewRect.CenterX();
+                    float centerY = viewRect.CenterY();
+
+                    if (rotation == SurfaceOrientation.Rotation90 || rotation == SurfaceOrientation.Rotation270)
+                    {
+                        var bufferRect = new RectF(0, 0, _previewSize.Height, _previewSize.Width);
+                        bufferRect.Offset(centerX - bufferRect.CenterX(), centerY - bufferRect.CenterY());
+                        matrix.SetRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.Fill);
+                        float scale = Math.Max(
+                            (float)viewHeight / _previewSize.Height,
+                            (float)viewWidth / _previewSize.Width);
+                        matrix.PostScale(scale, scale, centerX, centerY);
+                        matrix.PostRotate(90 * ((int)rotation - 2), centerX, centerY);
+                    }
+                    else if (rotation == SurfaceOrientation.Rotation180)
+                    {
+                        matrix.PostRotate(180, centerX, centerY);
+                    }
+
+                    _textureView.SetTransform(matrix);
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            private SurfaceOrientation GetDisplayRotation()
+            {
+                try
+                {
+                    if (Build.VERSION.SdkInt >= BuildVersionCodes.R)
+                        return _activity.Display?.Rotation ?? SurfaceOrientation.Rotation0;
+#pragma warning disable CS0618
+                    return _activity.WindowManager?.DefaultDisplay?.Rotation ?? SurfaceOrientation.Rotation0;
+#pragma warning restore CS0618
+                }
+                catch (Exception)
+                {
+                    return SurfaceOrientation.Rotation0;
+                }
+            }
+
+            private void CloseCamera()
+            {
+                try
+                {
+                    _captureSession?.Close();
+                    _captureSession = null;
+                }
+                catch (Exception)
+                {
+                }
+
+                try
+                {
+                    _cameraDevice?.Close();
+                    _cameraDevice = null;
+                }
+                catch (Exception)
+                {
+                }
+
+                ReleaseMediaRecorder();
+
+                try
+                {
+                    _previewSurface?.Release();
+                    _previewSurface = null;
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            private void StartBackgroundThread()
+            {
+                if (_backgroundThread != null)
+                    return;
+                _backgroundThread = new HandlerThread("aNoteVideoCameraThread");
+                _backgroundThread.Start();
+                _backgroundHandler = new Handler(_backgroundThread.Looper);
+            }
+
+            private void StopBackgroundThread()
+            {
+                if (_backgroundThread == null)
+                    return;
+                try
+                {
+                    _backgroundThread.QuitSafely();
+                    _backgroundThread.Join(500);
+                }
+                catch (Exception)
+                {
+                }
+                _backgroundThread = null;
+                _backgroundHandler = null;
+            }
+
+            private static string SelectCameraId(CameraManager manager, bool wantFront)
+            {
+                string[] ids = manager.GetCameraIdList();
+                if (ids == null || ids.Length == 0)
+                    return null;
+
+                LensFacing targetFacing = wantFront ? LensFacing.Front : LensFacing.Back;
+                foreach (string id in ids)
+                {
+                    CameraCharacteristics chars = manager.GetCameraCharacteristics(id);
+                    var facing = chars.Get(CameraCharacteristics.LensFacing) as Java.Lang.Integer;
+                    if (facing != null && facing.IntValue() == (int)targetFacing)
+                        return id;
+                }
+                return ids[0];
+            }
+
+            private static string GetFlashLabel(string mode)
+            {
+                return mode switch
+                {
+                    "on" => "⚡ ON",
+                    "torch" => "🔦 TORCH",
+                    "off" => "⚡ OFF",
+                    _ => "⚡ AUTO",
+                };
+            }
+
+            private static TextView CreateHudPill(Activity context, string text, float density)
+            {
+                var tv = new TextView(context)
+                {
+                    Text = text,
+                    TextSize = 14f,
+                    Gravity = GravityFlags.Center,
+                };
+                tv.SetTextColor(Color.White);
+                int hPad = (int)(12 * density);
+                int vPad = (int)(6 * density);
+                tv.SetPadding(hPad, vPad, hPad, vPad);
+
+                var bg = new GradientDrawable();
+                bg.SetCornerRadius(8 * density);
+                bg.SetColor(Color.ParseColor("#33FFFFFF"));
+                bg.SetStroke((int)(1 * density), Color.ParseColor("#66FFFFFF"));
+                tv.Background = bg;
+                return tv;
+            }
+
+            private static global::Android.Views.View CreateSpacer(Context context)
+            {
+                return new global::Android.Views.View(context)
+                {
+                    LayoutParameters = new LinearLayout.LayoutParams(0, 1, 1f),
+                };
+            }
+
+            private class VideoCameraStateListener : CameraDevice.StateCallback
+            {
+                private readonly LiveVideoCameraDialog _dialog;
+
+                public VideoCameraStateListener(LiveVideoCameraDialog dialog) => _dialog = dialog;
+
+                public override void OnOpened(CameraDevice camera)
+                {
+                    _dialog._cameraDevice = camera;
+                    _dialog.StartPreviewSession();
+                }
+
+                public override void OnDisconnected(CameraDevice camera)
+                {
+                    camera.Close();
+                    _dialog._cameraDevice = null;
+                }
+
+                public override void OnError(CameraDevice camera, CameraError error)
+                {
+                    camera.Close();
+                    _dialog._cameraDevice = null;
+                }
+            }
+
+            private class VideoCaptureSessionListener : CameraCaptureSession.StateCallback
+            {
+                private readonly LiveVideoCameraDialog _dialog;
+
+                public VideoCaptureSessionListener(LiveVideoCameraDialog dialog) => _dialog = dialog;
+
+                public override void OnConfigured(CameraCaptureSession session)
+                {
+                    if (_dialog._cameraDevice == null)
+                        return;
+                    _dialog._captureSession = session;
+                    _dialog.ApplyPreviewParameters();
+                }
+
+                public override void OnConfigureFailed(CameraCaptureSession session)
+                {
+                    _dialog.FinishWithResult(null);
                 }
             }
         }

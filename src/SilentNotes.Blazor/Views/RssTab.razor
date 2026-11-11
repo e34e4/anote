@@ -26,6 +26,16 @@
 	.rss-row:active {
 		background-color: #121212;
 	}
+	.rss-row.selected {
+		background-color: rgba(36, 129, 204, 0.16);
+	}
+	.rss-selection-bar {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		align-items: center;
+		margin-bottom: 8px;
+	}
 	.rss-title-unread {
 		font-weight: 700;
 		color: #ffffff;
@@ -251,6 +261,16 @@
 		}
 		else
 		{
+			@if (ViewModel.HasArticleSelection)
+			{
+				<div class="rss-selection-bar">
+					<span>@ViewModel.SelectedArticleCount</span>
+					<button type="button" class="rss-btn" @onclick="DeleteSelectedArticlesAsync">@LanguageService["delete"]</button>
+					<button type="button" class="rss-btn" @onclick="SelectAllVisibleArticles">@LanguageService["list_select_all"]</button>
+					<button type="button" class="rss-btn" @onclick="ClearArticleSelection">@LanguageService["file_clear_selection"]</button>
+				</div>
+			}
+
 			@if (ViewModel.IsBusy)
 			{
 				<div class="d-flex justify-center mb-2">
@@ -260,7 +280,9 @@
 			<div class="rss-list">
 				@foreach (var article in ViewModel.VisibleArticles)
 				{
-					<div class="rss-row d-flex align-start gap-1" @key="article.ItemKey">
+					<div class="rss-row d-flex align-start gap-1 @(ViewModel.IsArticleSelected(article) ? "selected" : null)" @key="article.ItemKey">
+						<MudCheckBox T="bool" Dense="true" Value="@ViewModel.IsArticleSelected(article)"
+							ValueChanged="@((bool _) => ToggleArticleSelection(article))" @onclick:stopPropagation="true" Class="mt-1" />
 						<div class="flex-grow-1" @onclick="@(() => ViewModel.OpenArticleCommand.Execute(article))">
 							<div class="@article.TitleCssClass">@article.Title</div>
 							<div class="rss-meta">
@@ -341,6 +363,33 @@
 	private void OnViewModelStateChanged()
 	{
 		InvokeAsync(StateHasChanged);
+	}
+
+	private void ToggleArticleSelection(RssArticleViewModel article)
+	{
+		ViewModel.ToggleArticleSelection(article);
+		StateHasChanged();
+	}
+
+	private void SelectAllVisibleArticles()
+	{
+		ViewModel.SelectAllVisibleArticles();
+		StateHasChanged();
+	}
+
+	private void ClearArticleSelection()
+	{
+		ViewModel.ClearArticleSelection();
+		StateHasChanged();
+	}
+
+	private async Task DeleteSelectedArticlesAsync()
+	{
+		if (ViewModel.DeleteSelectedArticlesCommand is IAsyncRelayCommand asyncCommand)
+			await asyncCommand.ExecuteAsync(null);
+		else
+			ViewModel.DeleteSelectedArticlesCommand.Execute(null);
+		StateHasChanged();
 	}
 
 	private async Task RefreshAsync()

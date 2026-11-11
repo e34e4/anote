@@ -1,4 +1,5 @@
 @using MudBlazor
+@using SilentNotes.Models
 @using SilentNotes.Services
 @using SilentNotes.ViewModels
 @using SilentNotes.Workers
@@ -106,6 +107,13 @@
 		font-weight: 600;
 		margin-left: 4px;
 	}
+	.file-locations-bar {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		padding: 0 4px 8px 4px;
+		border-bottom: 1px solid #202020;
+	}
 </style>
 
 <div class="file-root">
@@ -144,6 +152,26 @@
 			Disabled="@(!ViewModel.IsConfigured || ViewModel.IsBusy)" OnClick="RefreshAsync" title="@LanguageService["file_refresh"]" />
 		<MudIconButton Icon="@Icons.Material.Filled.Settings" Size="Size.Small" Color="Color.Inherit"
 			OnClick="() => ViewModel.OpenSettingsCommand.Execute(null)" title="@LanguageService["file_settings"]" />
+	</div>
+
+	<div class="file-locations-bar">
+		<MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Color="Color.Inherit"
+			AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
+			title="@LanguageService["file_cloud_locations_menu"]">
+			<MudMenuItem OnClick="() => OpenCloudLocationTabAsync(null)">
+				@LanguageService["file_cloud_location_primary"]
+			</MudMenuItem>
+			@foreach (var location in ViewModel.ExtraCloudLocations)
+			{
+				if (location == null)
+				{
+					continue;
+				}
+				<MudMenuItem OnClick="() => OpenCloudLocationTabAsync(location.Id)">
+					@location.DisplayName
+				</MudMenuItem>
+			}
+		</MudMenu>
 	</div>
 
 	@if (ViewModel.HasSelection)
@@ -275,6 +303,50 @@
 				Variant="Variant.Outlined" />
 			<MudTextField T="string" @bind-Value="ViewModel.EditPassword" Label="@LanguageService["cloud_password"]"
 				InputType="InputType.Password" Variant="Variant.Outlined" />
+
+			<MudText Typo="Typo.subtitle2" Class="mt-4">@LanguageService["file_cloud_locations_title"]</MudText>
+			<MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">@LanguageService["file_cloud_locations_hint"]</MudText>
+			@foreach (var location in ViewModel.EditCloudLocations)
+			{
+				<MudPaper Class="pa-3 mb-2" Outlined="true">
+					<MudTextField T="string" @bind-Value="location.DisplayName" Label="@LanguageService["file_cloud_location_name"]"
+						Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
+					<MudSelect T="string" @bind-Value="location.ProviderId" Label="@LanguageService["file_cloud_provider"]"
+						Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2">
+						<MudSelectItem T="string" Value="@CloudFileLocationModel.ProviderWebdav">WebDAV</MudSelectItem>
+						<MudSelectItem T="string" Value="@CloudFileLocationModel.ProviderDropbox">Dropbox</MudSelectItem>
+						<MudSelectItem T="string" Value="@CloudFileLocationModel.ProviderGoogleDrive">Google Drive</MudSelectItem>
+						<MudSelectItem T="string" Value="@CloudFileLocationModel.ProviderOneDrive">OneDrive</MudSelectItem>
+						<MudSelectItem T="string" Value="@CloudFileLocationModel.ProviderMega">MEGA (coming soon)</MudSelectItem>
+					</MudSelect>
+					@if (string.Equals(location.ProviderId, CloudFileLocationModel.ProviderWebdav, StringComparison.OrdinalIgnoreCase))
+					{
+						<MudTextField T="string" @bind-Value="location.Url" Label="@LanguageService["file_webdav_url"]"
+							Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
+						<MudTextField T="string" @bind-Value="location.RemoteFolder" Label="@LanguageService["file_webdav_folder"]"
+							Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
+						<MudTextField T="string" @bind-Value="location.Username" Label="@LanguageService["cloud_username"]"
+							Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
+						<MudTextField T="string" @bind-Value="location.Password" Label="@LanguageService["cloud_password"]"
+							InputType="InputType.Password" Variant="Variant.Outlined" Margin="Margin.Dense" />
+					}
+					else if (!string.Equals(location.ProviderId, CloudFileLocationModel.ProviderMega, StringComparison.OrdinalIgnoreCase))
+					{
+						<MudTextField T="string" @bind-Value="location.RemoteFolder" Label="@LanguageService["file_cloud_remote_folder"]"
+							Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
+						<MudSwitch @bind-Value="location.UseRepositoryCredentials" Color="Color.Tertiary"
+							Label="@LanguageService["file_cloud_use_repo_credentials"]" />
+					}
+					else
+					{
+						<MudAlert Severity="Severity.Info" Dense="true">@LanguageService["file_cloud_mega_coming_soon"]</MudAlert>
+					}
+					<MudButton Size="Size.Small" Color="Color.Error" Class="mt-2"
+						OnClick="() => ViewModel.RemoveExtraCloudLocation(location)">@LanguageService["delete"]</MudButton>
+				</MudPaper>
+			}
+			<MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+				OnClick="() => ViewModel.AddExtraCloudLocation()">@LanguageService["file_cloud_add_location"]</MudButton>
 
 			<div class="d-flex justify-end gap-2 mt-2">
 				<button class="file-btn" @onclick="() => ViewModel.CloseOverlayCommand.Execute(null)">@LanguageService["cancel"]</button>
@@ -440,6 +512,12 @@
 	private async Task SaveSettingsAsync()
 	{
 		await ViewModel.SaveSettingsAsync();
+		StateHasChanged();
+	}
+
+	private async Task OpenCloudLocationTabAsync(string locationId)
+	{
+		await ViewModel.OpenCloudLocationAsNewTabAsync(locationId ?? string.Empty);
 		StateHasChanged();
 	}
 }

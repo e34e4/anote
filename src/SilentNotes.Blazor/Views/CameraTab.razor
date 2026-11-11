@@ -244,10 +244,32 @@
 			</div>
 		</div>
 
+		<div class="cam-card">
+			<div class="cam-section-label">@LanguageService["camera_video_options"]</div>
+			<div class="cam-format-row">
+				<button class="cam-fmt-btn @(ViewModel.VideoResolution == "720" ? "active" : null)" @onclick="@(() => ViewModel.SelectVideoResolution("720"))">720p</button>
+				<button class="cam-fmt-btn @(ViewModel.VideoResolution == "1080" ? "active" : null)" @onclick="@(() => ViewModel.SelectVideoResolution("1080"))">1080p</button>
+			</div>
+			<div class="cam-section-label" style="margin-top:4px;">@LanguageService["camera_video_bitrate_label"]</div>
+			<div class="cam-presets-row">
+				@foreach (int mbps in CameraViewModel.VideoBitratePresets)
+				{
+					<button class="cam-preset-chip @(ViewModel.VideoBitrateMbps == mbps ? "active" : null)" @onclick="@(() => ViewModel.SelectVideoBitrate(mbps))">@(mbps) Mbps</button>
+				}
+			</div>
+			<div class="cam-options-row" style="border-top:none; padding-top:0;">
+				<MudSwitch T="bool" @bind-Value="ViewModel.VideoRecordAudio" Color="Color.Primary" Label="@LanguageService["camera_video_record_sound"]" />
+			</div>
+		</div>
+
 		<div class="cam-actions-row">
 			<button class="cam-shutter-btn" disabled="@ViewModel.IsBusy" @onclick="TakePhotoAsync">
 				<MudIcon Icon="@Icons.Material.Filled.PhotoCamera" />
 				<span>@LanguageService["camera_take_photo"] (@ViewModel.PhotoFormat.ToUpperInvariant() @(ViewModel.PhotoQuality)%)</span>
+			</button>
+			<button class="cam-secondary-btn" disabled="@ViewModel.IsBusy" @onclick="RecordVideoAsync" title="@LanguageService["camera_video"]">
+				<MudIcon Icon="@Icons.Material.Filled.Videocam" Size="Size.Small" />
+				<span>@LanguageService["camera_video"] (@ViewModel.VideoResolutionLabel · @(ViewModel.VideoBitrateMbps) Mbps)</span>
 			</button>
 			<button class="cam-secondary-btn" disabled="@ViewModel.IsBusy" @onclick="TakeSystemPhotoAsync" title="@LanguageService["camera_system_camera"]">
 				<MudIcon Icon="@Icons.Material.Filled.CameraAlt" Size="Size.Small" />
@@ -291,7 +313,7 @@
 						else
 						{
 							<div class="cam-thumb" style="display:flex;align-items:center;justify-content:center;" @onclick="() => OpenPhotoAsync(item)">
-								<MudIcon Icon="@Icons.Material.Filled.Image" Color="Color.Secondary" />
+								<MudIcon Icon="@(item.IsVideo ? Icons.Material.Filled.Movie : Icons.Material.Filled.Image)" Color="Color.Secondary" />
 							</div>
 						}
 
@@ -308,11 +330,14 @@
 						</div>
 
 						<AskAiButton Subject="@item.DisplayTitle" ContextText="@($"{item.DisplayTitle}\n{item.FormatBadge} {item.QualityText}\n{item.DimensionsText}\n{item.SizeText}\n{item.DateText}")" />
-						<MudIconButton Icon="@Icons.Material.Filled.Transform" Size="Size.Small" OnClick="() => ReencodePhotoAsync(item)" title="@LanguageService["camera_reencode"]" />
+						@if (!item.IsVideo)
+						{
+							<MudIconButton Icon="@Icons.Material.Filled.Transform" Size="Size.Small" OnClick="() => ReencodePhotoAsync(item)" title="@LanguageService["camera_reencode"]" />
+							<MudIconButton Icon="@Icons.Material.Filled.Crop" Size="Size.Small" OnClick="() => CropPhotoAsync(item)" title="@LanguageService["file_crop"]" />
+						}
 						<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => ViewModel.StartRenameCommand.Execute(item)" title="@LanguageService["camera_rename"]" />
 						<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="() => SaveToGalleryAsync(item)" title="@LanguageService["camera_save_gallery"]" />
 						<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small" OnClick="() => SaveToWebdavAsync(item)" title="@LanguageService["webdav_quick_save"]" />
-						<MudIconButton Icon="@Icons.Material.Filled.Crop" Size="Size.Small" OnClick="() => CropPhotoAsync(item)" title="@LanguageService["file_crop"]" />
 						<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" OnClick="() => SharePhotoAsync(item)" title="@LanguageService["share"]" />
 						<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => DeletePhotoAsync(item)" title="@LanguageService["camera_delete"]" />
 					}
@@ -347,6 +372,12 @@
 	private async Task TakePhotoAsync()
 	{
 		await ViewModel.TakePhotoAsync();
+		StateHasChanged();
+	}
+
+	private async Task RecordVideoAsync()
+	{
+		await ViewModel.RecordVideoAsync();
 		StateHasChanged();
 	}
 

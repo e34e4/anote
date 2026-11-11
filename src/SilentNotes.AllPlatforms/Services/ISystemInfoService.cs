@@ -71,7 +71,7 @@ namespace SilentNotes.Services
         /// <summary>
         /// Dumps the current logcat buffer to a local snapshot file and returns parsed lines
         /// for searching on the System → Logcat tab.
-        /// Prefers <c>/sdcard/abro/logcat</c> when writable.
+        /// Prefers <c>anote/abro/logcat</c> under external storage when writable.
         /// </summary>
         Task<SystemLogcatSnapshot> CaptureLogcatAsync();
 

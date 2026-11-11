@@ -1,11 +1,11 @@
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from 'prosemirror-state'
-import { Decoration, DecorationSet, Decoration } from 'prosemirror-view'
+import { Decoration, DecorationSet } from 'prosemirror-view'
 import type { Node as ProsemirrorNode } from 'prosemirror-model'
 
 /**
- * Shows whitespace glyphs (· for spaces, → for tabs, ↵ for line ends)
- * in the TipTap/ProseMirror note editor, matching the reader text editor.
+ * Shows whitespace glyphs (· for spaces, → for tabs).
+ * End-of-line markers are intentionally not shown.
  */
 export const WhitespaceMarks = Extension.create({
   name: 'whitespaceMarks',
@@ -24,7 +24,7 @@ export const WhitespaceMarks = Extension.create({
   },
 })
 
-function buildWhitespaceDecorations(doc: ProsemirrorNode): Decoration {
+function buildWhitespaceDecorations(doc: ProsemirrorNode): DecorationSet {
   const decorations: Decoration[] = []
 
   doc.descendants((node, pos) => {
@@ -38,30 +38,8 @@ function buildWhitespaceDecorations(doc: ProsemirrorNode): Decoration {
           decorations.push(Decoration.inline(pos + i, pos + i + 1, { class: 'pm-tab' }))
         }
       }
-      return
-    }
-
-    if (node.type.name === 'hardBreak') {
-      decorations.push(eolWidget(pos + 1))
-      return
-    }
-
-    // End-of-block marker (paragraph, heading, list item textblock, etc.)
-    if (node.isTextblock) {
-      const endPos = pos + node.nodeSize - 1
-      decorations.push(eolWidget(endPos))
     }
   })
 
   return DecorationSet.create(doc, decorations)
-}
-
-function eolWidget(pos: number): Decoration {
-  return Decoration.widget(pos, () => {
-    const span = document.createElement('span')
-    span.className = 'pm-eol'
-    span.textContent = '↵'
-    span.setAttribute('contenteditable', 'false')
-    return span
-  }, { side: 1, key: 'eol-' + pos })
 }

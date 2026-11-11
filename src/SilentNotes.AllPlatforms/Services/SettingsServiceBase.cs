@@ -208,6 +208,21 @@ namespace SilentNotes.Services
             settings.SerializeableFileWebdavPassword = string.IsNullOrEmpty(settings.FileWebdavPassword)
                 ? null
                 : EncryptProperty(settings.FileWebdavPassword);
+            settings.SerializeableSocks5Password = string.IsNullOrEmpty(settings.Socks5Password)
+                ? null
+                : EncryptProperty(settings.Socks5Password);
+            if (settings.CloudFileLocations != null)
+            {
+                foreach (CloudFileLocationModel location in settings.CloudFileLocations)
+                {
+                    if (location == null)
+                        continue;
+                    location.SerializeablePassword = string.IsNullOrEmpty(location.Password)
+                        ? null
+                        : EncryptProperty(location.Password);
+                    location.CloudCredentials?.EncryptBeforeSerialization(EncryptProperty);
+                }
+            }
         }
 
         /// <summary>
@@ -222,6 +237,19 @@ namespace SilentNotes.Services
                 settings.BookySyncPassword = DecryptProperty(settings.SerializeableBookySyncPassword);
             if (!string.IsNullOrEmpty(settings.SerializeableFileWebdavPassword))
                 settings.FileWebdavPassword = DecryptProperty(settings.SerializeableFileWebdavPassword);
+            if (!string.IsNullOrEmpty(settings.SerializeableSocks5Password))
+                settings.Socks5Password = DecryptProperty(settings.SerializeableSocks5Password);
+            if (settings.CloudFileLocations != null)
+            {
+                foreach (CloudFileLocationModel location in settings.CloudFileLocations)
+                {
+                    if (location == null)
+                        continue;
+                    if (!string.IsNullOrEmpty(location.SerializeablePassword))
+                        location.Password = DecryptProperty(location.SerializeablePassword);
+                    location.CloudCredentials?.DecryptAfterDeserialization(DecryptProperty);
+                }
+            }
 
             if (!settings.RememberLastTagFilter)
                 settings.FilterTags = null;

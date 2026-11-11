@@ -6,12 +6,13 @@
 using System.IO;
 using Microsoft.Maui.Storage;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.Platforms.Services
 {
     /// <summary>
     /// Windows implementation of <see cref="ITelegramService"/>.
-    /// Store under AppData/telegram; downloads/sessions under AppData/tg.
+    /// Store under AppData/telegram; downloads/sessions under <see cref="AnotePaths.Tg"/>.
     /// </summary>
     internal class TelegramService : TelegramServiceBase
     {
@@ -30,10 +31,7 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
-        protected override string GetExternalTgRoot()
-        {
-            return Path.Combine(FileSystem.Current.AppDataDirectory, "tg");
-        }
+        protected override string GetExternalTgRoot() => AnotePaths.Tg;
 
         /// <inheritdoc/>
         protected override void ShowIncomingMessageNotification(string title, string body, string chatKey, bool silent)

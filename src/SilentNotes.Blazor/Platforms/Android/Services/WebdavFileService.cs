@@ -10,6 +10,7 @@ using Android.Content;
 using Android.OS;
 using Java.Net;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 using Path = System.IO.Path;
 
 namespace SilentNotes.Platforms.Services
@@ -20,7 +21,6 @@ namespace SilentNotes.Platforms.Services
     internal class WebdavFileService : WebdavFileServiceBase
     {
         private const string ShareFolder = "clipboard";
-        private const string DownloadsSubFolder = "aNote";
 
         private readonly IAppContextService _appContext;
 
@@ -40,38 +40,11 @@ namespace SilentNotes.Platforms.Services
                         return null;
 
                     string safeName = Path.GetFileName(fileName);
-                    string mimeType = URLConnection.GuessContentTypeFromName(safeName) ?? "application/octet-stream";
-                    Context context = _appContext.Context;
-
-                    if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
-                    {
-                        var values = new ContentValues();
-                        values.Put("_display_name", safeName);
-                        values.Put("mime_type", mimeType);
-                        values.Put("relative_path", "Download/" + DownloadsSubFolder);
-
-                        global::Android.Net.Uri uri = context.ContentResolver.Insert(
-                            global::Android.Provider.MediaStore.Downloads.ExternalContentUri, values);
-                        if (uri == null)
-                            return null;
-
-                        using (Stream output = context.ContentResolver.OpenOutputStream(uri))
-                        {
-                            output.Write(content, 0, content.Length);
-                        }
-                        return "Download/" + DownloadsSubFolder + "/" + safeName;
-                    }
-                    else
-                    {
-                        string dir = Path.Combine(
-                            global::Android.OS.Environment.GetExternalStoragePublicDirectory(
-                                global::Android.OS.Environment.DirectoryDownloads).AbsolutePath,
-                            DownloadsSubFolder);
-                        Directory.CreateDirectory(dir);
-                        string targetPath = Path.Combine(dir, safeName);
-                        File.WriteAllBytes(targetPath, content);
-                        return targetPath;
-                    }
+                    string dir = AnotePaths.Down;
+                    Directory.CreateDirectory(dir);
+                    string targetPath = Path.Combine(dir, safeName);
+                    File.WriteAllBytes(targetPath, content);
+                    return targetPath;
                 }
                 catch (Exception)
                 {

@@ -17,6 +17,7 @@ using Debug = System.Diagnostics.Debug;
 using Microsoft.Extensions.DependencyInjection;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.Platforms.Services
 {
@@ -39,6 +40,13 @@ namespace SilentNotes.Platforms.Services
             Os = SilentNotes.Services.OperatingSystem.Android;
             _appContext = appContextService;
             _messengerService = messengerService;
+            try
+            {
+                AnotePaths.EnsureDirectories();
+            }
+            catch (Exception)
+            {
+            }
         }
 
         /// <inheritdoc/>
@@ -250,6 +258,19 @@ namespace SilentNotes.Platforms.Services
             try
             {
                 return FloatingButtonAccessibilityService.Instance?.ShowImageOverlay(path, title) == true;
+            }
+            catch (System.Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <inheritdoc/>
+        bool IFloatingButtonService.TryShowFloatingVideo(string path, string title)
+        {
+            try
+            {
+                return FloatingButtonAccessibilityService.Instance?.ShowVideoOverlay(path, title) == true;
             }
             catch (System.Exception)
             {

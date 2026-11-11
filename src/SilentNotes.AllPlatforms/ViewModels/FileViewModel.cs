@@ -14,6 +14,7 @@ using CommunityToolkit.Mvvm.Input;
 using SilentNotes.Models;
 using SilentNotes.Services;
 using SilentNotes.Workers;
+using VanillaCloudStorageClient;
 
 namespace SilentNotes.ViewModels
 {
@@ -28,6 +29,7 @@ namespace SilentNotes.ViewModels
         private readonly ILanguageService _languageService;
         private readonly IFeedbackService _feedbackService;
         private readonly IImageEditorService _imageEditorService;
+        private readonly ICloudStorageClientFactory _cloudStorageClientFactory;
         private readonly HashSet<string> _selectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         private List<WebdavFileItemViewModel> _items = new List<WebdavFileItemViewModel>();
@@ -48,6 +50,11 @@ namespace SilentNotes.ViewModels
         private string _editFolder;
         private string _editUsername;
         private string _editPassword;
+        private List<CloudFileLocationModel> _editCloudLocations = new List<CloudFileLocationModel>();
+        private string _activeLocationId = CloudFileLocationModel.PrimaryLocationId;
+        private bool _useCloudClient;
+        private string _effectiveCloudStorageId;
+        private CloudStorageCredentials _cloudCredentials;
 
         public FileViewModel(
             IWebdavFileService webdavService,
@@ -55,7 +62,8 @@ namespace SilentNotes.ViewModels
             IFilePickerService filePickerService,
             ILanguageService languageService,
             IFeedbackService feedbackService,
-            IImageEditorService imageEditorService = null)
+            IImageEditorService imageEditorService = null,
+            ICloudStorageClientFactory cloudStorageClientFactory = null)
         {
             _webdavService = webdavService;
             _settingsService = settingsService;
@@ -63,6 +71,7 @@ namespace SilentNotes.ViewModels
             _languageService = languageService;
             _feedbackService = feedbackService;
             _imageEditorService = imageEditorService;
+            _cloudStorageClientFactory = cloudStorageClientFactory;
 
             LoadCredentialsFromSettings();
             LoadPathTabsFromSettings();
@@ -112,8 +121,19 @@ namespace SilentNotes.ViewModels
         /// <summary>Gets whether any items are selected.</summary>
         public bool HasSelection => _selectedNames.Count > 0;
 
-        /// <summary>Gets a value indicating whether WebDAV server URL is configured.</summary>
-        public bool IsConfigured => !string.IsNullOrWhiteSpace(EffectiveUrl);
+        /// <summary>Gets a value indicating whether the active storage location is configured.</summary>
+        public bool IsConfigured
+        {
+            get
+            {
+                if (_useCloudClient)
+                    return _cloudCredentials != null;
+                if (!string.IsNullOrWhiteSpace(EffectiveUrl))
+                    return true;
+                CloudFileLocationModel location = FindLocationById(_activeLocationId);
+                return location != null && location.IsMegaStub;
+            }
+        }
 
         /// <summary>Gets or sets a value indicating whether a network operation is in progress.</summary>
         public bool IsBusy
@@ -217,6 +237,14 @@ namespace SilentNotes.ViewModels
         /// <summary>Gets the active path session index.</summary>
         public int ActivePathTabIndex => _activePathTabIndex;
 
+        /// <summary>Gets extra cloud locations configured in settings (excludes the primary WebDAV).</summary>
+        public IReadOnlyList<CloudFileLocationModel> ExtraCloudLocations =>
+            _settingsService.LoadSettingsOrDefault().CloudFileLocations
+            ?? new List<CloudFileLocationModel>();
+
+        /// <summary>Gets editable extra cloud locations while the settings overlay is open.</summary>
+        public IList<CloudFileLocationModel> EditCloudLocations => _editCloudLocations;
+
         public string EditUrl
         {
             get => _editUrl;
@@ -273,7 +301,12 @@ namespace SilentNotes.ViewModels
             EditFolder = EffectiveFolder;
             EditUsername = EffectiveUsername;
             EditPassword = EffectivePassword;
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            _editCloudLocations = settings.CloudFileLocations != null
+                ? settings.CloudFileLocations.Select(CloneCloudLocation).ToList()
+                : new List<CloudFileLocationModel>();
             IsSettingsOpen = true;
+            OnPropertyChanged(nameof(EditCloudLocations), nameof(ExtraCloudLocations));
         }
 
         public async Task SaveSettingsAsync()
@@ -283,6 +316,10 @@ namespace SilentNotes.ViewModels
             settings.FileWebdavFolder = (EditFolder ?? string.Empty).Trim().Trim('/');
             settings.FileWebdavUsername = (EditUsername ?? string.Empty).Trim();
             settings.FileWebdavPassword = EditPassword ?? string.Empty;
+            settings.CloudFileLocations = _editCloudLocations
+                .Where(l => l != null && !string.IsNullOrWhiteSpace(l.DisplayName))
+                .Select(CloneCloudLocation)
+                .ToList();
             _settingsService.TrySaveSettingsToLocalDevice(settings);
 
             LoadCredentialsFromSettings();
@@ -310,10 +347,46 @@ namespace SilentNotes.ViewModels
             LastError = null;
             try
             {
-                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
-                IReadOnlyList<WebdavFileItemModel> list = await _webdavService.ListDirectoryAsync(
-                    EffectiveUrl, remoteFolder, EffectiveUsername, EffectivePassword);
-                _items = list.Select(m => new WebdavFileItemViewModel(m)).ToList();
+                if (_activeLocationId != CloudFileLocationModel.PrimaryLocationId)
+                {
+                    CloudFileLocationModel location = FindLocationById(_activeLocationId);
+                    if (location != null && location.IsMegaStub)
+                    {
+                        LastError = _languageService["file_cloud_mega_coming_soon"];
+                        _items.Clear();
+                        return;
+                    }
+                }
+
+                if (_useCloudClient)
+                {
+                    ICloudStorageClient client = _cloudStorageClientFactory?.GetByKey(_effectiveCloudStorageId);
+                    CloudStorageCredentials credentials = BuildCloudCredentialsForList();
+                    if (client == null || credentials == null)
+                    {
+                        LastError = _languageService["file_cloud_oauth_required"];
+                        _items.Clear();
+                        return;
+                    }
+
+                    List<string> names = await client.ListFileNamesAsync(credentials);
+                    _items = names
+                        .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                        .Select(n => new WebdavFileItemViewModel(new WebdavFileItemModel
+                        {
+                            Name = n,
+                            IsDirectory = false,
+                            SizeBytes = 0,
+                        }))
+                        .ToList();
+                }
+                else
+                {
+                    string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
+                    IReadOnlyList<WebdavFileItemModel> list = await _webdavService.ListDirectoryAsync(
+                        EffectiveUrl, remoteFolder, EffectiveUsername, EffectivePassword);
+                    _items = list.Select(m => new WebdavFileItemViewModel(m)).ToList();
+                }
                 _isLoadedOnce = true;
             }
             catch (Exception ex)
@@ -472,6 +545,7 @@ namespace SilentNotes.ViewModels
             {
                 Path = _currentSubPath ?? string.Empty,
                 Label = MakePathLabel(_currentSubPath),
+                LocationId = _activeLocationId ?? CloudFileLocationModel.PrimaryLocationId,
             });
             _activePathTabIndex = _pathTabs.Count - 1;
             PersistPathTabs();
@@ -517,9 +591,7 @@ namespace SilentNotes.ViewModels
             LastError = null;
             try
             {
-                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
-                byte[] bytes = await _webdavService.DownloadFileAsync(
-                    EffectiveUrl, remoteFolder, item.Name, EffectiveUsername, EffectivePassword);
+                byte[] bytes = await DownloadFileBytesAsync(item.Name);
 
                 string savedPath = await _webdavService.SaveDownloadedFileAsync(item.Name, bytes);
                 if (!string.IsNullOrEmpty(savedPath))
@@ -547,9 +619,7 @@ namespace SilentNotes.ViewModels
             if (item == null || item.IsDirectory)
                 return null;
 
-            string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
-            byte[] bytes = await _webdavService.DownloadFileAsync(
-                EffectiveUrl, remoteFolder, item.Name, EffectiveUsername, EffectivePassword);
+            byte[] bytes = await DownloadFileBytesAsync(item.Name);
 
             if (AbroAiAskText.TryDecodeText(bytes, out string text))
                 return text;
@@ -567,9 +637,7 @@ namespace SilentNotes.ViewModels
             LastError = null;
             try
             {
-                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
-                byte[] bytes = await _webdavService.DownloadFileAsync(
-                    EffectiveUrl, remoteFolder, item.Name, EffectiveUsername, EffectivePassword);
+                byte[] bytes = await DownloadFileBytesAsync(item.Name);
                 await _webdavService.ShareDownloadedFileAsync(item.Name, bytes);
             }
             catch (Exception ex)
@@ -814,9 +882,65 @@ namespace SilentNotes.ViewModels
             }
         }
 
+        /// <summary>Opens a configured storage location as a new path tab at its root folder.</summary>
+        public async Task OpenCloudLocationAsNewTabAsync(string locationId)
+        {
+            SaveCurrentPathToActiveTab();
+            string label = ResolveLocationLabel(locationId);
+            _pathTabs.Add(new PathTabSessionModel
+            {
+                LocationId = locationId ?? CloudFileLocationModel.PrimaryLocationId,
+                Path = string.Empty,
+                Label = label,
+            });
+            _activePathTabIndex = _pathTabs.Count - 1;
+            PersistPathTabs();
+            await ApplyActivePathTabAsync();
+        }
+
+        /// <summary>Adds a blank extra cloud location row in the settings overlay.</summary>
+        public void AddExtraCloudLocation()
+        {
+            _editCloudLocations.Add(new CloudFileLocationModel
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                DisplayName = _languageService["file_cloud_new_location"],
+                ProviderId = CloudFileLocationModel.ProviderWebdav,
+            });
+            OnPropertyChanged(nameof(EditCloudLocations));
+        }
+
+        /// <summary>Removes an extra cloud location row from the settings overlay.</summary>
+        public void RemoveExtraCloudLocation(CloudFileLocationModel location)
+        {
+            if (location == null)
+                return;
+            _editCloudLocations.Remove(location);
+            OnPropertyChanged(nameof(EditCloudLocations));
+        }
+
         private void LoadCredentialsFromSettings()
         {
+            _useCloudClient = false;
+            _effectiveCloudStorageId = null;
+            _cloudCredentials = null;
+
             SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            string locationId = _activeLocationId ?? CloudFileLocationModel.PrimaryLocationId;
+
+            if (!string.IsNullOrEmpty(locationId) && !string.Equals(locationId, CloudFileLocationModel.PrimaryLocationId, StringComparison.Ordinal))
+            {
+                CloudFileLocationModel location = FindLocationById(locationId);
+                if (location == null)
+                {
+                    ClearEffectiveCredentials();
+                    return;
+                }
+
+                ApplyCloudFileLocation(settings, location);
+                return;
+            }
+
             if (!string.IsNullOrWhiteSpace(settings.FileWebdavUrl))
             {
                 EffectiveUrl = settings.FileWebdavUrl;
@@ -842,11 +966,177 @@ namespace SilentNotes.ViewModels
             }
             else
             {
+                ClearEffectiveCredentials();
+            }
+        }
+
+        private void ApplyCloudFileLocation(SettingsModel settings, CloudFileLocationModel location)
+        {
+            if (location.IsMegaStub)
+            {
+                ClearEffectiveCredentials();
+                return;
+            }
+
+            if (IsOAuthProvider(location.ProviderId))
+            {
+                CloudStorageCredentials credentials = ResolveOAuthCredentials(settings, location);
+                if (credentials == null || _cloudStorageClientFactory == null)
+                {
+                    ClearEffectiveCredentials();
+                    return;
+                }
+
+                _useCloudClient = true;
+                _effectiveCloudStorageId = MapProviderToCloudStorageId(location.ProviderId);
+                _cloudCredentials = credentials;
                 EffectiveUrl = string.Empty;
-                EffectiveFolder = string.Empty;
+                EffectiveFolder = location.RemoteFolder ?? string.Empty;
                 EffectiveUsername = string.Empty;
                 EffectivePassword = string.Empty;
+                return;
             }
+
+            EffectiveUrl = location.Url ?? string.Empty;
+            EffectiveFolder = location.RemoteFolder ?? string.Empty;
+            EffectiveUsername = location.Username ?? string.Empty;
+            EffectivePassword = location.Password ?? string.Empty;
+        }
+
+        private static bool IsOAuthProvider(string providerId)
+        {
+            return string.Equals(providerId, CloudFileLocationModel.ProviderDropbox, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(providerId, CloudFileLocationModel.ProviderGoogleDrive, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(providerId, CloudFileLocationModel.ProviderOneDrive, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string MapProviderToCloudStorageId(string providerId)
+        {
+            if (string.Equals(providerId, CloudFileLocationModel.ProviderDropbox, StringComparison.OrdinalIgnoreCase))
+                return CloudStorageClientFactory.CloudStorageIdDropbox;
+            if (string.Equals(providerId, CloudFileLocationModel.ProviderGoogleDrive, StringComparison.OrdinalIgnoreCase))
+                return CloudStorageClientFactory.CloudStorageIdGoogleDrive;
+            if (string.Equals(providerId, CloudFileLocationModel.ProviderOneDrive, StringComparison.OrdinalIgnoreCase))
+                return CloudStorageClientFactory.CloudStorageIdOneDrive;
+            return providerId;
+        }
+
+        private CloudStorageCredentials ResolveOAuthCredentials(SettingsModel settings, CloudFileLocationModel location)
+        {
+            SerializeableCloudStorageCredentials serialized = null;
+            if (location.CloudCredentials != null)
+                serialized = location.CloudCredentials;
+            else if (location.UseRepositoryCredentials && settings.Credentials != null
+                && string.Equals(settings.Credentials.CloudStorageId, MapProviderToCloudStorageId(location.ProviderId), StringComparison.OrdinalIgnoreCase))
+                serialized = settings.Credentials;
+
+            if (serialized == null)
+                return null;
+
+            return new CloudStorageCredentials
+            {
+                CloudStorageId = serialized.CloudStorageId,
+                Token = serialized.Token,
+                Username = serialized.Username,
+                UnprotectedPassword = serialized.UnprotectedPassword,
+                Url = CombinePaths(location.RemoteFolder, _currentSubPath),
+                Secure = serialized.Secure,
+                AcceptInvalidCertificate = serialized.AcceptInvalidCertificate,
+            };
+        }
+
+        private CloudStorageCredentials BuildCloudCredentialsForList()
+        {
+            if (_cloudCredentials == null)
+                return null;
+
+            return new CloudStorageCredentials
+            {
+                CloudStorageId = _cloudCredentials.CloudStorageId,
+                Token = _cloudCredentials.Token,
+                Username = _cloudCredentials.Username,
+                UnprotectedPassword = _cloudCredentials.UnprotectedPassword,
+                Url = CombinePaths(EffectiveFolder, _currentSubPath),
+                Secure = _cloudCredentials.Secure,
+                AcceptInvalidCertificate = _cloudCredentials.AcceptInvalidCertificate,
+            };
+        }
+
+        private async Task<byte[]> DownloadFileBytesAsync(string fileName)
+        {
+            if (_useCloudClient)
+            {
+                ICloudStorageClient client = _cloudStorageClientFactory?.GetByKey(_effectiveCloudStorageId);
+                CloudStorageCredentials credentials = BuildCloudCredentialsForList();
+                if (client == null || credentials == null)
+                    throw new InvalidOperationException(_languageService["file_cloud_oauth_required"]);
+                return await client.DownloadFileAsync(fileName, credentials);
+            }
+
+            string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
+            return await _webdavService.DownloadFileAsync(
+                EffectiveUrl, remoteFolder, fileName, EffectiveUsername, EffectivePassword);
+        }
+
+        private void ClearEffectiveCredentials()
+        {
+            EffectiveUrl = string.Empty;
+            EffectiveFolder = string.Empty;
+            EffectiveUsername = string.Empty;
+            EffectivePassword = string.Empty;
+        }
+
+        private CloudFileLocationModel FindLocationById(string locationId)
+        {
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            if (settings.CloudFileLocations == null)
+                return null;
+            return settings.CloudFileLocations.FirstOrDefault(l =>
+                l != null && string.Equals(l.Id, locationId, StringComparison.Ordinal));
+        }
+
+        private string ResolveLocationLabel(string locationId)
+        {
+            if (string.IsNullOrEmpty(locationId) || string.Equals(locationId, CloudFileLocationModel.PrimaryLocationId, StringComparison.Ordinal))
+                return _languageService["file_cloud_location_primary"];
+
+            CloudFileLocationModel location = FindLocationById(locationId);
+            if (location != null && !string.IsNullOrWhiteSpace(location.DisplayName))
+                return location.DisplayName;
+            return locationId;
+        }
+
+        private static CloudFileLocationModel CloneCloudLocation(CloudFileLocationModel source)
+        {
+            if (source == null)
+                return null;
+
+            var clone = new CloudFileLocationModel
+            {
+                Id = string.IsNullOrWhiteSpace(source.Id) ? Guid.NewGuid().ToString("N") : source.Id,
+                DisplayName = source.DisplayName,
+                ProviderId = source.ProviderId,
+                Url = source.Url,
+                RemoteFolder = source.RemoteFolder,
+                Username = source.Username,
+                Password = source.Password,
+                UseRepositoryCredentials = source.UseRepositoryCredentials,
+            };
+            if (source.CloudCredentials != null)
+            {
+                clone.CloudCredentials = new SerializeableCloudStorageCredentials
+                {
+                    CloudStorageId = source.CloudCredentials.CloudStorageId,
+                    Token = source.CloudCredentials.Token,
+                    Username = source.CloudCredentials.Username,
+                    UnprotectedPassword = source.CloudCredentials.UnprotectedPassword,
+                    Url = source.CloudCredentials.Url,
+                    Secure = source.CloudCredentials.Secure,
+                    AcceptInvalidCertificate = source.CloudCredentials.AcceptInvalidCertificate,
+                };
+            }
+
+            return clone;
         }
 
         private static string CombinePaths(string first, string second)
@@ -868,7 +1158,9 @@ namespace SilentNotes.ViewModels
                 : new List<PathTabSessionModel> { new PathTabSessionModel { Path = string.Empty, Label = "/" } };
             _activePathTabIndex = Math.Clamp(settings.FilePathTabIndex, 0, _pathTabs.Count - 1);
             _currentSubPath = _pathTabs[_activePathTabIndex].Path ?? string.Empty;
-            OnPropertyChanged(nameof(PathTabs), nameof(ActivePathTabIndex), nameof(CurrentPathDisplay), nameof(CanNavigateUp));
+            _activeLocationId = _pathTabs[_activePathTabIndex].LocationId ?? CloudFileLocationModel.PrimaryLocationId;
+            LoadCredentialsFromSettings();
+            OnPropertyChanged(nameof(PathTabs), nameof(ActivePathTabIndex), nameof(CurrentPathDisplay), nameof(CanNavigateUp), nameof(IsConfigured));
         }
 
         private void PersistPathTabs()
@@ -878,6 +1170,7 @@ namespace SilentNotes.ViewModels
             {
                 Path = t.Path ?? string.Empty,
                 Label = t.Label ?? string.Empty,
+                LocationId = t.LocationId ?? string.Empty,
             }).ToList();
             settings.FilePathTabIndex = _activePathTabIndex;
             _settingsService.TrySaveSettingsToLocalDevice(settings);
@@ -897,7 +1190,9 @@ namespace SilentNotes.ViewModels
             if (_activePathTabIndex < 0 || _activePathTabIndex >= _pathTabs.Count)
                 _activePathTabIndex = 0;
             _currentSubPath = _pathTabs[_activePathTabIndex].Path ?? string.Empty;
-            OnPropertyChanged(nameof(PathTabs), nameof(ActivePathTabIndex), nameof(CurrentPathDisplay), nameof(CanNavigateUp));
+            _activeLocationId = _pathTabs[_activePathTabIndex].LocationId ?? CloudFileLocationModel.PrimaryLocationId;
+            LoadCredentialsFromSettings();
+            OnPropertyChanged(nameof(PathTabs), nameof(ActivePathTabIndex), nameof(CurrentPathDisplay), nameof(CanNavigateUp), nameof(IsConfigured));
             await RefreshAsync();
         }
 

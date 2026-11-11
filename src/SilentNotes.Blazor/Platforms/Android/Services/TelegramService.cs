@@ -12,6 +12,7 @@ using Android.Content.PM;
 using AndroidX.Core.Content;
 using Microsoft.Maui.ApplicationModel;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 using AndroidEnv = Android.OS.Environment;
 using AndroidUri = Android.Net.Uri;
 
@@ -19,7 +20,7 @@ namespace SilentNotes.Platforms.Services
 {
     /// <summary>
     /// Android implementation of <see cref="ITelegramService"/>.
-    /// Store under no-backup files; downloads/sessions under /sdcard/tg (external storage).
+    /// Store under no-backup files; downloads/sessions under <see cref="AnotePaths.Tg"/>.
     /// </summary>
     internal class TelegramService : TelegramServiceBase
     {
@@ -51,19 +52,7 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
-        protected override string GetExternalTgRoot()
-        {
-            try
-            {
-                Java.IO.File dir = AndroidEnv.ExternalStorageDirectory;
-                string root = dir?.AbsolutePath ?? "/storage/emulated/0";
-                return Path.Combine(root, "tg");
-            }
-            catch (System.Exception)
-            {
-                return "/storage/emulated/0/tg";
-            }
-        }
+        protected override string GetExternalTgRoot() => AnotePaths.Tg;
 
         /// <inheritdoc/>
         protected override void OpenOfficialTelegramAppCore()

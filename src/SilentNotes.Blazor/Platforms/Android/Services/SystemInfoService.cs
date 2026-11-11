@@ -27,6 +27,7 @@ using Android.Telephony;
 using Java.Util;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 using InetAddress = Java.Net.InetAddress;
 using NetNetworkInterface = System.Net.NetworkInformation.NetworkInterface;
 using AConnectivityManager = global::Android.Net.ConnectivityManager;
@@ -1813,23 +1814,11 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <summary>
-        /// Prefers <c>/sdcard/abro/logcat</c> (ExternalStorageDirectory/abro/logcat) when writable;
-        /// falls back to the private files/system directory.
+        /// Prefers <see cref="AnotePaths.Abro"/>/logcat when writable; falls back to app storage.
         /// </summary>
         private static string ResolveLogcatDumpPath(Context context)
         {
-            string preferredDir = null;
-            try
-            {
-                string external = global::Android.OS.Environment.ExternalStorageDirectory?.AbsolutePath;
-                if (string.IsNullOrEmpty(external))
-                    external = "/sdcard";
-                preferredDir = Path.Combine(external, "abro", "logcat");
-            }
-            catch
-            {
-                preferredDir = "/sdcard/abro/logcat";
-            }
+            string preferredDir = Path.Combine(AnotePaths.Abro, "logcat");
 
             if (TryEnsureWritableDirectory(preferredDir))
                 return Path.Combine(preferredDir, "logcat_buffer.txt");

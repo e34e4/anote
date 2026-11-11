@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using SilentNotes.Models;
 
@@ -58,85 +59,71 @@ namespace SilentNotes.Workers
         }
 
         /// <summary>
-        /// Builds a simple display string from plain text + entity spans using markers
-        /// (*bold*, _italic_, `code`) and HTML-escapes the surrounding text so it is safe for UI.
+        /// Builds display HTML from plain text and Telegram entity spans (UTF-16 offsets).
+        /// Text nodes are HTML-escaped; overlapping bold/italic and nested entities are supported.
         /// </summary>
         public static string FormatForDisplay(string plainText, IReadOnlyList<TelegramTextEntitySpan> entities)
+        {
+            return FormatForHtmlDisplay(plainText, entities);
+        }
+
+        /// <summary>
+        /// Same as <see cref="FormatForDisplay"/> — explicit name for call sites that render with <c>MarkupString</c>.
+        /// </summary>
+        public static string FormatForHtmlDisplay(string plainText, IReadOnlyList<TelegramTextEntitySpan> entities)
         {
             if (string.IsNullOrEmpty(plainText))
                 return string.Empty;
 
-            string symbolic = ReplaceEmojisWithSymbolic(plainText);
             if (entities == null || entities.Count == 0)
-                return EscapeHtml(symbolic);
+                return EscapeHtml(ReplaceEmojisWithSymbolic(plainText));
 
-            // Apply markers on UTF-16 offsets from the original plain text, then escape.
-            // We work on the original text for offsets, then replace emojis on the marked result.
-            var markers = new List<(int Index, string Insert, int Order)>();
-            int order = 0;
+            var spans = new List<(int Start, int End, TelegramTextEntitySpan Entity)>();
             foreach (var entity in entities)
             {
                 if (entity == null || entity.Length <= 0)
                     continue;
+                if (!TryGetOpenCloseTags(entity, out _, out _))
+                    continue;
+
                 int start = Math.Clamp(entity.Offset, 0, plainText.Length);
                 int end = Math.Clamp(entity.Offset + entity.Length, 0, plainText.Length);
                 if (end <= start)
                     continue;
 
-                string open;
-                string close;
-                switch (entity.Kind)
+                spans.Add((start, end, entity));
+            }
+
+            if (spans.Count == 0)
+                return EscapeHtml(ReplaceEmojisWithSymbolic(plainText));
+
+            var points = new SortedSet<int> { 0, plainText.Length };
+            foreach (var span in spans)
+            {
+                points.Add(span.Start);
+                points.Add(span.End);
+            }
+
+            var sb = new StringBuilder(plainText.Length + spans.Count * 16);
+            int prev = 0;
+            foreach (int pos in points)
+            {
+                if (pos > prev)
                 {
-                    case TelegramTextFormat.Bold:
-                        open = "*"; close = "*";
-                        break;
-                    case TelegramTextFormat.Italic:
-                        open = "_"; close = "_";
-                        break;
-                    case TelegramTextFormat.Code:
-                    case TelegramTextFormat.Pre:
-                        open = "`"; close = "`";
-                        break;
-                    case TelegramTextFormat.Strike:
-                        open = "~"; close = "~";
-                        break;
-                    case TelegramTextFormat.Spoiler:
-                        open = "||"; close = "||";
-                        break;
-                    case TelegramTextFormat.Underline:
-                        open = "__"; close = "__";
-                        break;
-                    case TelegramTextFormat.Link when !string.IsNullOrEmpty(entity.Url):
-                        open = "[";
-                        close = "](" + entity.Url + ")";
-                        break;
-                    default:
-                        continue;
+                    string segment = plainText.Substring(prev, pos - prev);
+                    sb.Append(EscapeHtml(ReplaceEmojisWithSymbolic(segment)));
                 }
 
-                markers.Add((start, open, order++));
-                markers.Add((end, close, order++));
+                foreach (var span in spans.Where(s => s.End == pos).OrderBy(s => s.End - s.Start))
+                    sb.Append(GetCloseTag(span.Entity));
+
+                foreach (var span in spans.Where(s => s.Start == pos).OrderByDescending(s => s.End - s.Start))
+                    sb.Append(GetOpenTag(span.Entity));
+
+                prev = pos;
             }
 
-            markers.Sort((a, b) =>
-            {
-                int cmp = a.Index.CompareTo(b.Index);
-                return cmp != 0 ? cmp : b.Order.CompareTo(a.Order); // close before open at same index
-            });
-
-            var sb = new StringBuilder(plainText.Length + markers.Count * 2);
-            int cursor = 0;
-            foreach (var marker in markers)
-            {
-                if (marker.Index > cursor)
-                    sb.Append(plainText, cursor, marker.Index - cursor);
-                sb.Append(marker.Insert);
-                cursor = marker.Index;
-            }
-            if (cursor < plainText.Length)
-                sb.Append(plainText, cursor, plainText.Length - cursor);
-
-            return EscapeHtml(ReplaceEmojisWithSymbolic(sb.ToString()));
+            return sb.ToString();
         }
 
         /// <summary>
@@ -262,6 +249,67 @@ namespace SilentNotes.Workers
                 .Replace("<", "&lt;", StringComparison.Ordinal)
                 .Replace(">", "&gt;", StringComparison.Ordinal)
                 .Replace("\"", "&quot;", StringComparison.Ordinal);
+        }
+
+        /// <summary>Safe one-line preview (no entity markup) for reply quotes.</summary>
+        public static string FormatPlainPreview(string plainText)
+        {
+            if (string.IsNullOrEmpty(plainText))
+                return string.Empty;
+            return EscapeHtml(ReplaceEmojisWithSymbolic(plainText));
+        }
+
+        private static bool TryGetOpenCloseTags(TelegramTextEntitySpan entity, out string open, out string close)
+        {
+            open = null;
+            close = null;
+            switch (entity.Kind)
+            {
+                case TelegramTextFormat.Bold:
+                    open = "<b>";
+                    close = "</b>";
+                    return true;
+                case TelegramTextFormat.Italic:
+                    open = "<i>";
+                    close = "</i>";
+                    return true;
+                case TelegramTextFormat.Code:
+                    open = "<code>";
+                    close = "</code>";
+                    return true;
+                case TelegramTextFormat.Pre:
+                    open = "<pre>";
+                    close = "</pre>";
+                    return true;
+                case TelegramTextFormat.Strike:
+                    open = "<s>";
+                    close = "</s>";
+                    return true;
+                case TelegramTextFormat.Spoiler:
+                    open = "<span class=\"tg-spoiler\">";
+                    close = "</span>";
+                    return true;
+                case TelegramTextFormat.Underline:
+                    open = "<u>";
+                    close = "</u>";
+                    return true;
+                case TelegramTextFormat.Link when !string.IsNullOrEmpty(entity.Url):
+                    open = "<a href=\"" + EscapeHtml(entity.Url) + "\" target=\"_blank\" rel=\"noopener noreferrer\">";
+                    close = "</a>";
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static string GetOpenTag(TelegramTextEntitySpan entity)
+        {
+            return TryGetOpenCloseTags(entity, out string open, out _) ? open : string.Empty;
+        }
+
+        private static string GetCloseTag(TelegramTextEntitySpan entity)
+        {
+            return TryGetOpenCloseTags(entity, out _, out string close) ? close : string.Empty;
         }
 
         private static void FlushEmojiSequence(StringBuilder result, List<int> sequence)

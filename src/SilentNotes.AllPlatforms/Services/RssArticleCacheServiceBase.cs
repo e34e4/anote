@@ -119,6 +119,38 @@ namespace SilentNotes.Services
         }
 
         /// <inheritdoc/>
+        public void RemoveArticles(Guid feedId, IReadOnlyList<string> itemKeys)
+        {
+            if (itemKeys == null || itemKeys.Count == 0)
+                return;
+
+            lock (SyncRoot)
+            {
+                EnsureDatabase();
+                using (SqliteConnection connection = OpenConnection())
+                using (SqliteTransaction transaction = connection.BeginTransaction())
+                {
+                    foreach (string key in itemKeys.Distinct())
+                    {
+                        if (string.IsNullOrWhiteSpace(key))
+                            continue;
+                        using (var command = connection.CreateCommand())
+                        {
+                            command.Transaction = transaction;
+                            command.CommandText =
+                                "DELETE FROM rss_articles WHERE feed_id = @feed_id AND item_key = @item_key;";
+                            command.Parameters.AddWithValue("@feed_id", feedId.ToString("N"));
+                            command.Parameters.AddWithValue("@item_key", key);
+                            command.ExecuteNonQuery();
+                        }
+                    }
+
+                    transaction.Commit();
+                }
+            }
+        }
+
+        /// <inheritdoc/>
         public void EnforceSizeLimit(long maxCacheBytes = IRssArticleCacheService.DefaultMaxCacheBytes)
         {
             lock (SyncRoot)

@@ -325,6 +325,35 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
+	.tg-bubble a {
+		color: #7dd3fc;
+		text-decoration: underline;
+	}
+	.tg-bubble code {
+		font-family: ui-monospace, "Cascadia Code", monospace;
+		font-size: 0.9em;
+		background: rgba(255, 255, 255, 0.08);
+		padding: 0 3px;
+		border-radius: 4px;
+	}
+	.tg-bubble pre {
+		font-family: ui-monospace, "Cascadia Code", monospace;
+		font-size: 0.85em;
+		background: rgba(0, 0, 0, 0.35);
+		padding: 6px 8px;
+		border-radius: 6px;
+		overflow-x: auto;
+		white-space: pre-wrap;
+	}
+	.tg-spoiler {
+		background: #3a3a3a;
+		color: #3a3a3a;
+		border-radius: 3px;
+		padding: 0 2px;
+	}
+	.tg-spoiler:hover {
+		color: inherit;
+	}
 	.tg-reply-text {
 		color: #c4c4c4;
 		white-space: nowrap;
@@ -656,7 +685,7 @@
 						}
 						@if (!string.IsNullOrEmpty(msg.FormattedText))
 						{
-							<span>@msg.FormattedText</span>
+							<span>@((MarkupString)msg.FormattedText)</span>
 						}
 						@if (msg.HasMedia && msg.MediaKind != TelegramMediaKinds.Sticker && msg.MediaKind != TelegramMediaKinds.None)
 						{

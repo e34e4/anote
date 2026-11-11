@@ -137,6 +137,18 @@
 		font-weight: 700;
 		color: #ffffff;
 	}
+	.mail-row.selected {
+		background-color: rgba(36, 129, 204, 0.16);
+	}
+	.mail-selection-bar {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		align-items: center;
+		padding: 4px 4px 8px 4px;
+		border-bottom: 1px solid #1f1f1f;
+		margin-bottom: 6px;
+	}
 	.mail-date {
 		font-size: 0.75rem;
 		color: #9e9e9e;
@@ -357,6 +369,16 @@
 	}
 	else
 	{
+		@if (ViewModel.HasMessageSelection)
+		{
+			<div class="mail-selection-bar">
+				<span>@ViewModel.SelectedMessageCount</span>
+				<button type="button" class="mail-btn" @onclick="DeleteSelectedMessagesAsync">@LanguageService["delete"]</button>
+				<button type="button" class="mail-btn" @onclick="SelectAllVisibleMessages">@LanguageService["list_select_all"]</button>
+				<button type="button" class="mail-btn" @onclick="ClearMessageSelection">@LanguageService["file_clear_selection"]</button>
+			</div>
+		}
+
 		<div class="d-flex align-center justify-space-between px-1 mb-1">
 			<MudText Typo="Typo.caption" Class="mud-text-secondary">@ViewModel.FilteredMessages.Count @LanguageService["mail_messages_count"]</MudText>
 			<div class="d-flex gap-2">
@@ -383,7 +405,9 @@
 		{
 			@foreach (var item in ViewModel.FilteredMessages)
 			{
-				<div class="mail-row @(!item.Model.IsRead ? "unread" : null)" @key="item.Model.Id">
+				<div class="mail-row @(!item.Model.IsRead ? "unread" : null) @(ViewModel.IsMessageSelected(item) ? "selected" : null)" @key="item.Model.Id">
+					<MudCheckBox T="bool" Dense="true" Value="@ViewModel.IsMessageSelected(item)"
+						ValueChanged="@((bool _) => ToggleMessageSelection(item))" @onclick:stopPropagation="true" />
 					<div class="mail-avatar" @onclick="() => ViewModel.SelectMessage(item)">@item.AvatarInitial</div>
 
 					<div class="mail-row-body" @onclick="() => ViewModel.SelectMessage(item)">
@@ -598,6 +622,30 @@
 	private void OnViewModelStateChanged()
 	{
 		InvokeAsync(StateHasChanged);
+	}
+
+	private void ToggleMessageSelection(MailMessageItemViewModel item)
+	{
+		ViewModel.ToggleMessageSelection(item);
+		StateHasChanged();
+	}
+
+	private void SelectAllVisibleMessages()
+	{
+		ViewModel.SelectAllVisibleMessages();
+		StateHasChanged();
+	}
+
+	private void ClearMessageSelection()
+	{
+		ViewModel.ClearMessageSelection();
+		StateHasChanged();
+	}
+
+	private async Task DeleteSelectedMessagesAsync()
+	{
+		await ViewModel.DeleteSelectedMessagesAsync();
+		StateHasChanged();
 	}
 
 	private async Task SyncAsync()

@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System;
+using System.Text;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
@@ -7,6 +8,7 @@ using Android.Views;
 using AndroidX.Activity;
 using SilentNotes.Platforms;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 using static Android.Views.ViewTreeObserver;
 
 namespace SilentNotes
@@ -207,6 +209,14 @@ namespace SilentNotes
         protected override void OnCreate(Bundle savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
+            try
+            {
+                AnotePaths.EnsureDirectories();
+            }
+            catch (Exception)
+            {
+            }
+
             AndroidX.Activity.EdgeToEdge.Enable(this);
 
             // Delay closing of splash screen until app is ready:

@@ -18,6 +18,7 @@ using Java.Util.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 using Color = Android.Graphics.Color;
 using Orientation = Android.Widget.Orientation;
 using Path = System.IO.Path;
@@ -28,11 +29,10 @@ namespace SilentNotes.Platforms
 {
     /// <summary>
     /// Captures the screen via the accessibility service screenshot API (Android 11+), optionally
-    /// crops a region, and saves under Pictures/aNote using the screenshot format/quality from settings.
+    /// crops a region, and saves under <see cref="AnotePaths.Pic"/> using the screenshot format/quality from settings.
     /// </summary>
     internal sealed class ScreenshotCapture
     {
-        private const string PublicGalleryFolder = "aNote";
         private const string LogTag = "aNoteScreenshot";
 
         private readonly FloatingButtonAccessibilityService _service;
@@ -422,36 +422,9 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                string ext = Path.GetExtension(displayName);
-                string mime = GetMimeTypeForExtension(ext);
-
-                if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
-                {
-                    var values = new ContentValues();
-                    values.Put("_display_name", displayName);
-                    values.Put("mime_type", mime);
-                    values.Put("relative_path", "Pictures/" + PublicGalleryFolder);
-
-                    global::Android.Net.Uri uri = _service.ContentResolver.Insert(
-                        MediaStore.Images.Media.ExternalContentUri, values);
-                    if (uri == null)
-                        return;
-
-                    using (Stream input = File.OpenRead(sourcePath))
-                    using (Stream output = _service.ContentResolver.OpenOutputStream(uri))
-                    {
-                        input.CopyTo(output);
-                    }
-                }
-                else
-                {
-                    string publicDir = Path.Combine(
-                        global::Android.OS.Environment.GetExternalStoragePublicDirectory(
-                            global::Android.OS.Environment.DirectoryPictures).AbsolutePath,
-                        PublicGalleryFolder);
-                    Directory.CreateDirectory(publicDir);
-                    File.Copy(sourcePath, Path.Combine(publicDir, displayName), overwrite: true);
-                }
+                string publicDir = AnotePaths.Pic;
+                Directory.CreateDirectory(publicDir);
+                File.Copy(sourcePath, Path.Combine(publicDir, displayName), overwrite: true);
             }
             catch (Exception ex)
             {

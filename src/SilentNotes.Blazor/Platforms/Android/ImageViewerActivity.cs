@@ -110,25 +110,25 @@ namespace SilentNotes
             closeButton.LayoutParameters = closeLp;
             closeButton.Click += (_, __) => Finish();
 
-            var cropButton = new Android.Widget.Button(this)
+            var editButton = new Android.Widget.Button(this)
             {
-                Text = "Crop",
+                Text = "Edit",
                 TextSize = 13,
             };
-            cropButton.SetTextColor(Color.White);
-            cropButton.SetBackgroundColor(Color.Argb(160, 36, 129, 204));
-            FrameLayout.LayoutParams cropLp = new FrameLayout.LayoutParams(
+            editButton.SetTextColor(Color.White);
+            editButton.SetBackgroundColor(Color.Argb(160, 36, 129, 204));
+            FrameLayout.LayoutParams editLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WrapContent,
                 ViewGroup.LayoutParams.WrapContent);
-            cropLp.Gravity = GravityFlags.Top | GravityFlags.Right;
-            cropLp.SetMargins(0, 12, 120, 0);
-            cropButton.LayoutParameters = cropLp;
-            cropButton.Click += (_, __) => OpenCropEditor();
+            editLp.Gravity = GravityFlags.Top | GravityFlags.Right;
+            editLp.SetMargins(0, 12, 120, 0);
+            editButton.LayoutParameters = editLp;
+            editButton.Click += (_, __) => OpenEditor();
 
             root.AddView(_imageView);
             root.AddView(_titleView);
             root.AddView(_counterView);
-            root.AddView(cropButton);
+            root.AddView(editButton);
             root.AddView(closeButton);
             SetContentView(root);
 
@@ -270,7 +270,7 @@ namespace SilentNotes
             }
         }
 
-        private void OpenCropEditor()
+        private void OpenEditor()
         {
             try
             {
@@ -284,16 +284,25 @@ namespace SilentNotes
 
                 if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
                 {
-                    Toast.MakeText(this, "Crop needs a local image file", ToastLength.Short).Show();
+                    Toast.MakeText(this, "Edit needs a local media file", ToastLength.Short).Show();
                     return;
                 }
 
-                StartActivity(ImageEditorActivity.CreateIntent(this, path, _floating));
+                if (IsVideoFile(path))
+                    StartActivity(VideoEditorActivity.CreateIntent(this, path, _floating));
+                else
+                    StartActivity(ImageEditorActivity.CreateIntent(this, path, _floating));
             }
             catch (Exception ex)
             {
                 Toast.MakeText(this, ex.Message, ToastLength.Long).Show();
             }
+        }
+
+        private static bool IsVideoFile(string path)
+        {
+            string ext = System.IO.Path.GetExtension(path)?.ToLowerInvariant();
+            return ext is ".mp4" or ".mkv" or ".avi" or ".webm" or ".mov" or ".3gp" or ".3gpp" or ".m4v" or ".wmv" or ".flv" or ".ts" or ".mpeg" or ".mpg";
         }
 
         /// <summary>

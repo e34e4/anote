@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.Platforms.Services
 {
@@ -18,6 +19,7 @@ namespace SilentNotes.Platforms.Services
         public EnvironmentService()
         {
             Os = SilentNotes.Services.OperatingSystem.Windows;
+            AnotePaths.EnsureDirectories();
 
             // Detect dark mode already in the constructor, because the RequestedTheme can be
             // overwritten at startup.

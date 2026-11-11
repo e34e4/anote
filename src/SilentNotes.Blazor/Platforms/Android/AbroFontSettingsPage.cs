@@ -8,7 +8,9 @@ using System.Threading.Tasks;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using SilentNotes.Models;
+using System.IO;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.Platforms
 {
@@ -67,7 +69,7 @@ namespace SilentNotes.Platforms
 
             var note = new Label
             {
-                Text = "The font file is copied into /sdcard/abro/fonts and applied to pages while browsing.",
+                Text = "The font file is copied into " + Path.Combine(AnotePaths.Abro, "fonts") + " and applied to pages while browsing.",
                 TextColor = Color.FromArgb("#8e8e93"),
                 FontSize = 12,
                 Margin = new Thickness(16, 12, 16, 0),

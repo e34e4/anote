@@ -244,6 +244,12 @@ namespace SilentNotes.Platforms
 
         private View CreateScrollJumpOverlay()
         {
+            Button back = CreateIconButton("←", 18);
+            back.BackgroundColor = Color.FromArgb("#CC141414");
+            back.WidthRequest = 36;
+            back.HeightRequest = 36;
+            back.Clicked += async (s, e) => await CloseAsync().ConfigureAwait(true);
+
             Button up = CreateIconButton("↑", 18);
             up.BackgroundColor = Color.FromArgb("#CC141414");
             up.WidthRequest = 36;
@@ -266,7 +272,7 @@ namespace SilentNotes.Platforms
                 HorizontalOptions = LayoutOptions.Start,
                 VerticalOptions = LayoutOptions.End,
                 Margin = new Thickness(10, 0, 0, 120),
-                Children = { up, down },
+                Children = { back, up, down },
             };
             return stack;
         }

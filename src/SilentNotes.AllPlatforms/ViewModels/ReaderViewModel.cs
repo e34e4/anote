@@ -32,6 +32,7 @@ namespace SilentNotes.ViewModels
         private bool _isBusy;
         private int _activePathTabIndex;
         private List<PathTabSessionModel> _pathTabs = new List<PathTabSessionModel>();
+        private readonly HashSet<string> _selectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         public ReaderViewModel(
             IDocumentReaderService readerService,
@@ -60,6 +61,9 @@ namespace SilentNotes.ViewModels
             AddPathTabCommand = new RelayCommand(AddPathTab);
             ClosePathTabCommand = new RelayCommand<int>(ClosePathTab);
             SelectPathTabCommand = new RelayCommand<int>(SelectPathTab);
+            DeleteSelectedCommand = new AsyncRelayCommand(DeleteSelectedAsync);
+            SelectAllVisibleCommand = new RelayCommand(SelectAllVisible);
+            ClearSelectionCommand = new RelayCommand(ClearSelection);
 
             LoadPathTabsFromSettings();
             Reload();
@@ -82,6 +86,13 @@ namespace SilentNotes.ViewModels
         public ICommand AddPathTabCommand { get; }
         public ICommand ClosePathTabCommand { get; }
         public ICommand SelectPathTabCommand { get; }
+        public ICommand DeleteSelectedCommand { get; }
+        public ICommand SelectAllVisibleCommand { get; }
+        public ICommand ClearSelectionCommand { get; }
+
+        public bool HasSelection => _selectedPaths.Count > 0;
+
+        public int SelectedCount => _selectedPaths.Count;
 
         /// <summary>Gets path sessions for the Reader browser.</summary>
         public IReadOnlyList<PathTabSessionModel> PathTabs => _pathTabs;
@@ -206,6 +217,77 @@ namespace SilentNotes.ViewModels
             await _readerService.RequestAllFilesPermissionAsync();
             Reload();
             RaiseStateChanged();
+        }
+
+        public bool IsSelected(DocumentItemViewModel item)
+            => item != null && !string.IsNullOrEmpty(item.Path) && _selectedPaths.Contains(item.Path);
+
+        public void ToggleSelection(DocumentItemViewModel item)
+        {
+            if (item == null || string.IsNullOrEmpty(item.Path))
+                return;
+            if (!_selectedPaths.Add(item.Path))
+                _selectedPaths.Remove(item.Path);
+            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount));
+            RaiseStateChanged();
+        }
+
+        public void SelectAllVisible()
+        {
+            foreach (DocumentItemViewModel item in FilteredItems)
+            {
+                if (!string.IsNullOrEmpty(item.Path))
+                    _selectedPaths.Add(item.Path);
+            }
+            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount));
+            RaiseStateChanged();
+        }
+
+        public void ClearSelection()
+        {
+            if (_selectedPaths.Count == 0)
+                return;
+            _selectedPaths.Clear();
+            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount));
+            RaiseStateChanged();
+        }
+
+        public async Task DeleteSelectedAsync()
+        {
+            if (_selectedPaths.Count == 0)
+                return;
+
+            MessageBoxResult answer = await _feedbackService.ShowMessageAsync(
+                _languageService.LoadTextFmt("reader_delete_confirm", _selectedPaths.Count),
+                _languageService["reader_delete"],
+                MessageBoxButtons.YesNoCancel,
+                false);
+            if (answer != MessageBoxResult.Yes)
+                return;
+
+            var targets = FilteredItems
+                .Where(i => _selectedPaths.Contains(i.Path))
+                .ToList();
+            if (targets.Count == 0)
+            {
+                ClearSelection();
+                return;
+            }
+
+            int deleted = 0;
+            foreach (DocumentItemViewModel item in targets)
+            {
+                bool isDir = item.Kind == DocumentKind.Folder;
+                if (_readerService.TryDeletePath(item.Path, isDir))
+                    deleted++;
+            }
+
+            ClearSelection();
+            Reload();
+            if (deleted > 0)
+                _feedbackService?.ShowToast(_languageService.LoadTextFmt("reader_deleted", deleted));
+            else
+                _feedbackService?.ShowToast(_languageService["reader_delete_failed"], FeedbackSeverity.Warning);
         }
 
         public void Reload()
@@ -429,6 +511,7 @@ namespace SilentNotes.ViewModels
             {
                 if (item.Kind == DocumentKind.Folder)
                 {
+                    ClearSelection();
                     _readerService.EnterDirectory(item.Path);
                     SaveCurrentPathToActiveTab();
                     PersistPathTabs();

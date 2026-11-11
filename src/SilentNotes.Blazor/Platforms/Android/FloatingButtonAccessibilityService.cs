@@ -67,6 +67,10 @@ namespace SilentNotes.Platforms
         private const string PreferenceKeyImageY = "img_y";
         private const string PreferenceKeyImageWidth = "img_w";
         private const string PreferenceKeyImageHeight = "img_h";
+        private const string PreferenceKeyVideoX = "vid_x";
+        private const string PreferenceKeyVideoY = "vid_y";
+        private const string PreferenceKeyVideoWidth = "vid_w";
+        private const string PreferenceKeyVideoHeight = "vid_h";
         private const string LogTag = "aNoteFloating";
         private const int LongPressDelayMs = 600;
         private const int DoubleTapTimeoutMs = 260;
@@ -145,6 +149,10 @@ namespace SilentNotes.Platforms
         private ImageView _imageOverlayImageView;
         private Bitmap _imageOverlayBitmap;
         private string _imageOverlayPath;
+        private global::Android.Views.View _videoOverlayView;
+        private WindowManagerLayoutParams _videoLayoutParams;
+        private VideoView _videoOverlayVideoView;
+        private string _videoOverlayPath;
         private bool _captureEnabled;
         private bool _menuShowingApps;
         private bool _menuLaunchAsFloating;
@@ -350,6 +358,7 @@ namespace SilentNotes.Platforms
         {
             StopClipboardCapture();
             HideImageOverlay();
+            HideVideoOverlay();
             HideMenuOverlay();
             HideOverlay();
             Instance = null;
@@ -363,6 +372,7 @@ namespace SilentNotes.Platforms
         {
             StopClipboardCapture();
             HideImageOverlay();
+            HideVideoOverlay();
             HideMenuOverlay();
             HideOverlay();
             Instance = null;
@@ -1119,16 +1129,16 @@ namespace SilentNotes.Platforms
                 titleView.SetTextColor(Color.White);
                 headerRow.AddView(titleView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
-                var cropBtn = new TextView(this)
+                var editBtn = new TextView(this)
                 {
-                    Text = "Crop",
+                    Text = "Edit",
                     TextSize = 12f,
                     Gravity = GravityFlags.Center,
                 };
-                cropBtn.SetTextColor(Color.ParseColor("#38BDF8"));
-                cropBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
-                cropBtn.Click += (s, e) => OpenImageOverlayEditor();
-                headerRow.AddView(cropBtn);
+                editBtn.SetTextColor(Color.ParseColor("#38BDF8"));
+                editBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
+                editBtn.Click += (s, e) => OpenImageOverlayEditor();
+                headerRow.AddView(editBtn);
 
                 var closeBtn = new TextView(this)
                 {
@@ -1272,6 +1282,349 @@ namespace SilentNotes.Platforms
             catch (Exception ex)
             {
                 global::Android.Util.Log.Error(LogTag, "Could not open image editor from overlay: " + ex);
+            }
+        }
+
+        /// <summary>
+        /// Shows a movable/resizable floating video player (accessibility overlay). Returns false on failure.
+        /// </summary>
+        internal bool ShowVideoOverlay(string path, string title = null)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+                return false;
+
+            if (_windowManager == null)
+                _windowManager = ResolveWindowManager();
+            if (_windowManager == null)
+                return false;
+
+            try
+            {
+                HideVideoOverlay();
+
+                float density = Resources.DisplayMetrics.Density;
+                int screenW = Resources.DisplayMetrics.WidthPixels;
+                int screenH = Resources.DisplayMetrics.HeightPixels;
+
+                var preferences = GetSharedPreferences(PreferencesName, FileCreationMode.Private);
+                int defaultWidth = (int)Math.Min(screenW * 0.92f, 440 * density);
+                int defaultHeight = Math.Max((int)(220 * density), (int)(screenH * 0.5f));
+                int minWidth = (int)(200 * density);
+                int minHeight = (int)(140 * density);
+
+                int winWidth = Math.Clamp(preferences.GetInt(PreferenceKeyVideoWidth, defaultWidth), minWidth, screenW);
+                int winHeight = Math.Clamp(preferences.GetInt(PreferenceKeyVideoHeight, defaultHeight), minHeight, screenH);
+                int defaultX = Math.Max(0, (screenW - winWidth) / 2);
+                int defaultY = Math.Max(0, (screenH - winHeight) / 2);
+                int winX = Math.Clamp(preferences.GetInt(PreferenceKeyVideoX, defaultX), 0, Math.Max(0, screenW - minWidth / 2));
+                int winY = Math.Clamp(preferences.GetInt(PreferenceKeyVideoY, defaultY), 0, Math.Max(0, screenH - minHeight / 2));
+
+                _videoOverlayPath = path;
+
+                var card = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Vertical,
+                    Clickable = true,
+                };
+                int cardPad = (int)(10 * density);
+                card.SetPadding(cardPad, cardPad, cardPad, (int)(6 * density));
+
+                var cardBg = new GradientDrawable();
+                cardBg.SetColor(Color.ParseColor("#F2101010"));
+                cardBg.SetCornerRadius(16 * density);
+                cardBg.SetStroke((int)(1.5f * density), Color.ParseColor("#38BDF8"));
+                card.Background = cardBg;
+
+                var headerRow = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+                headerRow.SetGravity(GravityFlags.CenterVertical);
+                headerRow.SetPadding((int)(4 * density), (int)(2 * density), (int)(4 * density), (int)(6 * density));
+                int btnPad = (int)(6 * density);
+
+                string headerTitle = string.IsNullOrWhiteSpace(title)
+                    ? System.IO.Path.GetFileName(path)
+                    : title;
+                if (string.IsNullOrWhiteSpace(headerTitle))
+                    headerTitle = "Video";
+
+                var titleView = new TextView(this)
+                {
+                    Text = "⠿ " + headerTitle,
+                    TextSize = 13.5f,
+                    Ellipsize = global::Android.Text.TextUtils.TruncateAt.End,
+                };
+                titleView.SetSingleLine(true);
+                titleView.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+                titleView.SetTextColor(Color.White);
+                headerRow.AddView(titleView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+                var editBtn = new TextView(this)
+                {
+                    Text = "Edit",
+                    TextSize = 12f,
+                    Gravity = GravityFlags.Center,
+                };
+                editBtn.SetTextColor(Color.ParseColor("#38BDF8"));
+                editBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
+                editBtn.Click += (s, e) => OpenVideoOverlayEditor();
+                headerRow.AddView(editBtn);
+
+                var closeBtn = new TextView(this)
+                {
+                    Text = "✕",
+                    TextSize = 14f,
+                    Gravity = GravityFlags.Center,
+                };
+                closeBtn.SetTextColor(Color.ParseColor("#BDBDBD"));
+                closeBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
+                closeBtn.Click += (s, e) => HideVideoOverlay();
+                headerRow.AddView(closeBtn);
+
+                headerRow.SetOnTouchListener(new VideoDragTouchListener(this));
+                card.AddView(headerRow);
+
+                _videoOverlayVideoView = new VideoView(this);
+                _videoOverlayVideoView.SetBackgroundColor(Color.Black);
+                _videoOverlayVideoView.SetVideoPath(path);
+                _videoOverlayVideoView.Start();
+                card.AddView(_videoOverlayVideoView, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, 0, 1f));
+
+                var footerRow = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+                footerRow.SetGravity(GravityFlags.CenterVertical);
+                footerRow.SetPadding(0, (int)(4 * density), 0, 0);
+
+                var bottomResizePill = new TextView(this)
+                {
+                    Text = "═══",
+                    TextSize = 11f,
+                    Gravity = GravityFlags.Center,
+                };
+                bottomResizePill.SetTextColor(Color.ParseColor("#757575"));
+                bottomResizePill.SetOnTouchListener(new VideoResizeTouchListener(this, resizeWidth: false, resizeHeight: true, minWidth, minHeight, screenW, screenH));
+                footerRow.AddView(bottomResizePill, new LinearLayout.LayoutParams(0, (int)(22 * density), 1f));
+
+                var cornerGrip = new TextView(this)
+                {
+                    Text = "◢",
+                    TextSize = 14f,
+                    Gravity = GravityFlags.Center,
+                };
+                cornerGrip.SetTextColor(Color.ParseColor("#38BDF8"));
+                cornerGrip.SetPadding((int)(8 * density), 0, (int)(4 * density), 0);
+                cornerGrip.SetOnTouchListener(new VideoResizeTouchListener(this, resizeWidth: true, resizeHeight: true, minWidth, minHeight, screenW, screenH));
+                footerRow.AddView(cornerGrip, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WrapContent, (int)(22 * density)));
+
+                card.AddView(footerRow, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+
+                _videoLayoutParams = new WindowManagerLayoutParams(
+                    winWidth,
+                    winHeight,
+                    WindowManagerTypes.AccessibilityOverlay,
+                    WindowManagerFlags.NotFocusable | WindowManagerFlags.NotTouchModal,
+                    Format.Translucent)
+                {
+                    Gravity = GravityFlags.Top | GravityFlags.Start,
+                    X = winX,
+                    Y = winY,
+                };
+
+                _videoOverlayView = card;
+                _windowManager.AddView(_videoOverlayView, _videoLayoutParams);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not show floating video overlay: " + ex);
+                HideVideoOverlay();
+                return false;
+            }
+        }
+
+        internal void HideVideoOverlay()
+        {
+            try
+            {
+                _videoOverlayVideoView?.StopPlayback();
+            }
+            catch (Exception)
+            {
+            }
+
+            if (_videoOverlayView != null && _windowManager != null)
+            {
+                try
+                {
+                    _windowManager.RemoveView(_videoOverlayView);
+                }
+                catch (Exception ex)
+                {
+                    global::Android.Util.Log.Error(LogTag, "Could not hide floating video overlay: " + ex);
+                }
+            }
+
+            _videoOverlayView = null;
+            _videoLayoutParams = null;
+            _videoOverlayVideoView = null;
+            _videoOverlayPath = null;
+        }
+
+        private void SaveVideoBounds()
+        {
+            if (_videoLayoutParams == null)
+                return;
+            try
+            {
+                var preferences = GetSharedPreferences(PreferencesName, FileCreationMode.Private);
+                preferences.Edit()
+                    .PutInt(PreferenceKeyVideoX, _videoLayoutParams.X)
+                    .PutInt(PreferenceKeyVideoY, _videoLayoutParams.Y)
+                    .PutInt(PreferenceKeyVideoWidth, _videoLayoutParams.Width)
+                    .PutInt(PreferenceKeyVideoHeight, _videoLayoutParams.Height)
+                    .Apply();
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private void OpenVideoOverlayEditor()
+        {
+            try
+            {
+                string path = _videoOverlayPath;
+                if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+                    return;
+
+                Intent intent = SilentNotes.VideoEditorActivity.CreateIntent(this, path, floating: true);
+                intent.AddFlags(ActivityFlags.NewTask);
+                StartActivity(intent);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not open video editor from overlay: " + ex);
+            }
+        }
+
+        private class VideoDragTouchListener : Java.Lang.Object, global::Android.Views.View.IOnTouchListener
+        {
+            private readonly FloatingButtonAccessibilityService _service;
+            private float _startRawX;
+            private float _startRawY;
+            private int _startX;
+            private int _startY;
+
+            public VideoDragTouchListener(FloatingButtonAccessibilityService service)
+            {
+                _service = service;
+            }
+
+            public bool OnTouch(global::Android.Views.View view, MotionEvent e)
+            {
+                if (_service._videoOverlayView == null || _service._videoLayoutParams == null || _service._windowManager == null)
+                    return false;
+
+                switch (e.ActionMasked)
+                {
+                    case MotionEventActions.Down:
+                        _startRawX = e.RawX;
+                        _startRawY = e.RawY;
+                        _startX = _service._videoLayoutParams.X;
+                        _startY = _service._videoLayoutParams.Y;
+                        return true;
+
+                    case MotionEventActions.Move:
+                        int dx = (int)(e.RawX - _startRawX);
+                        int dy = (int)(e.RawY - _startRawY);
+                        _service._videoLayoutParams.X = Math.Max(0, _startX + dx);
+                        _service._videoLayoutParams.Y = Math.Max(0, _startY + dy);
+                        try
+                        {
+                            _service._windowManager.UpdateViewLayout(_service._videoOverlayView, _service._videoLayoutParams);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        return true;
+
+                    case MotionEventActions.Up:
+                    case MotionEventActions.Cancel:
+                        _service.SaveVideoBounds();
+                        return true;
+                }
+                return false;
+            }
+        }
+
+        private class VideoResizeTouchListener : Java.Lang.Object, global::Android.Views.View.IOnTouchListener
+        {
+            private readonly FloatingButtonAccessibilityService _service;
+            private readonly bool _resizeWidth;
+            private readonly bool _resizeHeight;
+            private readonly int _minWidth;
+            private readonly int _minHeight;
+            private readonly int _maxWidth;
+            private readonly int _maxHeight;
+            private float _startRawX;
+            private float _startRawY;
+            private int _startWidth;
+            private int _startHeight;
+
+            public VideoResizeTouchListener(
+                FloatingButtonAccessibilityService service,
+                bool resizeWidth,
+                bool resizeHeight,
+                int minWidth,
+                int minHeight,
+                int maxWidth,
+                int maxHeight)
+            {
+                _service = service;
+                _resizeWidth = resizeWidth;
+                _resizeHeight = resizeHeight;
+                _minWidth = minWidth;
+                _minHeight = minHeight;
+                _maxWidth = maxWidth;
+                _maxHeight = maxHeight;
+            }
+
+            public bool OnTouch(global::Android.Views.View view, MotionEvent e)
+            {
+                if (_service._videoOverlayView == null || _service._videoLayoutParams == null || _service._windowManager == null)
+                    return false;
+
+                switch (e.ActionMasked)
+                {
+                    case MotionEventActions.Down:
+                        _startRawX = e.RawX;
+                        _startRawY = e.RawY;
+                        _startWidth = _service._videoLayoutParams.Width;
+                        _startHeight = _service._videoLayoutParams.Height;
+                        return true;
+
+                    case MotionEventActions.Move:
+                        int dw = (int)(e.RawX - _startRawX);
+                        int dh = (int)(e.RawY - _startRawY);
+                        if (_resizeWidth)
+                            _service._videoLayoutParams.Width = Math.Clamp(_startWidth + dw, _minWidth, _maxWidth);
+                        if (_resizeHeight)
+                            _service._videoLayoutParams.Height = Math.Clamp(_startHeight + dh, _minHeight, _maxHeight);
+                        try
+                        {
+                            _service._windowManager.UpdateViewLayout(_service._videoOverlayView, _service._videoLayoutParams);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        return true;
+
+                    case MotionEventActions.Up:
+                    case MotionEventActions.Cancel:
+                        _service.SaveVideoBounds();
+                        return true;
+                }
+                return false;
             }
         }
 

@@ -27,7 +27,7 @@ namespace SilentNotes.Services
         /// <summary>Resolves the effective download directory (creates it).</summary>
         string GetDownloadDirectory();
 
-        /// <summary>Sets the download directory path (empty = default <c>abro/down</c>).</summary>
+        /// <summary>Sets the download directory path (empty = default <c>anote/abro/down</c>).</summary>
         bool SetDownloadDirectory(string absolutePath);
 
         /// <summary>Gets the clamped thread count (1–5).</summary>

@@ -327,6 +327,12 @@ namespace SilentNotes.ViewModels
                 string.GetHashCode(settings.ScreenshotEditorPackageName),
                 (settings.Credentials == null).GetHashCode(),
                 GetMainTabOrderFingerprint(settings.MainTabOrder),
+                settings.Socks5Enabled.GetHashCode(),
+                string.GetHashCode(settings.Socks5Host),
+                settings.Socks5Port.GetHashCode(),
+                string.GetHashCode(settings.Socks5Username),
+                string.GetHashCode(settings.Socks5Password),
+                settings.AiUseProxy.GetHashCode(),
             });
         }
 
@@ -1065,6 +1071,48 @@ namespace SilentNotes.ViewModels
         {
             get { return Model.VirusTotalAutoScan; }
             set { SetProperty(Model.VirusTotalAutoScan, value, (bool v) => Model.VirusTotalAutoScan = v); }
+        }
+
+        /// <summary>Gets or sets a value indicating whether the SOCKS5 proxy is enabled.</summary>
+        public bool Socks5Enabled
+        {
+            get { return Model.Socks5Enabled; }
+            set { SetProperty(Model.Socks5Enabled, value, (bool v) => Model.Socks5Enabled = v); }
+        }
+
+        /// <summary>Gets or sets the SOCKS5 proxy host.</summary>
+        public string Socks5Host
+        {
+            get { return Model.Socks5Host; }
+            set { SetProperty(Model.Socks5Host, value, (string v) => Model.Socks5Host = v); }
+        }
+
+        /// <summary>Gets or sets the SOCKS5 proxy port.</summary>
+        public int Socks5Port
+        {
+            get { return Model.Socks5Port; }
+            set { SetProperty(Model.Socks5Port, value, (int v) => Model.Socks5Port = v); }
+        }
+
+        /// <summary>Gets or sets the optional SOCKS5 username.</summary>
+        public string Socks5Username
+        {
+            get { return Model.Socks5Username; }
+            set { SetProperty(Model.Socks5Username, value, (string v) => Model.Socks5Username = v); }
+        }
+
+        /// <summary>Gets or sets the optional SOCKS5 password.</summary>
+        public string Socks5Password
+        {
+            get { return Model.Socks5Password; }
+            set { SetProperty(Model.Socks5Password, value, (string v) => Model.Socks5Password = v); }
+        }
+
+        /// <summary>Gets or sets a value indicating whether Abro AI HTTP calls use the SOCKS5 proxy.</summary>
+        public bool AiUseProxy
+        {
+            get { return Model.AiUseProxy; }
+            set { SetProperty(Model.AiUseProxy, value, (bool v) => Model.AiUseProxy = v); }
         }
 
         /// <summary>Gets or sets a value indicating whether Abro AI store sync is enabled.</summary>
