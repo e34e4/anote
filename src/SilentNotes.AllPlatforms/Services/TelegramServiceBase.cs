@@ -90,6 +90,8 @@ namespace SilentNotes.Services
         /// <summary>
         /// Android/MAUI does not support Console.ForegroundColor used by WTelegram's default logger
         /// (throws PlatformNotSupportedException / Arg_PlatformNotSupported when creating a Client).
+        /// Must be installed before every <see cref="Client"/> construction — the default logger
+        /// can reappear across assembly load contexts / secondary Android service hosts.
         /// </summary>
         private static void EnsureCompatibleLogging()
         {
@@ -97,13 +99,33 @@ namespace SilentNotes.Services
             {
                 try
                 {
+                    // Always avoid Console.* here. Debug + optional sink + durable file for ADB.
                     System.Diagnostics.Debug.WriteLine("[WTelegram " + level + "] " + message);
                     _activeLogSink?.Invoke(level, message);
+                    TryAppendWTelegramLog(level, message);
                 }
                 catch
                 {
                 }
             };
+        }
+
+        private static void TryAppendWTelegramLog(int level, string message)
+        {
+            try
+            {
+                string root = AnotePaths.Tg;
+                if (string.IsNullOrEmpty(root))
+                    return;
+                Directory.CreateDirectory(root);
+                string path = Path.Combine(root, "wtelegram.log");
+                string line = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture)
+                    + " [" + level + "] " + (message ?? string.Empty) + Environment.NewLine;
+                File.AppendAllText(path, line);
+            }
+            catch
+            {
+            }
         }
 
         /// <inheritdoc/>
@@ -162,8 +184,26 @@ namespace SilentNotes.Services
                 string root = GetExternalTgRoot();
                 Directory.CreateDirectory(root);
                 Directory.CreateDirectory(GetCacheDirectory());
-                Directory.CreateDirectory(GetSessionsDirectory());
                 Directory.CreateDirectory(GetStoreDirectory());
+                Directory.CreateDirectory(GetSessionsDirectory());
+                Directory.CreateDirectory(GetLegacyExternalSessionsDirectory());
+                // Best-effort migrate any leftover session files into private storage.
+                try
+                {
+                    string legacy = GetLegacyExternalSessionsDirectory();
+                    if (Directory.Exists(legacy))
+                    {
+                        foreach (string file in Directory.GetFiles(legacy, "*.session"))
+                        {
+                            string dest = Path.Combine(GetSessionsDirectory(), Path.GetFileName(file));
+                            if (!File.Exists(dest))
+                                File.Copy(file, dest, overwrite: false);
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                }
             }
             catch (Exception)
             {
@@ -821,11 +861,13 @@ namespace SilentNotes.Services
 
             try
             {
+                EnsureCompatibleLogging();
                 User me = await WithTimeout(
                     client.LoginUserIfNeeded(),
                     ConnectTimeout,
                     "Telegram connect timed out. Check network/VPN and tap Refresh.",
                     cancellationToken).ConfigureAwait(false);
+
                 ApplyUserToAccount(account, me);
                 SaveStore(store);
 
@@ -856,7 +898,12 @@ namespace SilentNotes.Services
                 return ex.Message;
             if (ex is IOException)
                 return "Network error. Tap Refresh when the connection is stable.";
+            if (IsPlatformLoggerException(ex))
+                return "Telegram client logging failed on this device. Tap Refresh to retry.";
             string msg = ex?.Message ?? "Connect failed";
+            if (string.Equals(msg, "Arg_PlatformNotSupported", StringComparison.Ordinal)
+                || msg.IndexOf("Arg_PlatformNotSupported", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Telegram client logging failed on this device. Tap Refresh to retry.";
             if (IsLikelyDeadConnectionMessage(msg))
                 return "Telegram unreachable right now. Tap Refresh to retry.";
             return msg;
@@ -2302,6 +2349,7 @@ namespace SilentNotes.Services
             string sessionPath = GetSessionPath(account);
             Directory.CreateDirectory(Path.GetDirectoryName(sessionPath) ?? GetSessionsDirectory());
 
+            bool resumeExistingSession = File.Exists(sessionPath) && new FileInfo(sessionPath).Length > 16;
             // Present as a desktop client so Telegram prefers in-app / SMS codes over
             // Android Firebase SMS (which third-party apps cannot receive without SafetyNet).
             // Do NOT force my.telegram.org "MTProto server address" — WTelegram already picks
@@ -2317,6 +2365,11 @@ namespace SilentNotes.Services
                 "app_version" => "4.2.4 x64",
                 "system_lang_code" => CultureLang(),
                 "lang_code" => CultureLang(),
+                // On resume: prefer user_id so a missing/mismatched phone cannot force Auth_SendCode.
+                // user_id=-1 trusts the session file (WTelegram FAQ). Phone still used for fresh login.
+                "user_id" => resumeExistingSession
+                    ? (account.UserId > 0 ? account.UserId.ToString(CultureInfo.InvariantCulture) : "-1")
+                    : null,
                 "phone_number" => account.Phone,
                 // Decline Firebase attestation — we cannot complete SafetyNet here.
                 "firebase" => null,
@@ -3714,14 +3767,52 @@ namespace SilentNotes.Services
 
         private string GetCacheDirectory() => Path.Combine(GetExternalTgRoot(), "cache");
 
-        private string GetSessionsDirectory() => Path.Combine(GetCacheDirectory(), "sessions");
+        /// <summary>
+        /// App-private sessions directory (next to the XML store). External /sdcard sessions are
+        /// migrated here — exclusive FileShare locks and MediaProvider on shared storage corrupted
+        /// resumes and triggered fresh login codes.
+        /// </summary>
+        private string GetSessionsDirectory() => Path.Combine(GetStoreDirectory(), "sessions");
+
+        private string GetLegacyExternalSessionsDirectory() =>
+            Path.Combine(GetExternalTgRoot(), "cache", "sessions");
 
         private string GetSessionPath(TelegramAccountModel account)
         {
             string fileName = string.IsNullOrWhiteSpace(account.SessionFileName)
                 ? accountSessionFileName(account.Id)
                 : account.SessionFileName;
-            return Path.Combine(GetSessionsDirectory(), fileName);
+            string privatePath = Path.Combine(GetSessionsDirectory(), fileName);
+            TryMigrateSessionFile(fileName, privatePath);
+            return privatePath;
+        }
+
+        private void TryMigrateSessionFile(string fileName, string privatePath)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(fileName) || File.Exists(privatePath))
+                    return;
+
+                Directory.CreateDirectory(GetSessionsDirectory());
+                foreach (string legacyDir in new[]
+                         {
+                             GetLegacyExternalSessionsDirectory(),
+                             Path.Combine("/sdcard", "abro", "tg", "cache", "sessions"),
+                             Path.Combine("/storage", "emulated", "0", "abro", "tg", "cache", "sessions"),
+                             Path.Combine("/sdcard", "anote", "tg", "cache", "sessions"),
+                         })
+                {
+                    string legacy = Path.Combine(legacyDir, fileName);
+                    if (!File.Exists(legacy))
+                        continue;
+                    File.Copy(legacy, privatePath, overwrite: false);
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+            }
         }
 
         // ---- entities ----

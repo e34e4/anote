@@ -1,0 +1,3 @@
+• Telegram: fix Arg_PlatformNotSupported on chat list (install safe logger at process start)
+• Telegram: keep sessions in private app storage and migrate from /sdcard/anote/tg
+• Telegram: resume with user_id so opening the tab does not send a new login code

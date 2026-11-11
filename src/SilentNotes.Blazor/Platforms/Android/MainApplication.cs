@@ -17,12 +17,41 @@ namespace SilentNotes
 		public MainApplication(IntPtr handle, JniHandleOwnership ownership)
 			: base(handle, ownership)
 		{
+			// Must run before any WTelegram.Client is constructed (including from background
+			// services). DefaultLogger uses Console.ForegroundColor → Arg_PlatformNotSupported.
+			InstallWTelegramLogger();
 		}
 
 		public override void OnCreate()
 		{
+			InstallWTelegramLogger();
 			base.OnCreate();
 			EnsureMlKitInitialized(this);
+		}
+
+		/// <summary>
+		/// Redirect WTelegram logs to logcat. Safe to call repeatedly.
+		/// </summary>
+		internal static void InstallWTelegramLogger()
+		{
+			WTelegram.Helpers.Log = (level, message) =>
+			{
+				try
+				{
+					Android.Util.LogPriority priority = level switch
+					{
+						0 => Android.Util.LogPriority.Verbose,
+						1 => Android.Util.LogPriority.Debug,
+						2 => Android.Util.LogPriority.Info,
+						3 => Android.Util.LogPriority.Warn,
+						_ => Android.Util.LogPriority.Error,
+					};
+					Android.Util.Log.WriteLine(priority, "WTelegram", message ?? string.Empty);
+				}
+				catch
+				{
+				}
+			};
 		}
 
 		/// <summary>

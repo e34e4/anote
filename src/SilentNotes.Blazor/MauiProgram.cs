@@ -46,11 +46,15 @@ public static class MauiProgram
     /// </remarks>
     public static MauiApp CreateMauiApp()
     {
+#if ANDROID
+        // Prefer logcat sink installed in MainApplication; reinforce before IOC builds clients.
+        MainApplication.InstallWTelegramLogger();
+#else
         // WTelegram's default logger uses Console.ForegroundColor, which throws
-        // PlatformNotSupportedException (Arg_PlatformNotSupported) on Android/MAUI.
-        // Install a safe logger before any WTelegram.Client can be constructed.
+        // PlatformNotSupportedException (Arg_PlatformNotSupported) on mobile.
         WTelegram.Helpers.Log = (level, message) =>
             System.Diagnostics.Debug.WriteLine("[WTelegram " + level + "] " + message);
+#endif
 
         // Workaround: Not necessary anymore since Maui .NET 9.
         // Fixes the restart problem on Android when closing the app with the back
@@ -110,9 +114,12 @@ public static class MauiProgram
 
     internal static void RegisterSharedServices(IServiceCollection services)
     {
-        // Secondary Android service hosts also build an IOC; keep WTelegram logger safe there too.
+#if ANDROID
+        MainApplication.InstallWTelegramLogger();
+#else
         WTelegram.Helpers.Log = (level, message) =>
             System.Diagnostics.Debug.WriteLine("[WTelegram " + level + "] " + message);
+#endif
 
         services.AddSingleton<ISynchronizationState>((serviceProvider) => _synchronizationState ?? (_synchronizationState = new SynchronizationState(
             serviceProvider.GetService<IMessengerService>())));
