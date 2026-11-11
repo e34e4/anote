@@ -19,6 +19,7 @@ using Android.Views;
 using Android.Widget;
 using Color = Android.Graphics.Color;
 using Uri = Android.Net.Uri;
+using Button = Android.Widget.Button;
 
 namespace SilentNotes
 {

@@ -15,7 +15,7 @@ namespace SilentNotes.Models
     public class CloudFileLocationModel
     {
         /// <summary>Location id used by <see cref="PathTabSessionModel.LocationId"/> for the primary target.</summary>
-        public const string PrimaryLocationId = string.Empty;
+        public const string PrimaryLocationId = "";
 
         public const string ProviderWebdav = "webdav";
         public const string ProviderDropbox = "dropbox";
