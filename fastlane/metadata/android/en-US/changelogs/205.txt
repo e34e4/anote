@@ -1,0 +1,3 @@
+• Fix yt-dlp Python extract: preserve lib symlinks (zlib was broken)
+• Also unpack ffmpeg native libs used by yt-dlp merges
+• First download after install re-extracts the runtime automatically

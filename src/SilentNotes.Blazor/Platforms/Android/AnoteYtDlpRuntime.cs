@@ -7,27 +7,32 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Android.Content;
+using Android.Systems;
 using SilentNotes.Workers;
 
 namespace SilentNotes
 {
     /// <summary>
     /// Runs yt-dlp on Android via the bundled Python interpreter from youtubedl-android
-    /// (<c>libpython.so</c> in the native library directory). Official yt-dlp Linux binaries are
-    /// glibc ELFs and cannot run on Android (linker rejects them / wrong libc).
+    /// (<c>libpython.so</c> + <c>libpython.zip.so</c>). Zip extraction must recreate Unix
+    /// symlinks (zlib etc.); plain <see cref="ZipFile.ExtractToDirectory"/> leaves 13-byte stubs.
     /// </summary>
     internal static class AnoteYtDlpRuntime
     {
         private const string BaseName = "youtubedl-android";
         private const string PackagesRoot = "packages";
         private const string PythonDirName = "python";
+        private const string FfmpegDirName = "ffmpeg";
         private const string PythonBinName = "libpython.so";
         private const string PythonZipName = "libpython.zip.so";
         private const string FfmpegBinName = "libffmpeg.so";
-        private const string MarkerFileName = ".python_ready";
+        private const string FfmpegZipName = "libffmpeg.zip.so";
+        /// <summary>v2 = symlink-aware extract (fixes zlib not available).</summary>
+        private const string MarkerFileName = ".runtime_ready_v2";
 
         private static readonly object Gate = new object();
         private static bool _ready;
@@ -72,7 +77,7 @@ namespace SilentNotes
 
             lock (Gate)
             {
-                if (_ready && IsPythonTreeReady(context))
+                if (_ready && IsRuntimeTreeReady(context))
                     return;
 
                 string native = context.ApplicationInfo?.NativeLibraryDir
@@ -87,22 +92,39 @@ namespace SilentNotes
 
                 Java.IO.File noBackup = context.NoBackupFilesDir;
                 string baseDir = Path.Combine(noBackup.AbsolutePath, BaseName);
-                string pythonDir = Path.Combine(baseDir, PackagesRoot, PythonDirName);
-                string marker = Path.Combine(pythonDir, MarkerFileName);
-                long zipSize = new FileInfo(pythonZip).Length;
+                string packagesDir = Path.Combine(baseDir, PackagesRoot);
+                string pythonDir = Path.Combine(packagesDir, PythonDirName);
+                string ffmpegDir = Path.Combine(packagesDir, FfmpegDirName);
+                string marker = Path.Combine(packagesDir, MarkerFileName);
+
+                long pythonZipSize = new FileInfo(pythonZip).Length;
+                string ffmpegZip = Path.Combine(native, FfmpegZipName);
+                long ffmpegZipSize = File.Exists(ffmpegZip) ? new FileInfo(ffmpegZip).Length : 0;
+                string expectedMarker = pythonZipSize + ":" + ffmpegZipSize;
 
                 bool needExtract = !File.Exists(marker)
-                    || !Directory.Exists(Path.Combine(pythonDir, "usr"))
-                    || !string.Equals(File.ReadAllText(marker).Trim(), zipSize.ToString(), StringComparison.Ordinal);
+                    || !Directory.Exists(Path.Combine(pythonDir, "usr", "lib"))
+                    || !string.Equals(SafeRead(marker), expectedMarker, StringComparison.Ordinal)
+                    || !SymlinksLookHealthy(pythonDir);
 
                 if (needExtract)
                 {
-                    if (Directory.Exists(pythonDir))
-                        Directory.Delete(pythonDir, true);
+                    AnoteFileLog.Append("ytdlp", "Extracting Android Python/ffmpeg packages (symlink-aware)…");
+                    TryDeleteDir(pythonDir);
+                    TryDeleteDir(ffmpegDir);
                     Directory.CreateDirectory(pythonDir);
-                    ZipFile.ExtractToDirectory(pythonZip, pythonDir);
-                    File.WriteAllText(marker, zipSize.ToString());
-                    AnoteFileLog.Append("ytdlp", "Extracted Android Python runtime to " + pythonDir);
+                    ExtractZipPreservingSymlinks(pythonZip, pythonDir);
+
+                    if (File.Exists(ffmpegZip) && ffmpegZipSize > 1024)
+                    {
+                        Directory.CreateDirectory(ffmpegDir);
+                        ExtractZipPreservingSymlinks(ffmpegZip, ffmpegDir);
+                    }
+
+                    Directory.CreateDirectory(packagesDir);
+                    File.WriteAllText(marker, expectedMarker);
+                    AnoteFileLog.Append("ytdlp", "Extracted Android Python runtime to " + pythonDir
+                        + (Directory.Exists(ffmpegDir) ? " (+ ffmpeg libs)" : string.Empty));
                 }
 
                 _ready = true;
@@ -119,15 +141,17 @@ namespace SilentNotes
             string native = context.ApplicationInfo.NativeLibraryDir;
             string pythonBin = Path.Combine(native, PythonBinName);
             Java.IO.File noBackup = context.NoBackupFilesDir;
-            string pythonDir = Path.Combine(noBackup.AbsolutePath, BaseName, PackagesRoot, PythonDirName);
+            string packagesDir = Path.Combine(noBackup.AbsolutePath, BaseName, PackagesRoot);
+            string pythonDir = Path.Combine(packagesDir, PythonDirName);
+            string ffmpegDir = Path.Combine(packagesDir, FfmpegDirName);
             string pythonHome = Path.Combine(pythonDir, "usr");
             string pythonLib = Path.Combine(pythonHome, "lib");
+            string ffmpegLib = Path.Combine(ffmpegDir, "usr", "lib");
             string cert = Path.Combine(pythonHome, "etc", "tls", "cert.pem");
 
             if (string.IsNullOrEmpty(ytDlpScriptPath) || !File.Exists(ytDlpScriptPath))
                 throw new FileNotFoundException("yt-dlp script not found", ytDlpScriptPath);
 
-            // Reject leftover Linux ELF "yt-dlp" downloads — they cannot run on Android.
             if (LooksLikeElf(ytDlpScriptPath))
             {
                 throw new InvalidOperationException(
@@ -140,9 +164,10 @@ namespace SilentNotes
 
             var builder = new Java.Lang.ProcessBuilder(cmd.ToArray());
             var env = builder.Environment();
-            string ld = pythonLib;
-            string packagedFfmpegDir = native;
-            env["LD_LIBRARY_PATH"] = ld + ":" + packagedFfmpegDir;
+            var ldParts = new List<string> { pythonLib, native };
+            if (Directory.Exists(ffmpegLib))
+                ldParts.Insert(1, ffmpegLib);
+            env["LD_LIBRARY_PATH"] = string.Join(":", ldParts);
             if (File.Exists(cert))
                 env["SSL_CERT_FILE"] = cert;
             env["PYTHONHOME"] = pythonHome;
@@ -164,7 +189,7 @@ namespace SilentNotes
         {
             return await Task.Run(() =>
             {
-                var output = new System.Text.StringBuilder();
+                var output = new StringBuilder();
                 string lastPath = null;
                 Java.Lang.Process process = null;
                 try
@@ -232,14 +257,109 @@ namespace SilentNotes
             }, cancellationToken).ConfigureAwait(false);
         }
 
-        private static bool IsPythonTreeReady(Context context)
+        /// <summary>
+        /// Like youtubedl-android ZipUtils.unzip: recreate Unix symlinks with <see cref="Os.Symlink"/>
+        /// instead of writing the target path as a tiny regular file.
+        /// </summary>
+        private static void ExtractZipPreservingSymlinks(string zipPath, string targetDirectory)
+        {
+            Directory.CreateDirectory(targetDirectory);
+            string targetRoot = Path.GetFullPath(targetDirectory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+
+            using ZipArchive archive = ZipFile.OpenRead(zipPath);
+            foreach (ZipArchiveEntry entry in archive.Entries)
+            {
+                string name = entry.FullName.Replace('\\', '/');
+                if (string.IsNullOrEmpty(name) || name.EndsWith("/", StringComparison.Ordinal))
+                {
+                    if (!string.IsNullOrEmpty(name))
+                        Directory.CreateDirectory(Path.Combine(targetDirectory, name));
+                    continue;
+                }
+
+                string destPath = Path.GetFullPath(Path.Combine(targetDirectory, name));
+                if (!destPath.StartsWith(targetRoot, StringComparison.Ordinal))
+                    throw new InvalidOperationException("Zip entry outside target: " + name);
+
+                string parent = Path.GetDirectoryName(destPath);
+                if (!string.IsNullOrEmpty(parent))
+                    Directory.CreateDirectory(parent);
+
+                if (IsUnixSymlink(entry))
+                {
+                    string linkTarget;
+                    using (var reader = new StreamReader(entry.Open(), Encoding.UTF8))
+                        linkTarget = reader.ReadToEnd();
+
+                    try
+                    {
+                        if (File.Exists(destPath) || Directory.Exists(destPath) || IsSymlinkPath(destPath))
+                            File.Delete(destPath);
+                    }
+                    catch (Exception)
+                    {
+                        try { Directory.Delete(destPath); } catch (Exception) { }
+                    }
+
+                    Os.Symlink(linkTarget, destPath);
+                }
+                else
+                {
+                    entry.ExtractToFile(destPath, overwrite: true);
+                }
+            }
+        }
+
+        private static bool IsUnixSymlink(ZipArchiveEntry entry)
+        {
+            // Upper 16 bits of external attributes are the Unix mode when create_system is Unix.
+            int mode = (entry.ExternalAttributes >> 16) & 0xFFFF;
+            const int sIfLnk = 0xA000;
+            return (mode & 0xF000) == sIfLnk;
+        }
+
+        private static bool SymlinksLookHealthy(string pythonDir)
+        {
+            try
+            {
+                string libz = Path.Combine(pythonDir, "usr", "lib", "libz.so.1");
+                if (!File.Exists(libz) && !IsSymlinkPath(libz))
+                    return false;
+                // Broken extract wrote the target name as a 13-byte regular file.
+                var info = new FileInfo(libz);
+                if (info.Exists && info.Length > 0 && info.Length < 64 && !IsSymlinkPath(libz))
+                    return false;
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private static bool IsSymlinkPath(string path)
+        {
+            try
+            {
+                return Os.Readlink(path) != null;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private static bool IsRuntimeTreeReady(Context context)
         {
             try
             {
                 Java.IO.File noBackup = context.NoBackupFilesDir;
-                string marker = Path.Combine(
-                    noBackup.AbsolutePath, BaseName, PackagesRoot, PythonDirName, MarkerFileName);
-                return File.Exists(marker);
+                string packagesDir = Path.Combine(noBackup.AbsolutePath, BaseName, PackagesRoot);
+                string marker = Path.Combine(packagesDir, MarkerFileName);
+                string pythonDir = Path.Combine(packagesDir, PythonDirName);
+                return File.Exists(marker) && SymlinksLookHealthy(pythonDir);
             }
             catch (Exception)
             {
@@ -260,6 +380,30 @@ namespace SilentNotes
             catch (Exception)
             {
                 return false;
+            }
+        }
+
+        private static string SafeRead(string path)
+        {
+            try
+            {
+                return File.ReadAllText(path).Trim();
+            }
+            catch (Exception)
+            {
+                return string.Empty;
+            }
+        }
+
+        private static void TryDeleteDir(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                    Directory.Delete(path, true);
+            }
+            catch (Exception)
+            {
             }
         }
 
