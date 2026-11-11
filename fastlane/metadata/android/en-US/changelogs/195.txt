@@ -1,0 +1,2 @@
+• Bundle only arm64 ffmpeg/yt-dlp in the APK to reduce size (~80 MB tools, not ~200 MB)
+• Other ABIs can still download via Settings → Update ffmpeg / yt-dlp

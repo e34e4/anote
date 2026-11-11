@@ -63,10 +63,10 @@ function Save-YtDlpAsset([string]$AssetName, [string]$DestPath, [string]$WorkDir
 }
 
 try {
+    # Ship only arm64 in the APK to keep size down. Other ABIs can still be
+    # fetched at runtime via Settings → Update ffmpeg / yt-dlp.
     $map = @(
-        @{ Abi = "arm64-v8a"; FfmpegArch = "arm64"; YtDlpCandidates = @("yt-dlp_linux_aarch64", "yt-dlp_linux_aarch64.zip", "yt-dlp") },
-        @{ Abi = "armeabi-v7a"; FfmpegArch = "arm"; YtDlpCandidates = @("yt-dlp_linux_armv7l.zip", "yt-dlp_linux_armv7l", "yt-dlp") },
-        @{ Abi = "x86_64"; FfmpegArch = "x64"; YtDlpCandidates = @("yt-dlp_linux", "yt-dlp_linux.zip", "yt-dlp") }
+        @{ Abi = "arm64-v8a"; FfmpegArch = "arm64"; YtDlpCandidates = @("yt-dlp_linux_aarch64", "yt-dlp_linux_aarch64.zip", "yt-dlp") }
     )
 
     foreach ($item in $map) {
