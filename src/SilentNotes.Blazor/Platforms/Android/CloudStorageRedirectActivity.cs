@@ -38,6 +38,10 @@ namespace SilentNotes
             {
                 MailOAuthSession.Offer(redirectUrl);
             }
+            else if (FileOAuthSession.IsFileRedirect(redirectUrl))
+            {
+                FileOAuthSession.Offer(redirectUrl);
+            }
             else
             {
                 ISynchronizationService synchronizationService = Ioc.Instance.GetService<ISynchronizationService>();

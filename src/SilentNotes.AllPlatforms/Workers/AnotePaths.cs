@@ -63,6 +63,9 @@ namespace SilentNotes.Workers
 
         public static string Abro => Path.Combine(GetRootDirectory(), "abro");
 
+        /// <summary>File-tab cloud OAuth / staging workspace (<c>/sdcard/anote/file</c>).</summary>
+        public static string File => Path.Combine(GetRootDirectory(), "file");
+
         public static string FfmpegDir => Path.Combine(GetRootDirectory(), "ffmpeg");
 
         public static string YtDlpDir => Path.Combine(GetRootDirectory(), "yt-dlp");
@@ -71,7 +74,7 @@ namespace SilentNotes.Workers
         public static string EnsureDirectories()
         {
             string root = GetRootDirectory();
-            foreach (string dir in new[] { Down, Pic, Tg, Abro, FfmpegDir, YtDlpDir })
+            foreach (string dir in new[] { Down, Pic, Tg, Abro, File, FfmpegDir, YtDlpDir })
             {
                 try
                 {

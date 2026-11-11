@@ -74,7 +74,7 @@ namespace VanillaCloudStorageClient.CloudStorageProviders
             {
                 string jsonPathParameter = JsonSerializer.Serialize(new
                 {
-                    path = EnsureLeadingSlash(filename),
+                    path = BuildAbsolutePath(credentials.Url, filename),
                     mode = "overwrite",
                     autorename = false,
                 });
@@ -101,7 +101,7 @@ namespace VanillaCloudStorageClient.CloudStorageProviders
             {
                 string jsonPathParameter = JsonSerializer.Serialize(new
                 {
-                    path = EnsureLeadingSlash(filename)
+                    path = BuildAbsolutePath(credentials.Url, filename)
                 });
 
                 byte[] result = await GetFlurl().Request(DownloadUrl)
@@ -129,7 +129,7 @@ namespace VanillaCloudStorageClient.CloudStorageProviders
                     .WithOAuthBearerToken(credentials.Token.AccessToken)
                     .PostJsonAsync(new
                     {
-                        path = EnsureLeadingSlash(filename)
+                        path = BuildAbsolutePath(credentials.Url, filename)
                     });
             }
             catch (Exception ex)
@@ -145,11 +145,15 @@ namespace VanillaCloudStorageClient.CloudStorageProviders
 
             try
             {
+                string folderPath = string.IsNullOrWhiteSpace(credentials.Url)
+                    ? string.Empty
+                    : EnsureLeadingSlash(credentials.Url.Trim().TrimEnd('/'));
+
                 string jsonResponse = await GetFlurl().Request(ListUrl)
                     .WithOAuthBearerToken(credentials.Token.AccessToken)
                     .PostJsonAsync(new
                     {
-                        path = string.Empty,
+                        path = folderPath,
                         recursive = false,
                         include_deleted = false,
                         include_has_explicit_shared_members = false,
@@ -198,6 +202,20 @@ namespace VanillaCloudStorageClient.CloudStorageProviders
                 return filename;
             else
                 return "/" + filename;
+        }
+
+        /// <summary>
+        /// Combines an optional folder from <see cref="CloudStorageCredentials.Url"/> with a file name.
+        /// </summary>
+        private string BuildAbsolutePath(string folder, string filename)
+        {
+            string name = (filename ?? string.Empty).Trim().Trim('/');
+            string root = (folder ?? string.Empty).Trim().Trim('/');
+            if (string.IsNullOrEmpty(root))
+                return EnsureLeadingSlash(name);
+            if (string.IsNullOrEmpty(name))
+                return EnsureLeadingSlash(root);
+            return EnsureLeadingSlash(root + "/" + name);
         }
 
         /// <summary>

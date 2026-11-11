@@ -3,6 +3,7 @@
 @using SilentNotes.Services
 @using SilentNotes.ViewModels
 @using SilentNotes.Workers
+@implements IDisposable
 
 @inject ILanguageService LanguageService
 @inject IAbroAiChatLauncher AiChatLauncher
@@ -336,6 +337,22 @@
 							Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
 						<MudSwitch @bind-Value="location.UseRepositoryCredentials" Color="Color.Tertiary"
 							Label="@LanguageService["file_cloud_use_repo_credentials"]" />
+						@if (ViewModel.IsCloudLocationConnected(location))
+						{
+							<MudAlert Severity="Severity.Success" Dense="true" Class="mt-2">@LanguageService["file_cloud_connected"]</MudAlert>
+							<div class="d-flex gap-2 mt-2">
+								<MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+									OnClick="() => ConnectCloudLocationAsync(location)">@LanguageService["file_cloud_reconnect"]</MudButton>
+								<MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+									OnClick="() => DisconnectCloudLocation(location)">@LanguageService["file_cloud_disconnect"]</MudButton>
+							</div>
+						}
+						else
+						{
+							<MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Class="mt-2"
+								StartIcon="@Icons.Material.Filled.Login"
+								OnClick="() => ConnectCloudLocationAsync(location)">@LanguageService["file_cloud_connect"]</MudButton>
+						}
 					}
 					else
 					{
@@ -363,7 +380,21 @@
 	protected override async Task OnInitializedAsync()
 	{
 		if (ViewModel != null)
+		{
+			ViewModel.StateChanged += OnViewModelStateChanged;
 			await ViewModel.InitializeAsync();
+		}
+	}
+
+	private void OnViewModelStateChanged()
+	{
+		InvokeAsync(StateHasChanged);
+	}
+
+	public void Dispose()
+	{
+		if (ViewModel != null)
+			ViewModel.StateChanged -= OnViewModelStateChanged;
 	}
 
 	private async Task RefreshAsync()
@@ -375,6 +406,18 @@
 	private async Task UploadFileAsync()
 	{
 		await ViewModel.UploadFileAsync();
+		StateHasChanged();
+	}
+
+	private async Task ConnectCloudLocationAsync(CloudFileLocationModel location)
+	{
+		await ViewModel.ConnectCloudLocationAsync(location);
+		StateHasChanged();
+	}
+
+	private void DisconnectCloudLocation(CloudFileLocationModel location)
+	{
+		ViewModel.DisconnectCloudLocation(location);
 		StateHasChanged();
 	}
 

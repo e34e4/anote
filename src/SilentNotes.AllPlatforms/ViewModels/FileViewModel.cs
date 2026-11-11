@@ -8,9 +8,12 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
+using SilentNotes.Crypto;
 using SilentNotes.Models;
 using SilentNotes.Services;
 using SilentNotes.Workers;
@@ -19,10 +22,13 @@ using VanillaCloudStorageClient;
 namespace SilentNotes.ViewModels
 {
     /// <summary>
-    /// View model for the File tab (file exchange over WebDAV).
+    /// View model for the File tab (file exchange over WebDAV / OAuth clouds).
     /// </summary>
     public class FileViewModel : ViewModelBase
     {
+        private const string OAuthPendingFileName = "oauth_pending.json";
+        private const string OAuthResponseFileName = "oauth_response.json";
+
         private readonly IWebdavFileService _webdavService;
         private readonly ISettingsService _settingsService;
         private readonly IFilePickerService _filePickerService;
@@ -30,7 +36,11 @@ namespace SilentNotes.ViewModels
         private readonly IFeedbackService _feedbackService;
         private readonly IImageEditorService _imageEditorService;
         private readonly ICloudStorageClientFactory _cloudStorageClientFactory;
+        private readonly INativeBrowserService _nativeBrowserService;
+        private readonly IMessengerService _messengerService;
+        private readonly ICryptoRandomService _randomService;
         private readonly HashSet<string> _selectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private string _handledOAuthRedirect;
 
         private List<WebdavFileItemViewModel> _items = new List<WebdavFileItemViewModel>();
         private string _filter;
@@ -63,7 +73,10 @@ namespace SilentNotes.ViewModels
             ILanguageService languageService,
             IFeedbackService feedbackService,
             IImageEditorService imageEditorService = null,
-            ICloudStorageClientFactory cloudStorageClientFactory = null)
+            ICloudStorageClientFactory cloudStorageClientFactory = null,
+            INativeBrowserService nativeBrowserService = null,
+            IMessengerService messengerService = null,
+            ICryptoRandomService randomService = null)
         {
             _webdavService = webdavService;
             _settingsService = settingsService;
@@ -72,6 +85,16 @@ namespace SilentNotes.ViewModels
             _feedbackService = feedbackService;
             _imageEditorService = imageEditorService;
             _cloudStorageClientFactory = cloudStorageClientFactory;
+            _nativeBrowserService = nativeBrowserService;
+            _messengerService = messengerService;
+            _randomService = randomService;
+
+            _messengerService?.Register<SilentNotes.FileCloudOAuthRedirectMessage>(this, (_, message) =>
+            {
+                _ = FinishCloudOAuthAsync(message.RedirectUrl);
+            });
+            if (SilentNotes.FileOAuthSession.Peek() != null)
+                _ = FinishCloudOAuthAsync(SilentNotes.FileOAuthSession.Peek());
 
             LoadCredentialsFromSettings();
             LoadPathTabsFromSettings();
@@ -99,6 +122,14 @@ namespace SilentNotes.ViewModels
             AddPathTabCommand = new AsyncRelayCommand(AddPathTabAsync);
             ClosePathTabCommand = new AsyncRelayCommand<int>(ClosePathTabAsync);
             SelectPathTabCommand = new AsyncRelayCommand<int>(SelectPathTabAsync);
+        }
+
+        /// <summary>Raised when the UI should re-render (e.g. after OAuth redirect).</summary>
+        public event Action StateChanged;
+
+        private void NotifyChanged()
+        {
+            StateChanged?.Invoke();
         }
 
         public ICommand RefreshCommand { get; }
@@ -457,9 +488,7 @@ namespace SilentNotes.ViewModels
                 if (string.IsNullOrWhiteSpace(fileName))
                     fileName = "upload_" + DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture) + ".bin";
 
-                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
-                await _webdavService.UploadFileAsync(
-                    EffectiveUrl, remoteFolder, fileName, content, EffectiveUsername, EffectivePassword);
+                await UploadBytesAsync(fileName, content);
 
                 _feedbackService?.ShowToast(_languageService.LoadTextFmt("file_uploaded", fileName));
                 await RefreshAsync();
@@ -481,6 +510,12 @@ namespace SilentNotes.ViewModels
             string name = _newFolderName?.Trim().Trim('/');
             if (string.IsNullOrEmpty(name) || IsBusy || !IsConfigured)
                 return;
+
+            if (_useCloudClient)
+            {
+                _feedbackService?.ShowToast(_languageService["file_cloud_mkdir_unsupported"], FeedbackSeverity.Warning);
+                return;
+            }
 
             IsBusy = true;
             LastError = null;
@@ -518,10 +553,8 @@ namespace SilentNotes.ViewModels
             LastError = null;
             try
             {
-                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
-                byte[] content = System.Text.Encoding.UTF8.GetBytes(string.Empty);
-                await _webdavService.UploadFileAsync(
-                    EffectiveUrl, remoteFolder, name, content, EffectiveUsername, EffectivePassword);
+                byte[] content = Encoding.UTF8.GetBytes(string.Empty);
+                await UploadBytesAsync(name, content);
                 IsNewTextFileOpen = false;
                 _newTextFileName = string.Empty;
                 _feedbackService?.ShowToast(_languageService.LoadTextFmt("file_created_txt", name));
@@ -685,19 +718,16 @@ namespace SilentNotes.ViewModels
             LastError = null;
             try
             {
-                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
                 var entries = new List<CompressUtils.CompressEntry>();
                 foreach (WebdavFileItemViewModel item in selected)
                 {
-                    byte[] bytes = await _webdavService.DownloadFileAsync(
-                        EffectiveUrl, remoteFolder, item.Name, EffectiveUsername, EffectivePassword);
+                    byte[] bytes = await DownloadFileBytesAsync(item.Name);
                     entries.Add(new CompressUtils.CompressEntry { Name = item.Name, Data = bytes ?? Array.Empty<byte>() });
                 }
 
                 byte[] zip = CompressUtils.CreateZipArchive(entries);
                 string zipName = string.Format(CultureInfo.InvariantCulture, "archive_{0:yyyyMMdd_HHmmss}.zip", DateTime.Now);
-                await _webdavService.UploadFileAsync(
-                    EffectiveUrl, remoteFolder, zipName, zip, EffectiveUsername, EffectivePassword);
+                await UploadBytesAsync(zipName, zip);
                 _feedbackService?.ShowToast(_languageService.LoadTextFmt("file_zipped", zipName));
                 ClearSelection();
                 await RefreshAsync();
@@ -728,19 +758,16 @@ namespace SilentNotes.ViewModels
             LastError = null;
             try
             {
-                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
                 int count = 0;
                 foreach (WebdavFileItemViewModel item in selected)
                 {
-                    byte[] zipBytes = await _webdavService.DownloadFileAsync(
-                        EffectiveUrl, remoteFolder, item.Name, EffectiveUsername, EffectivePassword);
+                    byte[] zipBytes = await DownloadFileBytesAsync(item.Name);
                     foreach (CompressUtils.CompressEntry entry in CompressUtils.OpenZipArchive(zipBytes))
                     {
                         string name = Path.GetFileName(entry.Name.Replace('\\', '/'));
                         if (string.IsNullOrWhiteSpace(name))
                             continue;
-                        await _webdavService.UploadFileAsync(
-                            EffectiveUrl, remoteFolder, name, entry.Data ?? Array.Empty<byte>(), EffectiveUsername, EffectivePassword);
+                        await UploadBytesAsync(name, entry.Data ?? Array.Empty<byte>());
                         count++;
                     }
                 }
@@ -775,15 +802,10 @@ namespace SilentNotes.ViewModels
             try
             {
                 WebdavFileItemViewModel item = selected[0];
-                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
-                byte[] bytes = await _webdavService.DownloadFileAsync(
-                    EffectiveUrl, remoteFolder, item.Name, EffectiveUsername, EffectivePassword);
+                byte[] bytes = await DownloadFileBytesAsync(item.Name);
                 List<CompressUtils.CompressEntry> parts = CompressUtils.SplitFile(bytes, item.Name, chunkBytes);
                 foreach (CompressUtils.CompressEntry part in parts)
-                {
-                    await _webdavService.UploadFileAsync(
-                        EffectiveUrl, remoteFolder, part.Name, part.Data ?? Array.Empty<byte>(), EffectiveUsername, EffectivePassword);
-                }
+                    await UploadBytesAsync(part.Name, part.Data ?? Array.Empty<byte>());
 
                 _feedbackService?.ShowToast(_languageService.LoadTextFmt("file_split_ok", parts.Count));
                 ClearSelection();
@@ -818,9 +840,7 @@ namespace SilentNotes.ViewModels
             LastError = null;
             try
             {
-                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
-                byte[] bytes = await _webdavService.DownloadFileAsync(
-                    EffectiveUrl, remoteFolder, item.Name, EffectiveUsername, EffectivePassword);
+                byte[] bytes = await DownloadFileBytesAsync(item.Name);
                 string savedPath = await _webdavService.SaveDownloadedFileAsync(item.Name, bytes);
                 if (string.IsNullOrEmpty(savedPath) || !await _imageEditorService.OpenEditorAsync(savedPath))
                     _feedbackService?.ShowToast(_languageService["file_crop_failed"], FeedbackSeverity.Warning);
@@ -865,9 +885,7 @@ namespace SilentNotes.ViewModels
             LastError = null;
             try
             {
-                string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
-                await _webdavService.DeleteItemAsync(
-                    EffectiveUrl, remoteFolder, item.Name, item.IsDirectory, EffectiveUsername, EffectivePassword);
+                await DeleteRemoteItemAsync(item);
                 _feedbackService?.ShowToast(_languageService.LoadTextFmt("file_deleted", item.Name));
                 await RefreshAsync();
             }
@@ -917,6 +935,314 @@ namespace SilentNotes.ViewModels
                 return;
             _editCloudLocations.Remove(location);
             OnPropertyChanged(nameof(EditCloudLocations));
+        }
+
+        /// <summary>True when this location already has usable OAuth tokens.</summary>
+        public bool IsCloudLocationConnected(CloudFileLocationModel location)
+        {
+            if (location == null || !IsOAuthProvider(location.ProviderId))
+                return false;
+            if (HasUsableToken(location.CloudCredentials?.Token))
+                return true;
+            if (!location.UseRepositoryCredentials)
+                return false;
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            return settings.Credentials != null
+                && string.Equals(settings.Credentials.CloudStorageId, MapProviderToCloudStorageId(location.ProviderId), StringComparison.OrdinalIgnoreCase)
+                && HasUsableToken(settings.Credentials.Token);
+        }
+
+        /// <summary>Starts browser OAuth for Dropbox / Google Drive / OneDrive.</summary>
+        public async Task ConnectCloudLocationAsync(CloudFileLocationModel location)
+        {
+            if (location == null || !IsOAuthProvider(location.ProviderId))
+                return;
+            if (_nativeBrowserService == null || _randomService == null || _cloudStorageClientFactory == null)
+            {
+                _feedbackService?.ShowToast(_languageService["file_cloud_oauth_unavailable"], FeedbackSeverity.Warning);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(location.Id))
+                location.Id = Guid.NewGuid().ToString("N");
+            if (string.IsNullOrWhiteSpace(location.DisplayName))
+                location.DisplayName = _languageService["file_cloud_new_location"];
+
+            string cloudStorageId = MapProviderToCloudStorageId(location.ProviderId);
+            ICloudStorageClient client = _cloudStorageClientFactory.GetByKey(cloudStorageId);
+            if (client is not IOAuth2CloudStorageClient oauthClient)
+            {
+                _feedbackService?.ShowToast(_languageService["file_cloud_oauth_unavailable"], FeedbackSeverity.Warning);
+                return;
+            }
+
+            string state = SilentNotes.FileOAuthSession.StatePrefix + CryptoUtils.GenerateRandomBase62String(16, _randomService);
+            string verifier = CryptoUtils.GenerateRandomBase62String(64, _randomService);
+            WriteOAuthPending(new FileOAuthPending
+            {
+                LocationId = location.Id,
+                CloudStorageId = cloudStorageId,
+                ProviderId = location.ProviderId,
+                DisplayName = location.DisplayName,
+                RemoteFolder = location.RemoteFolder,
+                State = state,
+                CodeVerifier = verifier,
+            });
+
+            // Keep the row in settings so a successful redirect can find it even if the overlay closed.
+            UpsertEditLocationIntoSettings(location);
+
+            string url = oauthClient.BuildAuthorizationRequestUrl(state, verifier);
+            _nativeBrowserService.OpenWebsiteInApp(url);
+            _feedbackService?.ShowToast(_languageService["file_cloud_oauth_waiting"]);
+            await Task.CompletedTask;
+        }
+
+        /// <summary>Clears OAuth tokens for a File-tab cloud location.</summary>
+        public void DisconnectCloudLocation(CloudFileLocationModel location)
+        {
+            if (location == null)
+                return;
+
+            location.CloudCredentials = null;
+            location.UseRepositoryCredentials = false;
+            UpsertEditLocationIntoSettings(location);
+            TryDeleteLocationOAuthFiles(location.Id);
+            OnPropertyChanged(nameof(EditCloudLocations));
+            _feedbackService?.ShowToast(_languageService["file_cloud_disconnected"]);
+        }
+
+        /// <summary>Completes OAuth after the custom-scheme redirect returns to the app.</summary>
+        public async Task FinishCloudOAuthAsync(string redirectUrl)
+        {
+            if (string.IsNullOrEmpty(redirectUrl) || redirectUrl == _handledOAuthRedirect)
+                return;
+
+            _handledOAuthRedirect = redirectUrl;
+            SilentNotes.FileOAuthSession.Clear(redirectUrl);
+
+            FileOAuthPending pending = ReadOAuthPending();
+            if (pending == null || string.IsNullOrEmpty(pending.State) || string.IsNullOrEmpty(pending.CodeVerifier))
+            {
+                _feedbackService?.ShowToast(_languageService["file_cloud_oauth_failed"], FeedbackSeverity.Warning);
+                return;
+            }
+
+            IsBusy = true;
+            try
+            {
+                ICloudStorageClient client = _cloudStorageClientFactory?.GetByKey(pending.CloudStorageId);
+                if (client is not IOAuth2CloudStorageClient oauthClient)
+                    throw new InvalidOperationException(_languageService["file_cloud_oauth_unavailable"]);
+
+                CloudStorageToken token = await oauthClient.FetchTokenAsync(redirectUrl, pending.State, pending.CodeVerifier);
+                ClearOAuthPending();
+                if (token == null)
+                {
+                    _feedbackService?.ShowToast(_languageService["file_cloud_oauth_failed"], FeedbackSeverity.Warning);
+                    return;
+                }
+
+                var credentials = new SerializeableCloudStorageCredentials
+                {
+                    CloudStorageId = pending.CloudStorageId,
+                    Token = token,
+                };
+
+                CloudFileLocationModel editLocation = _editCloudLocations.FirstOrDefault(l =>
+                    l != null && string.Equals(l.Id, pending.LocationId, StringComparison.Ordinal));
+                if (editLocation == null)
+                {
+                    editLocation = new CloudFileLocationModel
+                    {
+                        Id = pending.LocationId,
+                        DisplayName = string.IsNullOrWhiteSpace(pending.DisplayName)
+                            ? _languageService["file_cloud_new_location"]
+                            : pending.DisplayName,
+                        ProviderId = pending.ProviderId,
+                        RemoteFolder = pending.RemoteFolder,
+                    };
+                    _editCloudLocations.Add(editLocation);
+                }
+
+                editLocation.CloudCredentials = credentials;
+                editLocation.UseRepositoryCredentials = false;
+                UpsertEditLocationIntoSettings(editLocation);
+                WriteOAuthResponseToDisk(editLocation.Id, pending.CloudStorageId, token);
+
+                OnPropertyChanged(nameof(EditCloudLocations), nameof(ExtraCloudLocations));
+                _feedbackService?.ShowToast(_languageService["file_cloud_oauth_ok"]);
+            }
+            catch (Exception ex)
+            {
+                _feedbackService?.ShowToast(_languageService["file_cloud_oauth_failed"] + ": " + ex.Message, FeedbackSeverity.Warning);
+            }
+            finally
+            {
+                IsBusy = false;
+                OnPropertyChanged(nameof(IsConfigured));
+                NotifyChanged();
+            }
+        }
+
+        private async Task UploadBytesAsync(string fileName, byte[] content)
+        {
+            if (_useCloudClient)
+            {
+                ICloudStorageClient client = _cloudStorageClientFactory?.GetByKey(_effectiveCloudStorageId);
+                CloudStorageCredentials credentials = BuildCloudCredentialsForList();
+                if (client == null || credentials == null)
+                    throw new InvalidOperationException(_languageService["file_cloud_oauth_required"]);
+                await client.UploadFileAsync(fileName, content ?? Array.Empty<byte>(), credentials);
+                return;
+            }
+
+            string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
+            await _webdavService.UploadFileAsync(
+                EffectiveUrl, remoteFolder, fileName, content, EffectiveUsername, EffectivePassword);
+        }
+
+        private async Task DeleteRemoteItemAsync(WebdavFileItemViewModel item)
+        {
+            if (_useCloudClient)
+            {
+                if (item.IsDirectory)
+                    throw new InvalidOperationException(_languageService["file_cloud_mkdir_unsupported"]);
+
+                ICloudStorageClient client = _cloudStorageClientFactory?.GetByKey(_effectiveCloudStorageId);
+                CloudStorageCredentials credentials = BuildCloudCredentialsForList();
+                if (client == null || credentials == null)
+                    throw new InvalidOperationException(_languageService["file_cloud_oauth_required"]);
+                await client.DeleteFileAsync(item.Name, credentials);
+                return;
+            }
+
+            string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
+            await _webdavService.DeleteItemAsync(
+                EffectiveUrl, remoteFolder, item.Name, item.IsDirectory, EffectiveUsername, EffectivePassword);
+        }
+
+        private void UpsertEditLocationIntoSettings(CloudFileLocationModel location)
+        {
+            if (location == null || string.IsNullOrWhiteSpace(location.Id))
+                return;
+
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            if (settings.CloudFileLocations == null)
+                settings.CloudFileLocations = new List<CloudFileLocationModel>();
+
+            CloudFileLocationModel existing = settings.CloudFileLocations.FirstOrDefault(l =>
+                l != null && string.Equals(l.Id, location.Id, StringComparison.Ordinal));
+            CloudFileLocationModel clone = CloneCloudLocation(location);
+            if (existing == null)
+                settings.CloudFileLocations.Add(clone);
+            else
+            {
+                int index = settings.CloudFileLocations.IndexOf(existing);
+                settings.CloudFileLocations[index] = clone;
+            }
+
+            _settingsService.TrySaveSettingsToLocalDevice(settings);
+        }
+
+        private static bool HasUsableToken(CloudStorageToken token)
+        {
+            return token != null
+                && (!string.IsNullOrEmpty(token.AccessToken) || !string.IsNullOrEmpty(token.RefreshToken));
+        }
+
+        private static string EnsureFileWorkspace()
+        {
+            AnotePaths.EnsureDirectories();
+            string root = AnotePaths.File;
+            Directory.CreateDirectory(root);
+            return root;
+        }
+
+        private static string LocationDirectory(string locationId)
+        {
+            string safeId = string.IsNullOrWhiteSpace(locationId) ? "unknown" : locationId.Trim();
+            string dir = Path.Combine(EnsureFileWorkspace(), safeId);
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+
+        private static void WriteOAuthPending(FileOAuthPending pending)
+        {
+            string path = Path.Combine(EnsureFileWorkspace(), OAuthPendingFileName);
+            string json = JsonSerializer.Serialize(pending);
+            System.IO.File.WriteAllText(path, json, Encoding.UTF8);
+        }
+
+        private static FileOAuthPending ReadOAuthPending()
+        {
+            string path = Path.Combine(EnsureFileWorkspace(), OAuthPendingFileName);
+            if (!System.IO.File.Exists(path))
+                return null;
+            try
+            {
+                return JsonSerializer.Deserialize<FileOAuthPending>(System.IO.File.ReadAllText(path));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static void ClearOAuthPending()
+        {
+            try
+            {
+                string path = Path.Combine(EnsureFileWorkspace(), OAuthPendingFileName);
+                if (System.IO.File.Exists(path))
+                    System.IO.File.Delete(path);
+            }
+            catch
+            {
+            }
+        }
+
+        private static void WriteOAuthResponseToDisk(string locationId, string cloudStorageId, CloudStorageToken token)
+        {
+            if (token == null)
+                return;
+
+            var payload = new
+            {
+                cloudStorageId,
+                connectedAtUtc = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+                accessToken = token.AccessToken,
+                refreshToken = token.RefreshToken,
+                expiryDate = token.ExpiryDate?.ToString("o", CultureInfo.InvariantCulture),
+            };
+            string path = Path.Combine(LocationDirectory(locationId), OAuthResponseFileName);
+            System.IO.File.WriteAllText(path, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }), Encoding.UTF8);
+        }
+
+        private static void TryDeleteLocationOAuthFiles(string locationId)
+        {
+            if (string.IsNullOrWhiteSpace(locationId))
+                return;
+            try
+            {
+                string dir = Path.Combine(AnotePaths.File, locationId.Trim());
+                if (Directory.Exists(dir))
+                    Directory.Delete(dir, true);
+            }
+            catch
+            {
+            }
+        }
+
+        private sealed class FileOAuthPending
+        {
+            public string LocationId { get; set; }
+            public string CloudStorageId { get; set; }
+            public string ProviderId { get; set; }
+            public string DisplayName { get; set; }
+            public string RemoteFolder { get; set; }
+            public string State { get; set; }
+            public string CodeVerifier { get; set; }
         }
 
         private void LoadCredentialsFromSettings()

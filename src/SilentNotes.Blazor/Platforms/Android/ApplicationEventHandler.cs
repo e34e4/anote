@@ -664,6 +664,11 @@ namespace SilentNotes.Platforms
                 Ioc.Instance.GetService<IMessengerService>()?.Send(
                     new SilentNotes.MailGoogleOAuthRedirectMessage(SilentNotes.MailOAuthSession.Peek()));
             }
+            else if (SilentNotes.FileOAuthSession.Peek() != null)
+            {
+                Ioc.Instance.GetService<IMessengerService>()?.Send(
+                    new SilentNotes.FileCloudOAuthRedirectMessage(SilentNotes.FileOAuthSession.Peek()));
+            }
             else if (IsStartedByOAuthRedirectIndent(synchronizationService))
             {
                 // Coming back from an OAuth2 redirect.

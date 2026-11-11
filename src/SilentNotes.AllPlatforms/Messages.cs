@@ -195,6 +195,51 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// File-tab cloud OAuth redirect (Dropbox / Google Drive / OneDrive). Kept until the File
+    /// view model consumes it, same pattern as <see cref="MailOAuthSession"/>.
+    /// </summary>
+    public class FileCloudOAuthRedirectMessage
+    {
+        public FileCloudOAuthRedirectMessage(string redirectUrl)
+        {
+            RedirectUrl = redirectUrl;
+        }
+
+        public string RedirectUrl { get; }
+    }
+
+    /// <summary>Holds a File-tab cloud OAuth redirect until the File settings UI handles it.</summary>
+    public static class FileOAuthSession
+    {
+        public const string StatePrefix = "file.";
+
+        private static string _redirectUrl;
+
+        public static void Offer(string redirectUrl)
+        {
+            if (!string.IsNullOrEmpty(redirectUrl))
+                _redirectUrl = redirectUrl;
+        }
+
+        public static string Peek()
+        {
+            return _redirectUrl;
+        }
+
+        public static void Clear(string redirectUrl)
+        {
+            if (_redirectUrl == redirectUrl)
+                _redirectUrl = null;
+        }
+
+        public static bool IsFileRedirect(string redirectUrl)
+        {
+            return !string.IsNullOrEmpty(redirectUrl)
+                && redirectUrl.IndexOf("state=" + StatePrefix, StringComparison.Ordinal) >= 0;
+        }
+    }
+
+    /// <summary>
     /// Message to inform the booky tab that the bookmarks have changed and should be reloaded.
     /// It is sent after the bookmarks were merged with the shared Booky bookmarks file.
     /// </summary>

@@ -1,0 +1,2 @@
+• File settings: Connect OAuth for Dropbox, Google Drive, and OneDrive (tokens under /sdcard/anote/file)
+• File tab: upload, download, and delete files on those cloud locations

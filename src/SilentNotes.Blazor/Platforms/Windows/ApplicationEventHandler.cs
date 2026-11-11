@@ -102,6 +102,13 @@ namespace SilentNotes.Platforms
                     return;
                 }
 
+                if (SilentNotes.FileOAuthSession.IsFileRedirect(redirectUrl))
+                {
+                    SilentNotes.FileOAuthSession.Offer(redirectUrl);
+                    Ioc.Instance.GetService<IMessengerService>()?.Send(new SilentNotes.FileCloudOAuthRedirectMessage(redirectUrl));
+                    return;
+                }
+
                 var synchronizationService = Ioc.Instance.GetService<ISynchronizationService>();
                 if (synchronizationService.ManualSynchronization != null)
                 {
