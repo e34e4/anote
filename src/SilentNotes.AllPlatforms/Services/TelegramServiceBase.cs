@@ -724,8 +724,28 @@ namespace SilentNotes.Services
             var store = LoadStore();
             store.ApiId = pending.Store.ApiId;
             store.ApiHash = pending.Store.ApiHash;
-            if (store.Accounts.All(a => !string.Equals(a.Id, pending.Account.Id, StringComparison.Ordinal)))
+
+            // Re-login after a dead session should refresh the existing account, not duplicate it.
+            TelegramAccountModel existing = store.Accounts.FirstOrDefault(a =>
+                (me.id != 0 && a.UserId == me.id)
+                || (!string.IsNullOrWhiteSpace(pending.Account.Phone)
+                    && PhonesEqual(a.Phone, pending.Account.Phone)));
+            if (existing != null)
+            {
+                string oldSessionFile = existing.SessionFileName;
+                existing.Phone = pending.Account.Phone;
+                existing.DisplayName = pending.Account.DisplayName;
+                existing.Username = pending.Account.Username;
+                existing.UserId = pending.Account.UserId;
+                existing.SessionFileName = pending.Account.SessionFileName;
+                pending.Account.Id = existing.Id;
+                TryDeleteSessionFile(oldSessionFile, keepFileName: existing.SessionFileName);
+            }
+            else if (store.Accounts.All(a => !string.Equals(a.Id, pending.Account.Id, StringComparison.Ordinal)))
+            {
                 store.Accounts.Add(pending.Account);
+            }
+
             store.ActiveAccountId = pending.Account.Id;
             SaveStore(store);
 
@@ -862,8 +882,27 @@ namespace SilentNotes.Services
             try
             {
                 EnsureCompatibleLogging();
+                await WithTimeout(
+                    client.ConnectAsync(),
+                    ConnectTimeout,
+                    "Telegram connect timed out. Check network/VPN and tap Refresh.",
+                    cancellationToken).ConfigureAwait(false);
+
+                // Session files can keep DC auth keys while UserId==0 (common after earlier
+                // Console.ReadLine crashes). LoginUserIfNeeded would Auth_SendCode then ask for
+                // verification_code → DefaultConfig → Console.ReadLine → Arg_PlatformNotSupported.
+                if (client.UserId == 0)
+                {
+                    await DisconnectAccountAsync(accountId).ConfigureAwait(false);
+                    string phone = string.IsNullOrWhiteSpace(account.Phone) ? "this account" : account.Phone;
+                    return TelegramOperationResult.Fail(
+                        "Telegram session expired for " + phone + ". Use Telegram menu → Log in again.",
+                        TelegramAuthState.LoggedOut);
+                }
+
+                // Do not auto-logout + re-send codes on mismatch; surface the error instead.
                 User me = await WithTimeout(
-                    client.LoginUserIfNeeded(),
+                    client.LoginUserIfNeeded(reloginOnFailedResume: false),
                     ConnectTimeout,
                     "Telegram connect timed out. Check network/VPN and tap Refresh.",
                     cancellationToken).ConfigureAwait(false);
@@ -898,15 +937,35 @@ namespace SilentNotes.Services
                 return ex.Message;
             if (ex is IOException)
                 return "Network error. Tap Refresh when the connection is stable.";
-            if (IsPlatformLoggerException(ex))
-                return "Telegram client logging failed on this device. Tap Refresh to retry.";
+            if (IsPlatformLoggerException(ex) || IsConsolePromptException(ex))
+                return "Telegram needs an interactive login on this device. Use Telegram menu → Log in.";
             string msg = ex?.Message ?? "Connect failed";
             if (string.Equals(msg, "Arg_PlatformNotSupported", StringComparison.Ordinal)
                 || msg.IndexOf("Arg_PlatformNotSupported", StringComparison.OrdinalIgnoreCase) >= 0)
-                return "Telegram client logging failed on this device. Tap Refresh to retry.";
+                return "Telegram needs an interactive login on this device. Use Telegram menu → Log in.";
+            if (msg.IndexOf("verification_code", StringComparison.OrdinalIgnoreCase) >= 0
+                || msg.IndexOf("Interactive Telegram login", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Telegram session expired. Use Telegram menu → Log in again.";
             if (IsLikelyDeadConnectionMessage(msg))
                 return "Telegram unreachable right now. Tap Refresh to retry.";
             return msg;
+        }
+
+        private static bool IsConsolePromptException(Exception ex)
+        {
+            // WTelegram DefaultConfig asks Console.ReadLine for verification_code/password.
+            for (Exception cur = ex; cur != null; cur = cur.InnerException)
+            {
+                string typeName = cur.GetType().FullName ?? string.Empty;
+                if (typeName.IndexOf("Console", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+                string stack = cur.StackTrace ?? string.Empty;
+                if (stack.IndexOf("AskConfig", StringComparison.OrdinalIgnoreCase) >= 0
+                    || stack.IndexOf("Console.ReadLine", StringComparison.OrdinalIgnoreCase) >= 0
+                    || stack.IndexOf("Console.Write", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+            return false;
         }
 
         private static bool IsLikelyDeadConnectionMessage(string msg)
@@ -2365,16 +2424,20 @@ namespace SilentNotes.Services
                 "app_version" => "4.2.4 x64",
                 "system_lang_code" => CultureLang(),
                 "lang_code" => CultureLang(),
-                // On resume: prefer user_id so a missing/mismatched phone cannot force Auth_SendCode.
-                // user_id=-1 trusts the session file (WTelegram FAQ). Phone still used for fresh login.
-                "user_id" => resumeExistingSession
-                    ? (account.UserId > 0 ? account.UserId.ToString(CultureInfo.InvariantCulture) : "-1")
-                    : null,
+                // Prefer explicit user_id when known; -1 trusts an already-authorized session.
+                "user_id" => account.UserId > 0
+                    ? account.UserId.ToString(CultureInfo.InvariantCulture)
+                    : (resumeExistingSession ? "-1" : null),
                 "phone_number" => account.Phone,
                 // Decline Firebase attestation — we cannot complete SafetyNet here.
                 "firebase" => null,
-                // QR login 2FA uses ConfigAsync("password") off the UI thread.
-                "password" => (_pendingLogin?.IsQrLogin == true) ? WaitForPasswordConfig() : null,
+                // NEVER return null for these — WTelegram DefaultConfig calls Console.ReadLine
+                // which throws Arg_PlatformNotSupported on Android and also spams login codes.
+                "verification_code" => throw new InvalidOperationException(
+                    "Interactive Telegram login required (verification_code). Use the login UI."),
+                "email_verification_code" => throw new InvalidOperationException(
+                    "Interactive Telegram login required (email_verification_code). Use the login UI."),
+                "password" => WaitForPasswordConfig(),
                 _ => null,
             };
 
@@ -2424,9 +2487,10 @@ namespace SilentNotes.Services
             }
             catch (OperationCanceledException)
             {
-                return null;
+                return string.Empty;
             }
         }
+
 
         private Task OnPendingLoginOther(IObject obj)
         {
@@ -3674,6 +3738,45 @@ namespace SilentNotes.Services
         }
 
         private static string accountSessionFileName(string accountId) => accountId + ".session";
+
+        private static bool PhonesEqual(string left, string right)
+        {
+            string a = DigitsOnly(left);
+            string b = DigitsOnly(right);
+            return a.Length > 0 && string.Equals(a, b, StringComparison.Ordinal);
+        }
+
+        private static string DigitsOnly(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+            var sb = new StringBuilder(value.Length);
+            foreach (char c in value)
+            {
+                if (char.IsDigit(c))
+                    sb.Append(c);
+            }
+            return sb.ToString();
+        }
+
+        private void TryDeleteSessionFile(string fileName, string keepFileName)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(fileName)
+                    || string.Equals(fileName, keepFileName, StringComparison.OrdinalIgnoreCase))
+                    return;
+                string path = Path.Combine(GetSessionsDirectory(), fileName);
+                if (File.Exists(path))
+                    File.Delete(path);
+                string legacy = Path.Combine(GetLegacyExternalSessionsDirectory(), fileName);
+                if (File.Exists(legacy))
+                    File.Delete(legacy);
+            }
+            catch (Exception)
+            {
+            }
+        }
 
         // ---- peers / paths ----
 

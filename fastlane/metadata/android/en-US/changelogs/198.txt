@@ -1,0 +1,3 @@
+• Telegram: stop auto-sending login codes when a session is dead
+• Telegram: never fall back to Console.ReadLine for verification codes on Android
+• Telegram: clear message to log in again; re-login refreshes the existing account
