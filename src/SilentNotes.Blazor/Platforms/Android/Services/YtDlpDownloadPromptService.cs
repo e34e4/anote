@@ -13,6 +13,7 @@ using Android.Widget;
 using SilentNotes.Services;
 using SilentNotes.Workers;
 using Orientation = Android.Widget.Orientation;
+using ProgressBar = Android.Widget.ProgressBar;
 
 namespace SilentNotes.Platforms.Services
 {
