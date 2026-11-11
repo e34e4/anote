@@ -343,3 +343,4 @@ src/Tests/SilentNotesTest/C:/
 src/SilentNotes.Blazor/Resources/Raw/mediatools/ffmpeg.*
 src/SilentNotes.Blazor/Resources/Raw/mediatools/yt-dlp.*
 !src/SilentNotes.Blazor/Resources/Raw/mediatools/.gitkeep
+tools/anote-web/anote-web.service
