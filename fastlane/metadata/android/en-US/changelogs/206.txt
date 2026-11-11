@@ -1,0 +1,2 @@
+• Do not rewrite vkvideo.ru links to vk.com (vk.com is DNS-blocked on some networks)
+• Fixes VK downloads failing with Connection refused while YouTube worked

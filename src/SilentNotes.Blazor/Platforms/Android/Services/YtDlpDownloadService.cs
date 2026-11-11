@@ -166,35 +166,16 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <summary>
-        /// Maps mobile/host variants yt-dlp may not recognize onto canonical pages
-        /// (e.g. m.vkvideo.ru → vk.com/video…).
+        /// Light URL cleanup only. Do not rewrite vkvideo.ru → vk.com: on some networks
+        /// <c>vk.com</c> is DNS-sinkholed to 0.0.0.0 while vkvideo.ru still works (errno 111).
+        /// yt-dlp already understands vkvideo.ru / m.vkvideo.ru.
         /// </summary>
         internal static string NormalizeDownloadUrl(string url)
         {
             if (string.IsNullOrWhiteSpace(url))
                 return url;
 
-            url = url.Trim();
-            try
-            {
-                if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
-                    return url;
-
-                string host = uri.Host ?? string.Empty;
-                if (host.Equals("m.vkvideo.ru", StringComparison.OrdinalIgnoreCase)
-                    || host.Equals("vkvideo.ru", StringComparison.OrdinalIgnoreCase)
-                    || host.Equals("www.vkvideo.ru", StringComparison.OrdinalIgnoreCase))
-                {
-                    string path = uri.AbsolutePath?.Trim('/') ?? string.Empty;
-                    if (path.StartsWith("video", StringComparison.OrdinalIgnoreCase))
-                        return "https://vk.com/" + path;
-                }
-            }
-            catch (Exception)
-            {
-            }
-
-            return url;
+            return url.Trim();
         }
 
         private string ResolveYtDlpScript()
