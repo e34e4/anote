@@ -35,7 +35,7 @@ namespace SilentNotes.Platforms.Services
             {
                 try
                 {
-                    Android.Content.Context context = _appContext.RootActivity ?? _appContext.Context;
+                    global::Android.Content.Context context = _appContext.RootActivity ?? _appContext.Context;
                     if (context == null || !AnoteYtDlpRuntime.IsPythonAvailable(context))
                         return false;
                     _mediaTools.EnsureReady();
@@ -63,7 +63,7 @@ namespace SilentNotes.Platforms.Services
             if (choice == null)
                 return Fail("Quality choice is required");
 
-            Android.Content.Context context = _appContext.RootActivity ?? _appContext.Context;
+            global::Android.Content.Context context = _appContext.RootActivity ?? _appContext.Context;
             if (context == null)
                 return Fail("No Android context for yt-dlp");
 
