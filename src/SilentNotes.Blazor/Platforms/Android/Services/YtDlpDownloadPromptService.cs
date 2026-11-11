@@ -229,7 +229,7 @@ namespace SilentNotes.Platforms.Services
                     layout.AddView(status, new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
 
-                    var bar = new ProgressBar(context, null, Android.Resource.Attribute.ProgressBarStyleHorizontal)
+                    var bar = new ProgressBar(context, null, global::Android.Resource.Attribute.ProgressBarStyleHorizontal)
                     {
                         Indeterminate = true,
                         Max = 100,

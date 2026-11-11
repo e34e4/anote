@@ -165,7 +165,7 @@ namespace SilentNotes.Platforms.Services
                         try { process?.Destroy(); } catch (Exception) { }
                     }))
                     {
-                        void ReadJavaStream(Java.IO.InputStream stream)
+                        void ReadStream(Stream stream)
                         {
                             if (stream == null)
                                 return;
@@ -213,8 +213,8 @@ namespace SilentNotes.Platforms.Services
                             }
                         }
 
-                        Task stdoutTask = Task.Run(() => ReadJavaStream(process.InputStream), cancellationToken);
-                        Task stderrTask = Task.Run(() => ReadJavaStream(process.ErrorStream), cancellationToken);
+                        Task stdoutTask = Task.Run(() => ReadStream(process.InputStream), cancellationToken);
+                        Task stderrTask = Task.Run(() => ReadStream(process.ErrorStream), cancellationToken);
                         Task.WaitAll(new[] { stdoutTask, stderrTask }, cancellationToken);
                         int code = process.WaitFor();
                         string text;
