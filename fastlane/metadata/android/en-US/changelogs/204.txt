@@ -1,0 +1,3 @@
+• Fix yt-dlp on Android: use bundled Python (Linux ELFs cannot run)
+• Auto-replace broken Linux yt-dlp downloads with the Python script
+• Requires reinstall of this build (includes Android Python runtime)

@@ -66,7 +66,8 @@ try {
     # Ship only arm64 in the APK to keep size down. Other ABIs can still be
     # fetched at runtime via Settings → Update ffmpeg / yt-dlp.
     $map = @(
-        @{ Abi = "arm64-v8a"; FfmpegArch = "arm64"; YtDlpCandidates = @("yt-dlp_linux_aarch64", "yt-dlp_linux_aarch64.zip", "yt-dlp") }
+        # Ship the universal Python yt-dlp zipapp (NOT linux ELF). Android runs it via bundled Python.
+        @{ Abi = "arm64-v8a"; FfmpegArch = "arm64"; YtDlpCandidates = @("yt-dlp") }
     )
 
     foreach ($item in $map) {

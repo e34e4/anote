@@ -5,10 +5,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
-using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using SilentNotes.Services;
@@ -17,20 +14,18 @@ using SilentNotes.Workers;
 namespace SilentNotes.Platforms.Services
 {
     /// <summary>
-    /// Executes the installed yt-dlp binary (preferring app-private mediatools copy) and streams
-    /// progress from stdout/stderr. Failures are appended under <see cref="AnotePaths.LogDir"/>.
+    /// Downloads media with yt-dlp via the Android Python runtime (youtubedl-android libs).
+    /// Official Linux yt-dlp ELFs are not used — they fail on Android with e_type / glibc errors.
     /// </summary>
     internal sealed class YtDlpDownloadService : IYtDlpDownloadService
     {
-        private static readonly Regex PercentRegex = new Regex(
-            @"\[download\]\s+(\d{1,3}(?:\.\d+)?)%",
-            RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
         private readonly IMediaToolsService _mediaTools;
+        private readonly IAppContextService _appContext;
 
-        public YtDlpDownloadService(IMediaToolsService mediaTools)
+        public YtDlpDownloadService(IMediaToolsService mediaTools, IAppContextService appContext)
         {
             _mediaTools = mediaTools ?? throw new ArgumentNullException(nameof(mediaTools));
+            _appContext = appContext ?? throw new ArgumentNullException(nameof(appContext));
         }
 
         /// <inheritdoc/>
@@ -38,8 +33,21 @@ namespace SilentNotes.Platforms.Services
         {
             get
             {
-                _mediaTools.EnsureReady();
-                return !string.IsNullOrEmpty(ResolveYtDlpPath());
+                try
+                {
+                    Android.Content.Context context = _appContext.RootActivity ?? _appContext.Context;
+                    if (context == null || !AnoteYtDlpRuntime.IsPythonAvailable(context))
+                        return false;
+                    _mediaTools.EnsureReady();
+                    string script = ResolveYtDlpScript();
+                    return !string.IsNullOrEmpty(script)
+                        && File.Exists(script)
+                        && !AnoteYtDlpRuntime.LooksLikeElf(script);
+                }
+                catch (Exception)
+                {
+                    return false;
+                }
             }
         }
 
@@ -55,6 +63,16 @@ namespace SilentNotes.Platforms.Services
             if (choice == null)
                 return Fail("Quality choice is required");
 
+            Android.Content.Context context = _appContext.RootActivity ?? _appContext.Context;
+            if (context == null)
+                return Fail("No Android context for yt-dlp");
+
+            if (!AnoteYtDlpRuntime.IsPythonAvailable(context))
+            {
+                return Fail(
+                    "Android Python runtime missing. Rebuild/install an APK that includes youtubedl-android.");
+            }
+
             try
             {
                 await _mediaTools.EnsureInstalledAsync(cancellationToken).ConfigureAwait(false);
@@ -65,9 +83,16 @@ namespace SilentNotes.Platforms.Services
                 return Fail("Could not prepare yt-dlp: " + ex.Message);
             }
 
-            string ytDlp = ResolveYtDlpPath();
-            if (string.IsNullOrEmpty(ytDlp))
-                return Fail("yt-dlp not found. Use Settings → Update yt-dlp.");
+            // Replace any leftover Linux ELF download with the Python script.
+            string script = ResolveYtDlpScript();
+            if (string.IsNullOrEmpty(script) || !File.Exists(script) || AnoteYtDlpRuntime.LooksLikeElf(script))
+            {
+                AnoteFileLog.Append("ytdlp", "Refreshing yt-dlp Python script (missing or Linux ELF).");
+                bool ok = await _mediaTools.UpdateYtDlpAsync(cancellationToken).ConfigureAwait(false);
+                script = ResolveYtDlpScript();
+                if (!ok || string.IsNullOrEmpty(script) || !File.Exists(script) || AnoteYtDlpRuntime.LooksLikeElf(script))
+                    return Fail("yt-dlp script not ready. Use Settings → Update yt-dlp.");
+            }
 
             AnotePaths.EnsureDirectories();
             string outDir = AnotePaths.Down;
@@ -81,7 +106,8 @@ namespace SilentNotes.Platforms.Services
                 return Fail("Cannot write to " + outDir + ": " + ex.Message);
             }
 
-            string ffmpeg = ResolveFfmpegPath();
+            string ffmpeg = AnoteYtDlpRuntime.ResolvePackagedFfmpeg(context)
+                ?? ResolveFfmpegPath();
             string downloadUrl = NormalizeDownloadUrl(url.Trim());
             var args = new List<string>(choice.BuildArguments(outDir, ffmpeg)) { downloadUrl };
 
@@ -89,8 +115,18 @@ namespace SilentNotes.Platforms.Services
 
             try
             {
-                (int code, string output, string lastPath) = await RunProcessAsync(
-                    ytDlp, args, progress, cancellationToken).ConfigureAwait(false);
+                AnoteYtDlpRuntime.EnsureReady(context);
+                var runtimeProgress = new Progress<(double? Percent, string Status)>(p =>
+                {
+                    progress?.Report(new YtDlpDownloadProgress
+                    {
+                        Percent = p.Percent,
+                        StatusText = p.Status,
+                    });
+                });
+
+                (int code, string output, string lastPath) = await AnoteYtDlpRuntime.RunAsync(
+                    context, script, args, runtimeProgress, cancellationToken).ConfigureAwait(false);
 
                 if (cancellationToken.IsCancellationRequested)
                     return Fail("Cancelled");
@@ -150,7 +186,6 @@ namespace SilentNotes.Platforms.Services
                     || host.Equals("www.vkvideo.ru", StringComparison.OrdinalIgnoreCase))
                 {
                     string path = uri.AbsolutePath?.Trim('/') ?? string.Empty;
-                    // Paths like video-186221654_456239076 or video186221654_456239076
                     if (path.StartsWith("video", StringComparison.OrdinalIgnoreCase))
                         return "https://vk.com/" + path;
                 }
@@ -162,7 +197,7 @@ namespace SilentNotes.Platforms.Services
             return url;
         }
 
-        private string ResolveYtDlpPath()
+        private string ResolveYtDlpScript()
         {
             if (!string.IsNullOrEmpty(_mediaTools.YtDlpPath) && File.Exists(_mediaTools.YtDlpPath))
                 return _mediaTools.YtDlpPath;
@@ -174,111 +209,6 @@ namespace SilentNotes.Platforms.Services
             if (!string.IsNullOrEmpty(_mediaTools.FfmpegPath) && File.Exists(_mediaTools.FfmpegPath))
                 return _mediaTools.FfmpegPath;
             return AnotePaths.ResolveFfmpegBinary();
-        }
-
-        private static async Task<(int ExitCode, string Output, string LastPath)> RunProcessAsync(
-            string binary,
-            IReadOnlyList<string> arguments,
-            IProgress<YtDlpDownloadProgress> progress,
-            CancellationToken cancellationToken)
-        {
-            return await Task.Run(() =>
-            {
-                var output = new StringBuilder();
-                string lastPath = null;
-                Java.Lang.Process process = null;
-                try
-                {
-                    // Android 10+ blocks direct exec from app data; run via linker64.
-                    string[] argv = AnoteNativeExec.BuildCommand(binary, arguments);
-                    AnoteFileLog.Append("ytdlp", "exec: " + string.Join(' ', argv));
-                    process = Java.Lang.Runtime.GetRuntime().Exec(argv);
-                    using (cancellationToken.Register(() =>
-                    {
-                        try { process?.Destroy(); } catch (Exception) { }
-                    }))
-                    {
-                        void ReadStream(Stream stream)
-                        {
-                            if (stream == null)
-                                return;
-                            using var reader = new StreamReader(stream);
-                            string line;
-                            while ((line = reader.ReadLine()) != null)
-                            {
-                                cancellationToken.ThrowIfCancellationRequested();
-                                lock (output)
-                                    output.AppendLine(line);
-
-                                Match m = PercentRegex.Match(line);
-                                if (m.Success
-                                    && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double pct))
-                                {
-                                    progress?.Report(new YtDlpDownloadProgress
-                                    {
-                                        Percent = Math.Clamp(pct, 0, 100),
-                                        StatusText = line.Trim(),
-                                    });
-                                }
-                                else if (line.IndexOf("[download] Destination:", StringComparison.OrdinalIgnoreCase) >= 0
-                                    || line.IndexOf("[Extractor] Destination:", StringComparison.OrdinalIgnoreCase) >= 0
-                                    || line.IndexOf("Merging formats into", StringComparison.OrdinalIgnoreCase) >= 0
-                                    || line.IndexOf("[FixupM3u8]", StringComparison.OrdinalIgnoreCase) >= 0
-                                    || line.IndexOf("[ExtractAudio]", StringComparison.OrdinalIgnoreCase) >= 0)
-                                {
-                                    string maybePath = ExtractQuotedPath(line) ?? ExtractPathAfterColon(line);
-                                    if (!string.IsNullOrEmpty(maybePath))
-                                        lastPath = maybePath.Trim().Trim('"');
-                                    progress?.Report(new YtDlpDownloadProgress
-                                    {
-                                        StatusText = Truncate(line.Trim(), 120),
-                                    });
-                                }
-                                else if (line.StartsWith("[download]", StringComparison.OrdinalIgnoreCase)
-                                    || line.StartsWith("[info]", StringComparison.OrdinalIgnoreCase)
-                                    || line.StartsWith("[Merger]", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    progress?.Report(new YtDlpDownloadProgress
-                                    {
-                                        StatusText = Truncate(line.Trim(), 120),
-                                    });
-                                }
-                            }
-                        }
-
-                        Task stdoutTask = Task.Run(() => ReadStream(process.InputStream), cancellationToken);
-                        Task stderrTask = Task.Run(() => ReadStream(process.ErrorStream), cancellationToken);
-                        Task.WaitAll(new[] { stdoutTask, stderrTask }, cancellationToken);
-                        int code = process.WaitFor();
-                        string text;
-                        lock (output)
-                            text = output.ToString();
-                        return (code, text, lastPath);
-                    }
-                }
-                finally
-                {
-                    try { process?.Destroy(); } catch (Exception) { }
-                }
-            }, cancellationToken).ConfigureAwait(false);
-        }
-
-        private static string ExtractQuotedPath(string line)
-        {
-            int first = line.IndexOf('"');
-            int last = line.LastIndexOf('"');
-            if (first >= 0 && last > first)
-                return line.Substring(first + 1, last - first - 1);
-            return null;
-        }
-
-        private static string ExtractPathAfterColon(string line)
-        {
-            int idx = line.IndexOf(':');
-            if (idx < 0 || idx + 1 >= line.Length)
-                return null;
-            string rest = line.Substring(idx + 1).Trim();
-            return string.IsNullOrEmpty(rest) ? null : rest;
         }
 
         private static string TryFindNewestFile(string directory)

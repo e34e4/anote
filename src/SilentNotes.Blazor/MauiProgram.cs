@@ -352,7 +352,8 @@ public static class MauiProgram
             serviceProvider.GetService<IActivityResultAwaiter>(),
             serviceProvider.GetService<IEnvironmentService>()));
         services.AddSingleton<IYtDlpDownloadService>((serviceProvider) => new YtDlpDownloadService(
-            serviceProvider.GetService<IMediaToolsService>()));
+            serviceProvider.GetService<IMediaToolsService>(),
+            serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<IYtDlpDownloadPromptService>((serviceProvider) => new YtDlpDownloadPromptService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IYtDlpDownloadService>()));

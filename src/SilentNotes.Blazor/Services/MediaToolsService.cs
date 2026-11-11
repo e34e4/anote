@@ -183,9 +183,18 @@ namespace SilentNotes.Services
 
             if (!forceDownload && File.Exists(execPath) && new FileInfo(execPath).Length > 1024)
             {
-                MakeExecutable(execPath);
-                MirrorToPublic(execPath, publicPath);
-                return true;
+                // Android: discard leftover Linux ELF yt-dlp downloads and refresh the Python script.
+                if (string.Equals(toolName, "yt-dlp", StringComparison.OrdinalIgnoreCase)
+                    && LooksLikeElf(execPath))
+                {
+                    TryDelete(execPath);
+                }
+                else
+                {
+                    MakeExecutable(execPath);
+                    MirrorToPublic(execPath, publicPath);
+                    return true;
+                }
             }
 
             // 1) Bundled Maui asset (shipped in APK)
@@ -502,14 +511,27 @@ namespace SilentNotes.Services
             _ => "arm64",
         };
 
-        private static string[] YtDlpAssetsForAbi(string abi) => abi switch
+        /// <summary>
+        /// Android cannot run official yt-dlp Linux ELFs (glibc). Always fetch the universal
+        /// Python zipapp named <c>yt-dlp</c> and execute it with the bundled Android Python.
+        /// </summary>
+        private static string[] YtDlpAssetsForAbi(string abi) => new[] { "yt-dlp" };
+
+        private static bool LooksLikeElf(string path)
         {
-            "armeabi-v7a" => new[] { "yt-dlp_linux_armv7l.zip", "yt-dlp_linux_armv7l", "yt-dlp" },
-            "arm64-v8a" => new[] { "yt-dlp_linux_aarch64", "yt-dlp_linux_aarch64.zip", "yt-dlp" },
-            "x86_64" => new[] { "yt-dlp_linux", "yt-dlp_linux.zip", "yt-dlp" },
-            "x86" => new[] { "yt-dlp_linux", "yt-dlp" },
-            _ => new[] { "yt-dlp_linux_aarch64", "yt-dlp" },
-        };
+            try
+            {
+                using FileStream fs = File.OpenRead(path);
+                return fs.ReadByte() == 0x7F
+                    && fs.ReadByte() == (byte)'E'
+                    && fs.ReadByte() == (byte)'L'
+                    && fs.ReadByte() == (byte)'F';
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
 
         private static void TryDelete(string path)
         {
