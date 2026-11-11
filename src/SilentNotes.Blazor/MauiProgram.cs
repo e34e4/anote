@@ -166,7 +166,7 @@ public static class MauiProgram
         services.AddSingleton<IFontService>((serviceProvider) => new FontService());
         services.AddSingleton<IPhoneSpamService>((serviceProvider) => new PhoneSpamService(
             serviceProvider.GetService<ISettingsService>()));
-        services.AddSingleton<IMediaToolsService>((serviceProvider) => new MediaToolsService());
+        services.AddSingleton<IMediaToolsService>((serviceProvider) => new SilentNotes.Services.MediaToolsService());
 
         // Scoped services (some Blazor services like NavigationManager or IJSRuntime are scoped)
         // Workaround: It seems that scoped services are recreated when gotten from Ioc, therefore

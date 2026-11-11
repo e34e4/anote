@@ -1,0 +1,2 @@
+• Ship ffmpeg and yt-dlp with the APK; install under /sdcard/anote and app storage
+• Settings: Update ffmpeg / Update yt-dlp buttons to fetch latest builds

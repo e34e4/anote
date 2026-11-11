@@ -108,6 +108,10 @@ jobs:
       env:
         KeystoreGpgPassword: ${{ secrets.SILENTNOTESANDROIDKEYSTOREGPGPASSWORD }}
 
+    - name: Fetch ffmpeg and yt-dlp binaries for APK assets
+      shell: pwsh
+      run: pwsh -File tools/fetch-mediatools.ps1
+
     - name: Restore NuGet packages
       run: dotnet restore
 

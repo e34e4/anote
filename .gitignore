@@ -338,3 +338,8 @@ ASALocalRun/
 
 # Stray artifact path produced by local build targets on Linux (Windows-style path)
 src/Tests/SilentNotesTest/C:/
+
+# Large media-tool binaries fetched by tools/fetch-mediatools.ps1 (shipped via CI into the APK)
+src/SilentNotes.Blazor/Resources/Raw/mediatools/ffmpeg.*
+src/SilentNotes.Blazor/Resources/Raw/mediatools/yt-dlp.*
+!src/SilentNotes.Blazor/Resources/Raw/mediatools/.gitkeep

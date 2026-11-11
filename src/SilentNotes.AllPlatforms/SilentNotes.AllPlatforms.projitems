@@ -203,7 +203,6 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\CloudFileLocationModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IProxySettings.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IMediaToolsService.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Services\MediaToolsService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\AnotePaths.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\Socks5Helper.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\ContactListModel.cs" />

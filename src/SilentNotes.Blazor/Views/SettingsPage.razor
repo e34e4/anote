@@ -25,6 +25,7 @@
 @inject INativeBrowserService NativeBrowserService
 @inject IAssistantService AssistantService
 @inject ISynchronizationService SynchronizationService
+@inject IMediaToolsService MediaToolsService
 @inject IJSRuntime JSRuntime
 @inject INavigationService Navigation
 
@@ -498,6 +499,31 @@
 							Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
 					</MudStack>
 				</div>
+
+				@* ffmpeg / yt-dlp *@
+				<div><MudIcon Icon="@Icons.Material.Filled.Movie" Color="Color.Secondary" /></div>
+				<div>
+					<MudText Typo="Typo.subtitle2" Class="mb-2">@LanguageService["settings_mediatools_title"]</MudText>
+					<MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">@LanguageService["settings_mediatools_hint"]</MudText>
+					<MudStack Spacing="2">
+						<MudText Typo="Typo.caption">ffmpeg: @ViewModel.FfmpegStatus</MudText>
+						<MudButton Variant="Variant.Outlined" Color="Color.Primary"
+							Disabled="@ViewModel.MediaToolsBusy"
+							OnClick="() => ViewModel.UpdateFfmpegCommand.Execute(null)">
+							@LanguageService["settings_mediatools_update_ffmpeg"]
+						</MudButton>
+						<MudText Typo="Typo.caption">yt-dlp: @ViewModel.YtDlpStatus</MudText>
+						<MudButton Variant="Variant.Outlined" Color="Color.Primary"
+							Disabled="@ViewModel.MediaToolsBusy"
+							OnClick="() => ViewModel.UpdateYtDlpCommand.Execute(null)">
+							@LanguageService["settings_mediatools_update_ytdlp"]
+						</MudButton>
+						@if (!string.IsNullOrWhiteSpace(ViewModel.MediaToolsMessage))
+						{
+							<MudText Typo="Typo.caption">@ViewModel.MediaToolsMessage</MudText>
+						}
+					</MudStack>
+				</div>
 			</div>
 
 
@@ -724,7 +750,7 @@
 
 	protected override void OnInitialized()
 	{
-		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService, NativeBrowserService, PasswordVaultSyncService, ClipboardWebdavSyncService, AssistantService);
+		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService, NativeBrowserService, PasswordVaultSyncService, ClipboardWebdavSyncService, AssistantService, MediaToolsService);
 	}
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)

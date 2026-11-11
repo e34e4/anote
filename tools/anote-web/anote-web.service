@@ -1,0 +1,20 @@
+[Unit]
+Description=aNote WebDAV LAN viewer (Notes/Clip/Contacts)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/q/stommis/anote/tools/anote-web
+Environment=ANOTE_WEB_HOST=0.0.0.0
+Environment=ANOTE_WEB_PORT=8787
+Environment=DOTNET_CLI_HOME=/home/q/.cache/anote-web-dotnet
+# Rebuild decrypt helper if needed (quiet). Disable shared Roslyn server so it does not linger.
+ExecStartPre=-/usr/sbin/dotnet build /home/q/stommis/anote/tools/anote-web/decrypt/AnoteDecrypt.csproj -c Release -v q -p:UseSharedCompilation=false
+ExecStart=/usr/sbin/python3 /home/q/stommis/anote/tools/anote-web/server.py
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+
+[Install]
+WantedBy=default.target

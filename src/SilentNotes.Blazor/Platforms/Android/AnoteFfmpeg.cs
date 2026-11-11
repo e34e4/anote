@@ -23,6 +23,18 @@ namespace SilentNotes
         /// <summary>Returns the absolute path to an executable ffmpeg binary, or null if missing.</summary>
         public static string FindBinary()
         {
+            // Prefer app-private copy (executable); /sdcard is often noexec.
+            try
+            {
+                string exec = Path.Combine(
+                    Microsoft.Maui.Storage.FileSystem.AppDataDirectory, "mediatools", "ffmpeg");
+                if (File.Exists(exec))
+                    return exec;
+            }
+            catch (Exception)
+            {
+            }
+
             string resolved = AnotePaths.ResolveFfmpegBinary();
             if (!string.IsNullOrEmpty(resolved))
                 return resolved;

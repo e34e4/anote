@@ -217,6 +217,20 @@ namespace SilentNotes
             {
             }
 
+            // Extract bundled ffmpeg / yt-dlp (or download if missing) in the background.
+            _ = System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    IMediaToolsService tools = Ioc.Instance.GetService<IMediaToolsService>();
+                    if (tools != null)
+                        await tools.EnsureInstalledAsync().ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                }
+            });
+
             AndroidX.Activity.EdgeToEdge.Enable(this);
 
             // Delay closing of splash screen until app is ready:

@@ -47,9 +47,11 @@ namespace SilentNotes.ViewModels
         private readonly IDevicePhoneService _devicePhoneService;
         private readonly INativeBrowserService _nativeBrowserService;
         private readonly IAssistantService _assistantService;
+        private readonly IMediaToolsService _mediaToolsService;
         private readonly SliderStepConverter _fontSizeConverter;
         private readonly SliderStepConverter _noteMaxHeightConverter;
         private string _defaultFontFamilyLabel;
+        private string _mediaToolsMessage;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SettingsViewModel"/> class.
@@ -71,7 +73,8 @@ namespace SilentNotes.ViewModels
             INativeBrowserService nativeBrowserService = null,
             IPasswordVaultSyncService passwordVaultSyncService = null,
             IClipboardWebdavSyncService clipboardWebdavSyncService = null,
-            IAssistantService assistantService = null)
+            IAssistantService assistantService = null,
+            IMediaToolsService mediaToolsService = null)
         {
             Language = languageService;
             _settingsService = settingsService;
@@ -89,6 +92,7 @@ namespace SilentNotes.ViewModels
             _devicePhoneService = devicePhoneService;
             _nativeBrowserService = nativeBrowserService;
             _assistantService = assistantService;
+            _mediaToolsService = mediaToolsService;
             Model = _settingsService.LoadSettingsOrDefault();
             Modifications = new ModificationDetector(() => GetModificationFingerprint(Model));
 
@@ -126,7 +130,63 @@ namespace SilentNotes.ViewModels
             MoveMainTabUpCommand = new RelayCommand<int>(displayIndex => MoveMainTab(displayIndex, -1));
             MoveMainTabDownCommand = new RelayCommand<int>(displayIndex => MoveMainTab(displayIndex, 1));
             ResetMainTabOrderCommand = new RelayCommand(ResetMainTabOrder);
+            UpdateFfmpegCommand = new AsyncRelayCommand(UpdateFfmpegAsync);
+            UpdateYtDlpCommand = new AsyncRelayCommand(UpdateYtDlpAsync);
             RebuildMainTabOrderDisplayItems();
+        }
+
+        /// <summary>Gets status text for the installed ffmpeg binary.</summary>
+        public string FfmpegStatus => _mediaToolsService?.FfmpegStatus ?? string.Empty;
+
+        /// <summary>Gets status text for the installed yt-dlp binary.</summary>
+        public string YtDlpStatus => _mediaToolsService?.YtDlpStatus ?? string.Empty;
+
+        /// <summary>Gets a transient message after media-tool update actions.</summary>
+        public string MediaToolsMessage
+        {
+            get { return _mediaToolsMessage; }
+            private set { SetProperty(ref _mediaToolsMessage, value); }
+        }
+
+        /// <summary>Gets a value indicating whether a media-tool update is running.</summary>
+        public bool MediaToolsBusy => _mediaToolsService?.IsBusy ?? false;
+
+        /// <summary>Gets the command to download/update ffmpeg.</summary>
+        public ICommand UpdateFfmpegCommand { get; }
+
+        /// <summary>Gets the command to download/update yt-dlp.</summary>
+        public ICommand UpdateYtDlpCommand { get; }
+
+        private async Task UpdateFfmpegAsync()
+        {
+            if (_mediaToolsService == null)
+                return;
+            MediaToolsMessage = Language["settings_mediatools_updating_ffmpeg"];
+            OnPropertyChanged(nameof(MediaToolsBusy));
+            OnPropertyChanged(nameof(FfmpegStatus));
+            bool ok = await _mediaToolsService.UpdateFfmpegAsync().ConfigureAwait(true);
+            MediaToolsMessage = ok
+                ? Language["settings_mediatools_ffmpeg_updated"]
+                : Language["settings_mediatools_ffmpeg_failed"];
+            OnPropertyChanged(nameof(MediaToolsBusy));
+            OnPropertyChanged(nameof(FfmpegStatus));
+            OnPropertyChanged(nameof(YtDlpStatus));
+        }
+
+        private async Task UpdateYtDlpAsync()
+        {
+            if (_mediaToolsService == null)
+                return;
+            MediaToolsMessage = Language["settings_mediatools_updating_ytdlp"];
+            OnPropertyChanged(nameof(MediaToolsBusy));
+            OnPropertyChanged(nameof(YtDlpStatus));
+            bool ok = await _mediaToolsService.UpdateYtDlpAsync().ConfigureAwait(true);
+            MediaToolsMessage = ok
+                ? Language["settings_mediatools_ytdlp_updated"]
+                : Language["settings_mediatools_ytdlp_failed"];
+            OnPropertyChanged(nameof(MediaToolsBusy));
+            OnPropertyChanged(nameof(FfmpegStatus));
+            OnPropertyChanged(nameof(YtDlpStatus));
         }
 
         /// <summary>
