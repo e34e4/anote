@@ -15,11 +15,15 @@ using Android.Content.PM;
 using Android.Graphics;
 using Android.Graphics.Drawables;
 using Android.OS;
+using Android.Util;
 using Android.Views;
 using Android.Widget;
-using Color = Android.Graphics.Color;
-using Uri = Android.Net.Uri;
 using Button = Android.Widget.Button;
+using Color = Android.Graphics.Color;
+using Path = System.IO.Path;
+using ScrollView = Android.Widget.ScrollView;
+using Uri = Android.Net.Uri;
+using Orientation = Android.Widget.Orientation;
 
 namespace SilentNotes
 {

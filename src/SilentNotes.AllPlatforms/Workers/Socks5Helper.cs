@@ -84,7 +84,7 @@ namespace SilentNotes.Workers
             bool useAuth = !string.IsNullOrEmpty(settings.Socks5Username);
             byte method = useAuth ? AuthUserPass : AuthNone;
 
-            await stream.WriteAsync(new[] { Version5, 0x01, method }, cancellationToken).ConfigureAwait(false);
+            await stream.WriteAsync(new byte[] { Version5, 0x01, method }, cancellationToken).ConfigureAwait(false);
             byte[] methodReply = await ReadExactAsync(stream, 2, cancellationToken).ConfigureAwait(false);
             if (methodReply[0] != Version5 || methodReply[1] != method)
                 throw new IOException("SOCKS5 handshake failed (method selection).");

@@ -15,6 +15,7 @@ using Android.Util;
 using Android.Views;
 using Android.Webkit;
 using Android.Widget;
+using Button = Android.Widget.Button;
 using Color = Android.Graphics.Color;
 using ImageButton = Android.Widget.ImageButton;
 using Uri = Android.Net.Uri;
