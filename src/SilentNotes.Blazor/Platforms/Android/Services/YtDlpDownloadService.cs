@@ -82,7 +82,8 @@ namespace SilentNotes.Platforms.Services
             }
 
             string ffmpeg = ResolveFfmpegPath();
-            var args = new List<string>(choice.BuildArguments(outDir, ffmpeg)) { url.Trim() };
+            string downloadUrl = NormalizeDownloadUrl(url.Trim());
+            var args = new List<string>(choice.BuildArguments(outDir, ffmpeg)) { downloadUrl };
 
             progress?.Report(new YtDlpDownloadProgress { Percent = 0, StatusText = "Starting yt-dlp…" });
 
@@ -128,6 +129,39 @@ namespace SilentNotes.Platforms.Services
             }
         }
 
+        /// <summary>
+        /// Maps mobile/host variants yt-dlp may not recognize onto canonical pages
+        /// (e.g. m.vkvideo.ru → vk.com/video…).
+        /// </summary>
+        internal static string NormalizeDownloadUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return url;
+
+            url = url.Trim();
+            try
+            {
+                if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
+                    return url;
+
+                string host = uri.Host ?? string.Empty;
+                if (host.Equals("m.vkvideo.ru", StringComparison.OrdinalIgnoreCase)
+                    || host.Equals("vkvideo.ru", StringComparison.OrdinalIgnoreCase)
+                    || host.Equals("www.vkvideo.ru", StringComparison.OrdinalIgnoreCase))
+                {
+                    string path = uri.AbsolutePath?.Trim('/') ?? string.Empty;
+                    // Paths like video-186221654_456239076 or video186221654_456239076
+                    if (path.StartsWith("video", StringComparison.OrdinalIgnoreCase))
+                        return "https://vk.com/" + path;
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            return url;
+        }
+
         private string ResolveYtDlpPath()
         {
             if (!string.IsNullOrEmpty(_mediaTools.YtDlpPath) && File.Exists(_mediaTools.YtDlpPath))
@@ -148,10 +182,6 @@ namespace SilentNotes.Platforms.Services
             IProgress<YtDlpDownloadProgress> progress,
             CancellationToken cancellationToken)
         {
-            var cmd = new List<string> { binary };
-            if (arguments != null)
-                cmd.AddRange(arguments);
-
             return await Task.Run(() =>
             {
                 var output = new StringBuilder();
@@ -159,7 +189,10 @@ namespace SilentNotes.Platforms.Services
                 Java.Lang.Process process = null;
                 try
                 {
-                    process = Java.Lang.Runtime.GetRuntime().Exec(cmd.ToArray());
+                    // Android 10+ blocks direct exec from app data; run via linker64.
+                    string[] argv = AnoteNativeExec.BuildCommand(binary, arguments);
+                    AnoteFileLog.Append("ytdlp", "exec: " + string.Join(' ', argv));
+                    process = Java.Lang.Runtime.GetRuntime().Exec(argv);
                     using (cancellationToken.Register(() =>
                     {
                         try { process?.Destroy(); } catch (Exception) { }

@@ -73,15 +73,12 @@ namespace SilentNotes
             if (string.IsNullOrEmpty(binary))
                 return (-1, "ffmpeg not found. Place a binary in " + FfmpegDir);
 
-            var cmd = new List<string> { binary };
-            if (arguments != null)
-                cmd.AddRange(arguments);
-
             return await Task.Run(() =>
             {
                 try
                 {
-                    using Java.Lang.Process process = Java.Lang.Runtime.GetRuntime().Exec(cmd.ToArray());
+                    string[] argv = AnoteNativeExec.BuildCommand(binary, arguments);
+                    using Java.Lang.Process process = Java.Lang.Runtime.GetRuntime().Exec(argv);
                     string stdout = process.InputStream != null
                         ? new StreamReader(process.InputStream).ReadToEnd()
                         : string.Empty;

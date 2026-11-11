@@ -1,0 +1,2 @@
+• Fix yt-dlp/ffmpeg Permission denied on Android 10+ (run via system linker)
+• Downloads from Player / URLCheck should work again on modern devices
