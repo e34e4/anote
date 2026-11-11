@@ -1,0 +1,2 @@
+• Toasts: smaller, near the top of the screen
+• Toast colors by severity (teal / blue / green / amber / red)

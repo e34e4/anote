@@ -43,9 +43,19 @@ namespace SilentNotes.Services
     /// </summary>
     public enum FeedbackSeverity
     {
+        /// <summary>Routine status (updates, clipboard paste). Teal toast.</summary>
         Unknown,
+
+        /// <summary>Informational notice. Blue toast.</summary>
         Info,
+
+        /// <summary>Successful action. Green toast.</summary>
+        Success,
+
+        /// <summary>Non-fatal problem. Amber toast.</summary>
         Warning,
+
+        /// <summary>Failure. Red toast.</summary>
         Error
     }
 

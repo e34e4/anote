@@ -32,7 +32,12 @@ namespace SilentNotes.Services
         /// <inheritdoc/>
         public void ShowToast(string message, FeedbackSeverity severity = FeedbackSeverity.Unknown)
         {
-            _snackbar.Add(message, ToSeverity(severity), config => { config.HideIcon = true; });
+            _snackbar.Add(message, ToSeverity(severity), config =>
+            {
+                config.HideIcon = true;
+                config.SnackbarVariant = Variant.Filled;
+                config.ShowCloseIcon = false;
+            });
         }
 
         /// <summary>
@@ -45,6 +50,7 @@ namespace SilentNotes.Services
             switch (severity)
             {
                 case FeedbackSeverity.Info: return Severity.Info;
+                case FeedbackSeverity.Success: return Severity.Success;
                 case FeedbackSeverity.Warning: return Severity.Warning;
                 case FeedbackSeverity.Error: return Severity.Error;
                 default:

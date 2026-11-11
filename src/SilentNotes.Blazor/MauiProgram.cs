@@ -84,12 +84,13 @@ public static class MauiProgram
         builder.Services.AddMauiBlazorWebView();
         builder.Services.AddMudServices(config =>
         {
-            config.SnackbarConfiguration.HideTransitionDuration = 500;
-            config.SnackbarConfiguration.PositionClass = Defaults.Classes.Position.BottomCenter;
-            config.SnackbarConfiguration.ShowCloseIcon = true;
-            config.SnackbarConfiguration.ShowTransitionDuration = 500;
-            config.SnackbarConfiguration.SnackbarVariant = Variant.Text;
-            config.SnackbarConfiguration.VisibleStateDuration = 6000;
+            config.SnackbarConfiguration.HideTransitionDuration = 250;
+            config.SnackbarConfiguration.PositionClass = Defaults.Classes.Position.TopCenter;
+            config.SnackbarConfiguration.ShowCloseIcon = false;
+            config.SnackbarConfiguration.ShowTransitionDuration = 200;
+            config.SnackbarConfiguration.SnackbarVariant = Variant.Filled;
+            config.SnackbarConfiguration.VisibleStateDuration = 3500;
+            config.SnackbarConfiguration.MaxDisplayedSnackbars = 4;
         });
 
         RegisterSharedServices(builder.Services);
