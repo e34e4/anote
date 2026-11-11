@@ -1,0 +1,2 @@
+• Fix build: AnotePaths.File renamed to FileDir (no longer shadows System.IO.File)
+• File settings: Connect OAuth for Dropbox, Google Drive, and OneDrive (tokens under /sdcard/anote/file)

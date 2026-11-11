@@ -1154,7 +1154,7 @@ namespace SilentNotes.ViewModels
         private static string EnsureFileWorkspace()
         {
             AnotePaths.EnsureDirectories();
-            string root = AnotePaths.File;
+            string root = AnotePaths.FileDir;
             Directory.CreateDirectory(root);
             return root;
         }
@@ -1225,7 +1225,7 @@ namespace SilentNotes.ViewModels
                 return;
             try
             {
-                string dir = Path.Combine(AnotePaths.File, locationId.Trim());
+                string dir = Path.Combine(AnotePaths.FileDir, locationId.Trim());
                 if (Directory.Exists(dir))
                     Directory.Delete(dir, true);
             }
