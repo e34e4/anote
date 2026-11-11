@@ -52,6 +52,7 @@
 @inject ICameraService CameraService
 @inject IMailService MailService
 @inject IMediaPlayerService MediaPlayerService
+@inject IYtDlpDownloadPromptService YtDlpDownloadPromptService
 @inject IDocumentReaderService DocumentReaderService
 @inject IPasswordVaultService PasswordVaultService
 @inject IPasswordVaultSyncService PasswordVaultSyncService
@@ -844,7 +845,8 @@
 			MediaPlayerService,
 			LanguageService,
 			FeedbackService,
-			SettingsService);
+			SettingsService,
+			YtDlpDownloadPromptService);
 		_readerViewModel = new ReaderViewModel(
 			DocumentReaderService,
 			LanguageService,

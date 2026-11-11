@@ -26,6 +26,7 @@ namespace SilentNotes.ViewModels
         private readonly ILanguageService _languageService;
         private readonly IFeedbackService _feedbackService;
         private readonly ISettingsService _settingsService;
+        private readonly IYtDlpDownloadPromptService _ytDlpPrompt;
 
         private string _filter;
         private string _kindFilter = "all"; // all | audio | video | image
@@ -40,12 +41,14 @@ namespace SilentNotes.ViewModels
             IMediaPlayerService mediaService,
             ILanguageService languageService,
             IFeedbackService feedbackService,
-            ISettingsService settingsService = null)
+            ISettingsService settingsService = null,
+            IYtDlpDownloadPromptService ytDlpPrompt = null)
         {
             _mediaService = mediaService;
             _languageService = languageService;
             _feedbackService = feedbackService;
             _settingsService = settingsService;
+            _ytDlpPrompt = ytDlpPrompt;
 
             _mediaService.StateChanged += OnMediaStateChanged;
 
@@ -360,7 +363,17 @@ namespace SilentNotes.ViewModels
 
             try
             {
-                await _mediaService.PlayUriAsync(url, null, url);
+                if (_ytDlpPrompt != null)
+                {
+                    await _ytDlpPrompt.HandlePlayOrDownloadAsync(url, async () =>
+                    {
+                        await _mediaService.PlayUriAsync(url, null, url).ConfigureAwait(true);
+                    }).ConfigureAwait(true);
+                }
+                else
+                {
+                    await _mediaService.PlayUriAsync(url, null, url).ConfigureAwait(true);
+                }
             }
             catch (Exception ex)
             {

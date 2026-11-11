@@ -11,6 +11,7 @@ namespace SilentNotes.Workers
     /// <summary>
     /// Central paths under the shared <c>anote</c> storage root (Android: <c>/sdcard/anote</c>).
     /// Release builds may place ffmpeg / yt-dlp binaries in <see cref="FfmpegDir"/> and <see cref="YtDlpDir"/>.
+    /// Downloads land in <see cref="Down"/>; diagnostic logs under <see cref="LogDir"/>.
     /// </summary>
     public static class AnotePaths
     {
@@ -70,11 +71,14 @@ namespace SilentNotes.Workers
 
         public static string YtDlpDir => Path.Combine(GetRootDirectory(), "yt-dlp");
 
+        /// <summary>App log directory (<c>/sdcard/anote/log</c>).</summary>
+        public static string LogDir => Path.Combine(GetRootDirectory(), "log");
+
         /// <summary>Creates standard anote subfolders if missing; returns <see cref="GetRootDirectory"/>.</summary>
         public static string EnsureDirectories()
         {
             string root = GetRootDirectory();
-            foreach (string dir in new[] { Down, Pic, Tg, Abro, FileDir, FfmpegDir, YtDlpDir })
+            foreach (string dir in new[] { Down, Pic, Tg, Abro, FileDir, FfmpegDir, YtDlpDir, LogDir })
             {
                 try
                 {

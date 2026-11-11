@@ -232,6 +232,10 @@ namespace SilentNotes
             _virusTotalBtn.Click += async (s, e) => await OnVirusTotalClickedAsync();
             toolsRow3.AddView(_virusTotalBtn, CreateWeightedChipParams());
 
+            TextView ytDlpBtn = CreateActionChip("⬇ yt-dlp", "#1E293B", "#FBBF24");
+            ytDlpBtn.Click += async (s, e) => await OnYtDlpDownloadClickedAsync();
+            toolsRow3.AddView(ytDlpBtn, CreateWeightedChipParams());
+
             card.AddView(toolsRow3, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
 
@@ -330,6 +334,32 @@ namespace SilentNotes
             }
 
             await RunVirusTotalScanAsync(apiKey).ConfigureAwait(true);
+        }
+
+        private async Task OnYtDlpDownloadClickedAsync()
+        {
+            string url = CurrentUrl;
+            if (string.IsNullOrWhiteSpace(url))
+                return;
+
+            try
+            {
+                IServiceProvider sp = TryGetServiceProvider();
+                IYtDlpDownloadService download = sp?.GetService<IYtDlpDownloadService>();
+                if (download == null)
+                {
+                    Toast.MakeText(this, "yt-dlp service unavailable", ToastLength.Short)?.Show();
+                    return;
+                }
+
+                await Platforms.Services.YtDlpDownloadUi.PromptQualityAndDownloadAsync(this, download, url)
+                    .ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                AnoteFileLog.Append("ytdlp", "URLCheck yt-dlp failed: " + ex);
+                Toast.MakeText(this, ex.Message, ToastLength.Long)?.Show();
+            }
         }
 
         private async Task RunVirusTotalScanAsync(string apiKey)

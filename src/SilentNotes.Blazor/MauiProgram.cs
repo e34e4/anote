@@ -245,6 +245,8 @@ public static class MauiProgram
             serviceProvider.GetService<IDataProtectionService>(),
             serviceProvider.GetService<ICloudStorageClientFactory>()));
         services.AddSingleton<IMediaPlayerService>((serviceProvider) => new MediaPlayerService());
+        services.AddSingleton<IYtDlpDownloadService>((serviceProvider) => new YtDlpDownloadService());
+        services.AddSingleton<IYtDlpDownloadPromptService>((serviceProvider) => new YtDlpDownloadPromptService());
         services.AddSingleton<IAbroBrowserService>((serviceProvider) => new AbroBrowserService());
         services.AddSingleton<IAbroAiChatLauncher>((serviceProvider) => new AbroAiChatLauncher());
         services.AddSingleton<IDocumentReaderService>((serviceProvider) => new DocumentReaderService());
@@ -349,6 +351,11 @@ public static class MauiProgram
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IActivityResultAwaiter>(),
             serviceProvider.GetService<IEnvironmentService>()));
+        services.AddSingleton<IYtDlpDownloadService>((serviceProvider) => new YtDlpDownloadService(
+            serviceProvider.GetService<IMediaToolsService>()));
+        services.AddSingleton<IYtDlpDownloadPromptService>((serviceProvider) => new YtDlpDownloadPromptService(
+            serviceProvider.GetService<IAppContextService>(),
+            serviceProvider.GetService<IYtDlpDownloadService>()));
         services.AddSingleton<IAbroBrowserService>((serviceProvider) => new AbroBrowserService());
         services.AddSingleton<IAbroAiChatLauncher>((serviceProvider) => new AbroAiChatLauncher());
         services.AddSingleton<IDocumentReaderService>((serviceProvider) => new DocumentReaderService(

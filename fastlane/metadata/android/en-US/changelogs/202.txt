@@ -1,0 +1,3 @@
+• Player: Play URL asks Play vs yt-dlp download (default video 360p)
+• URLCheck: yt-dlp download with the same quality dialog
+• Downloads go to /sdcard/anote/down; errors logged under /sdcard/anote/log
