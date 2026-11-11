@@ -283,12 +283,63 @@ namespace SilentNotes.Services
 
         private static async Task DownloadYtDlpAsync(string execPath, CancellationToken cancellationToken)
         {
-            string abi = GetDeviceAbi();
-            string asset = AbiToYtDlpAsset(abi);
-            string url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/" + asset;
-            string temp = execPath + ".tmp";
-            await DownloadToFileAsync(url, temp, cancellationToken).ConfigureAwait(false);
-            ReplaceFile(temp, execPath);
+            Exception lastError = null;
+            foreach (string asset in YtDlpAssetsForAbi(GetDeviceAbi()))
+            {
+                string url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/" + asset;
+                string temp = execPath + ".tmp";
+                string tempZip = execPath + ".zip";
+                string tempExtract = execPath + ".extract";
+                try
+                {
+                    if (asset.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await DownloadToFileAsync(url, tempZip, cancellationToken).ConfigureAwait(false);
+                        if (Directory.Exists(tempExtract))
+                            Directory.Delete(tempExtract, true);
+                        Directory.CreateDirectory(tempExtract);
+                        ZipFile.ExtractToDirectory(tempZip, tempExtract);
+                        string found = FindExtractedBinary(tempExtract, "yt-dlp")
+                            ?? FindExtractedBinaryPrefix(tempExtract, "yt-dlp");
+                        if (found == null)
+                            throw new InvalidOperationException("yt-dlp binary missing from " + asset);
+                        File.Copy(found, temp, true);
+                    }
+                    else
+                    {
+                        await DownloadToFileAsync(url, temp, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    ReplaceFile(temp, execPath);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex;
+                }
+                finally
+                {
+                    TryDelete(temp);
+                    TryDelete(tempZip);
+                    TryDeleteDir(tempExtract);
+                }
+            }
+
+            throw lastError ?? new InvalidOperationException("Could not download yt-dlp for this ABI.");
+        }
+
+        private static string FindExtractedBinaryPrefix(string root, string namePrefix)
+        {
+            foreach (string file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+            {
+                string fileName = Path.GetFileName(file);
+                if (fileName != null
+                    && fileName.StartsWith(namePrefix, StringComparison.OrdinalIgnoreCase)
+                    && !fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    return file;
+            }
+
+            return null;
         }
 
         private static async Task DownloadToFileAsync(string url, string path, CancellationToken cancellationToken)
@@ -451,13 +502,13 @@ namespace SilentNotes.Services
             _ => "arm64",
         };
 
-        private static string AbiToYtDlpAsset(string abi) => abi switch
+        private static string[] YtDlpAssetsForAbi(string abi) => abi switch
         {
-            "armeabi-v7a" => "yt-dlp_linux_armv7l",
-            "arm64-v8a" => "yt-dlp_linux_aarch64",
-            "x86_64" => "yt-dlp_linux",
-            "x86" => "yt-dlp_linux",
-            _ => "yt-dlp_linux_aarch64",
+            "armeabi-v7a" => new[] { "yt-dlp_linux_armv7l.zip", "yt-dlp_linux_armv7l", "yt-dlp" },
+            "arm64-v8a" => new[] { "yt-dlp_linux_aarch64", "yt-dlp_linux_aarch64.zip", "yt-dlp" },
+            "x86_64" => new[] { "yt-dlp_linux", "yt-dlp_linux.zip", "yt-dlp" },
+            "x86" => new[] { "yt-dlp_linux", "yt-dlp" },
+            _ => new[] { "yt-dlp_linux_aarch64", "yt-dlp" },
         };
 
         private static void TryDelete(string path)
