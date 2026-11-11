@@ -2798,7 +2798,7 @@ namespace SilentNotes.Platforms.Services
                         (int)ControlAFMode.ContinuousVideo);
                     _previewRequestBuilder.Set(
                         CaptureRequest.ControlAeTargetFpsRange,
-                        new Android.Util.Range(VideoFrameRate, VideoFrameRate));
+                        new global::Android.Util.Range(VideoFrameRate, VideoFrameRate));
 
                     if (_flashMode == "torch")
                     {
