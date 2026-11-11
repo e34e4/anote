@@ -71,6 +71,17 @@ namespace SilentNotes.Services
             _internetStateService = internetStateService;
             EnsureCompatibleLogging();
             _activeLogSink = OnWTelegramLog;
+            EnsureCompatibleLogging();
+        }
+
+        /// <summary>
+        /// Install a console-free WTelegram logger before any <see cref="Client"/> is constructed.
+        /// Android/MAUI throws <see cref="PlatformNotSupportedException"/> (Arg_PlatformNotSupported)
+        /// when WTelegram's default logger touches <c>Console.ForegroundColor</c>.
+        /// </summary>
+        static TelegramServiceBase()
+        {
+            EnsureCompatibleLogging();
         }
 
         /// <inheritdoc/>
@@ -1104,38 +1115,19 @@ namespace SilentNotes.Services
 
             try
             {
-                // folder 0 = main list, folder 1 = Archived chats
-                Messages_Dialogs mainDialogs = await WithTimeout(
-                    runtime.Client.Messages_GetAllDialogs(0),
-                    NetworkOperationTimeout,
-                    "Loading chats timed out. Tap Refresh.",
-                    cancellationToken).ConfigureAwait(false);
-                Messages_Dialogs archivedDialogs = await WithTimeout(
-                    runtime.Client.Messages_GetAllDialogs(1),
-                    NetworkOperationTimeout,
-                    "Loading chats timed out. Tap Refresh.",
-                    cancellationToken).ConfigureAwait(false);
-                CollectPeers(runtime, mainDialogs.users, mainDialogs.chats);
-                CollectPeers(runtime, archivedDialogs.users, archivedDialogs.chats);
-
-                var chats = new List<TelegramChatModel>();
-                AppendDialogs(runtime, mainDialogs, archived: false, chats);
-                AppendDialogs(runtime, archivedDialogs, archived: true, chats);
-
-                chats = DeduplicateChats(chats)
-                    .OrderByDescending(c => c.IsPinned)
-                    .ThenByDescending(c => c.LastMessageAt)
-                    .ToList();
-
-                lock (runtime.Gate)
+                return await RefreshChatsCoreOnceAsync(runtime, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (IsPlatformLoggerException(ex))
+            {
+                EnsureCompatibleLogging();
+                try
                 {
-                    runtime.Chats.Clear();
-                    runtime.Chats.AddRange(chats);
+                    return await RefreshChatsCoreOnceAsync(runtime, cancellationToken).ConfigureAwait(false);
                 }
-
-                RaiseChatsChanged();
-                _ = EnrichBotAppsAsync(runtime);
-                return TelegramOperationResult.Ok(runtime.AuthState);
+                catch (Exception retryEx)
+                {
+                    return TelegramOperationResult.Fail(retryEx.Message, runtime.AuthState);
+                }
             }
             catch (Exception ex)
             {
@@ -1148,6 +1140,45 @@ namespace SilentNotes.Services
                 }
                 return TelegramOperationResult.Fail(ex.Message, runtime.AuthState);
             }
+        }
+
+        private async Task<TelegramOperationResult> RefreshChatsCoreOnceAsync(
+            AccountRuntime runtime,
+            CancellationToken cancellationToken)
+        {
+            EnsureCompatibleLogging();
+            // folder 0 = main list, folder 1 = Archived chats
+            Messages_Dialogs mainDialogs = await WithTimeout(
+                runtime.Client.Messages_GetAllDialogs(0),
+                NetworkOperationTimeout,
+                "Loading chats timed out. Tap Refresh.",
+                cancellationToken).ConfigureAwait(false);
+            Messages_Dialogs archivedDialogs = await WithTimeout(
+                runtime.Client.Messages_GetAllDialogs(1),
+                NetworkOperationTimeout,
+                "Loading chats timed out. Tap Refresh.",
+                cancellationToken).ConfigureAwait(false);
+            CollectPeers(runtime, mainDialogs.users, mainDialogs.chats);
+            CollectPeers(runtime, archivedDialogs.users, archivedDialogs.chats);
+
+            var chats = new List<TelegramChatModel>();
+            AppendDialogs(runtime, mainDialogs, archived: false, chats);
+            AppendDialogs(runtime, archivedDialogs, archived: true, chats);
+
+            chats = DeduplicateChats(chats)
+                .OrderByDescending(c => c.IsPinned)
+                .ThenByDescending(c => c.LastMessageAt)
+                .ToList();
+
+            lock (runtime.Gate)
+            {
+                runtime.Chats.Clear();
+                runtime.Chats.AddRange(chats);
+            }
+
+            RaiseChatsChanged();
+            _ = EnrichBotAppsAsync(runtime);
+            return TelegramOperationResult.Ok(runtime.AuthState);
         }
 
         private static bool IsLikelyDeadConnection(Exception ex, AccountRuntime runtime)
@@ -2294,12 +2325,37 @@ namespace SilentNotes.Services
                 _ => null,
             };
 
-            var client = new Client(Config);
+            Client client;
+            try
+            {
+                client = new Client(Config);
+            }
+            catch (Exception ex) when (IsPlatformLoggerException(ex))
+            {
+                // Default logger may have been restored; reinstall and retry once.
+                EnsureCompatibleLogging();
+                client = new Client(Config);
+            }
+
             // Must be set before Connect / LoginUserIfNeeded so all MTProto DCs use the proxy.
             string mtProxyUrl = store.BuildMtProxyUrl();
             if (!string.IsNullOrEmpty(mtProxyUrl))
                 client.MTProxyUrl = mtProxyUrl;
             return client;
+        }
+
+        private static bool IsPlatformLoggerException(Exception ex)
+        {
+            for (Exception cur = ex; cur != null; cur = cur.InnerException)
+            {
+                if (cur is PlatformNotSupportedException)
+                    return true;
+                string msg = cur.Message ?? string.Empty;
+                if (msg.IndexOf("Arg_PlatformNotSupported", StringComparison.OrdinalIgnoreCase) >= 0
+                    || msg.IndexOf("Operation is not supported on this platform", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+            return false;
         }
 
         private string WaitForPasswordConfig()

@@ -46,6 +46,12 @@ public static class MauiProgram
     /// </remarks>
     public static MauiApp CreateMauiApp()
     {
+        // WTelegram's default logger uses Console.ForegroundColor, which throws
+        // PlatformNotSupportedException (Arg_PlatformNotSupported) on Android/MAUI.
+        // Install a safe logger before any WTelegram.Client can be constructed.
+        WTelegram.Helpers.Log = (level, message) =>
+            System.Diagnostics.Debug.WriteLine("[WTelegram " + level + "] " + message);
+
         // Workaround: Not necessary anymore since Maui .NET 9.
         // Fixes the restart problem on Android when closing the app with the back
         // button, possible since Maui 8.0.60.
@@ -104,6 +110,10 @@ public static class MauiProgram
 
     internal static void RegisterSharedServices(IServiceCollection services)
     {
+        // Secondary Android service hosts also build an IOC; keep WTelegram logger safe there too.
+        WTelegram.Helpers.Log = (level, message) =>
+            System.Diagnostics.Debug.WriteLine("[WTelegram " + level + "] " + message);
+
         services.AddSingleton<ISynchronizationState>((serviceProvider) => _synchronizationState ?? (_synchronizationState = new SynchronizationState(
             serviceProvider.GetService<IMessengerService>())));
 

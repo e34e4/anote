@@ -1,0 +1,4 @@
+• Camera: action buttons in a 3×3 grid; keep one crop control (re-encode uses Tune)
+• AI sync: use same WebDAV credentials as quick-save; create missing folders; migrate legacy store
+• AI chat: dropdown to pick provider for the next message
+• Telegram: fix Arg_PlatformNotSupported when loading the chat list

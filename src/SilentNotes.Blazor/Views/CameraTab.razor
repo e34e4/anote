@@ -153,8 +153,19 @@
 		padding: 10px;
 		margin-bottom: 8px;
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: 10px;
+	}
+	.cam-actions-grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 2px;
+		flex-shrink: 0;
+		width: 108px;
+	}
+	.cam-actions-grid .mud-icon-button {
+		margin: 0 !important;
+		padding: 4px !important;
 	}
 	.cam-thumb {
 		width: 64px;
@@ -329,17 +340,20 @@
 							</div>
 						</div>
 
-						<AskAiButton Subject="@item.DisplayTitle" ContextText="@($"{item.DisplayTitle}\n{item.FormatBadge} {item.QualityText}\n{item.DimensionsText}\n{item.SizeText}\n{item.DateText}")" />
-						@if (!item.IsVideo)
-						{
-							<MudIconButton Icon="@Icons.Material.Filled.Transform" Size="Size.Small" OnClick="() => ReencodePhotoAsync(item)" title="@LanguageService["camera_reencode"]" />
-							<MudIconButton Icon="@Icons.Material.Filled.Crop" Size="Size.Small" OnClick="() => CropPhotoAsync(item)" title="@LanguageService["file_crop"]" />
-						}
-						<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => ViewModel.StartRenameCommand.Execute(item)" title="@LanguageService["camera_rename"]" />
-						<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="() => SaveToGalleryAsync(item)" title="@LanguageService["camera_save_gallery"]" />
-						<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small" OnClick="() => SaveToWebdavAsync(item)" title="@LanguageService["webdav_quick_save"]" />
-						<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" OnClick="() => SharePhotoAsync(item)" title="@LanguageService["share"]" />
-						<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => DeletePhotoAsync(item)" title="@LanguageService["camera_delete"]" />
+						<div class="cam-actions-grid" @onclick:stopPropagation="true">
+							<AskAiButton Subject="@item.DisplayTitle" ContextText="@($"{item.DisplayTitle}\n{item.FormatBadge} {item.QualityText}\n{item.DimensionsText}\n{item.SizeText}\n{item.DateText}")" />
+							@if (!item.IsVideo)
+							{
+								@* Transform looked identical to Crop — use Tune for re-encode; keep a single Crop. *@
+								<MudIconButton Icon="@Icons.Material.Filled.Tune" Size="Size.Small" OnClick="() => ReencodePhotoAsync(item)" title="@LanguageService["camera_reencode"]" />
+								<MudIconButton Icon="@Icons.Material.Filled.Crop" Size="Size.Small" OnClick="() => CropPhotoAsync(item)" title="@LanguageService["file_crop"]" />
+							}
+							<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => ViewModel.StartRenameCommand.Execute(item)" title="@LanguageService["camera_rename"]" />
+							<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="() => SaveToGalleryAsync(item)" title="@LanguageService["camera_save_gallery"]" />
+							<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small" OnClick="() => SaveToWebdavAsync(item)" title="@LanguageService["webdav_quick_save"]" />
+							<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" OnClick="() => SharePhotoAsync(item)" title="@LanguageService["share"]" />
+							<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => DeletePhotoAsync(item)" title="@LanguageService["camera_delete"]" />
+						</div>
 					}
 				</div>
 			}

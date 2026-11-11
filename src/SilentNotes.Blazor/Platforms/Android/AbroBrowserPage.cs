@@ -1972,7 +1972,7 @@ namespace SilentNotes.Platforms
                 case var _ when choice == enableLabel:
                     settings.AbroAiSyncEnabled = !settings.AbroAiSyncEnabled;
                     if (string.IsNullOrWhiteSpace(settings.AbroAiSyncRemotePath))
-                        settings.AbroAiSyncRemotePath = "abro/ai.json";
+                        settings.AbroAiSyncRemotePath = "ai.json";
                     settingsService.TrySaveSettingsToLocalDevice(settings);
                     ShowToast(settings.AbroAiSyncEnabled
                         ? "AI sync enabled (uses Booky WebDAV)"
@@ -1988,7 +1988,7 @@ namespace SilentNotes.Platforms
                             "abro/ai.json",
                             -1,
                             Keyboard.Text,
-                            settings.AbroAiSyncRemotePath ?? "abro/ai.json").ConfigureAwait(true);
+                            settings.AbroAiSyncRemotePath ?? "ai.json").ConfigureAwait(true);
                         if (path == null)
                             return;
                         settings.AbroAiSyncRemotePath = path.Trim().TrimStart('/');
@@ -2109,7 +2109,7 @@ namespace SilentNotes.Platforms
                 case var _ when choice == aiToggle:
                     settings.AbroAiSyncEnabled = !settings.AbroAiSyncEnabled;
                     if (string.IsNullOrWhiteSpace(settings.AbroAiSyncRemotePath))
-                        settings.AbroAiSyncRemotePath = "abro/ai.json";
+                        settings.AbroAiSyncRemotePath = "ai.json";
                     settingsService.TrySaveSettingsToLocalDevice(settings);
                     ShowToast(settings.AbroAiSyncEnabled
                         ? "AI sync enabled (Booky WebDAV)"
@@ -2161,7 +2161,7 @@ namespace SilentNotes.Platforms
                             "abro/ai.json",
                             -1,
                             Keyboard.Text,
-                            settings.AbroAiSyncRemotePath ?? "abro/ai.json").ConfigureAwait(true);
+                            settings.AbroAiSyncRemotePath ?? "ai.json").ConfigureAwait(true);
                         if (path == null)
                             return;
                         settings.AbroAiSyncRemotePath = path.Trim().TrimStart('/');

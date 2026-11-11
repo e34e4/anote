@@ -696,7 +696,7 @@
 					<MudSwitch @bind-Value="@ViewModel.AbroAiSyncEnabled"
 						Label="@LanguageService["ai_sync_enabled"]" Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
 					<label for="AbroAiSyncRemotePath">@LanguageService["ai_sync_remote_path"]</label>
-					<MudTextField id="AbroAiSyncRemotePath" @bind-Value="@ViewModel.AbroAiSyncRemotePath" Variant="Variant.Outlined" Placeholder="abro/ai.json" />
+					<MudTextField id="AbroAiSyncRemotePath" @bind-Value="@ViewModel.AbroAiSyncRemotePath" Variant="Variant.Outlined" Placeholder="ai.json" />
 					<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["ai_sync_desc"]</MudText>
 				</div>
 			</div>

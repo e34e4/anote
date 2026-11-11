@@ -1188,14 +1188,14 @@ namespace SilentNotes.ViewModels
             get
             {
                 return string.IsNullOrWhiteSpace(Model.AbroAiSyncRemotePath)
-                    ? "abro/ai.json"
+                    ? "ai.json"
                     : Model.AbroAiSyncRemotePath;
             }
             set
             {
-                string normalized = string.IsNullOrWhiteSpace(value) ? "abro/ai.json" : value.Trim().TrimStart('/');
+                string normalized = string.IsNullOrWhiteSpace(value) ? "ai.json" : value.Trim().TrimStart('/');
                 SetProperty(
-                    string.IsNullOrWhiteSpace(Model.AbroAiSyncRemotePath) ? "abro/ai.json" : Model.AbroAiSyncRemotePath,
+                    string.IsNullOrWhiteSpace(Model.AbroAiSyncRemotePath) ? "ai.json" : Model.AbroAiSyncRemotePath,
                     normalized,
                     (string v) => Model.AbroAiSyncRemotePath = v);
             }

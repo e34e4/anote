@@ -24,6 +24,42 @@ namespace SilentNotes.Services
         public AbroAiStoreService()
         {
             StoreFilePath = Path.Combine(ResolveRootDirectory(), "ai", "store.json");
+            TryMigrateFromLegacyLocations();
+        }
+
+        /// <summary>
+        /// Copies <c>ai/store.json</c> from legacy <c>/sdcard/abro</c> into <see cref="AnotePaths.Abro"/>
+        /// when the new location is empty.
+        /// </summary>
+        private void TryMigrateFromLegacyLocations()
+        {
+            try
+            {
+                if (File.Exists(StoreFilePath) && new FileInfo(StoreFilePath).Length > 2)
+                    return;
+
+                foreach (string legacyRoot in new[]
+                         {
+                             Path.Combine("/sdcard", "abro"),
+                             Path.Combine("/storage", "emulated", "0", "abro"),
+                         })
+                {
+                    string legacy = Path.Combine(legacyRoot, "ai", "store.json");
+                    if (!File.Exists(legacy))
+                        continue;
+                    if (string.Equals(Path.GetFullPath(legacy), Path.GetFullPath(StoreFilePath), StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    string dir = Path.GetDirectoryName(StoreFilePath);
+                    if (!string.IsNullOrEmpty(dir))
+                        Directory.CreateDirectory(dir);
+                    File.Copy(legacy, StoreFilePath, overwrite: false);
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+            }
         }
 
         /// <inheritdoc/>

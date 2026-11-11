@@ -35,6 +35,7 @@ namespace SilentNotes.Platforms
         private readonly HorizontalStackLayout _attachmentChips;
         private readonly Label _statusLabel;
         private readonly Label _providerLabel;
+        private readonly Picker _providerPicker;
         private readonly List<PendingAttachment> _pendingAttachments = new List<PendingAttachment>();
 
         private sealed class PendingAttachment
@@ -114,6 +115,19 @@ namespace SilentNotes.Platforms
             var providerTap = new TapGestureRecognizer();
             providerTap.Tapped += async (s, e) => await PickProviderAsync().ConfigureAwait(true);
             _providerLabel.GestureRecognizers.Add(providerTap);
+
+            _providerPicker = new Picker
+            {
+                Title = "AI provider",
+                TextColor = Colors.White,
+                TitleColor = Color.FromArgb("#8e8e93"),
+                BackgroundColor = Color.FromArgb("#2c2c2e"),
+                FontSize = 13,
+                HeightRequest = 40,
+                Margin = new Thickness(8, 6, 8, 0),
+            };
+            _providerPicker.SelectedIndexChanged += OnProviderPickerChanged;
+            RebuildProviderPicker();
 
             var headerText = new VerticalStackLayout
             {
@@ -215,7 +229,7 @@ namespace SilentNotes.Platforms
             {
                 Spacing = 0,
                 BackgroundColor = Color.FromArgb("#1c1c1e"),
-                Children = { _attachmentChips, inputBar },
+                Children = { _providerPicker, _attachmentChips, inputBar },
             };
 
             var root = new Grid
@@ -791,6 +805,70 @@ namespace SilentNotes.Platforms
             }
         }
 
+        private void RebuildProviderPicker()
+        {
+            _providerPicker.SelectedIndexChanged -= OnProviderPickerChanged;
+            _providerPicker.Items.Clear();
+            if (_store.Providers.Count == 0)
+            {
+                _providerPicker.Items.Add("No providers configured");
+                _providerPicker.SelectedIndex = 0;
+                _providerPicker.IsEnabled = false;
+            }
+            else
+            {
+                _providerPicker.IsEnabled = true;
+                foreach (AbroAiProviderModel p in _store.Providers)
+                    _providerPicker.Items.Add(p.Name ?? "Provider");
+
+                int selected = _provider == null
+                    ? 0
+                    : _store.Providers.FindIndex(p => p.Id == _provider.Id);
+                if (selected < 0)
+                    selected = 0;
+                _providerPicker.SelectedIndex = selected;
+            }
+
+            _providerPicker.SelectedIndexChanged += OnProviderPickerChanged;
+        }
+
+        private void OnProviderPickerChanged(object sender, EventArgs e)
+        {
+            if (!_providerPicker.IsEnabled || _store.Providers.Count == 0)
+                return;
+            int index = _providerPicker.SelectedIndex;
+            if (index < 0 || index >= _store.Providers.Count)
+                return;
+
+            AbroAiProviderModel chosen = _store.Providers[index];
+            if (_provider != null && chosen.Id == _provider.Id)
+                return;
+
+            ApplyProvider(chosen, persist: true);
+        }
+
+        private void ApplyProvider(AbroAiProviderModel provider, bool persist)
+        {
+            if (provider == null)
+                return;
+
+            _provider = provider;
+            _conversation.ProviderId = _provider.Id;
+            _conversation.ModifiedAt = DateTime.UtcNow;
+            _providerLabel.Text = _provider.Name ?? "Provider";
+
+            // Keep picker selection in sync without re-entrancy when changed from the header sheet.
+            if (_providerPicker.SelectedIndex < 0
+                || _providerPicker.SelectedIndex >= _store.Providers.Count
+                || _store.Providers[_providerPicker.SelectedIndex].Id != _provider.Id)
+            {
+                RebuildProviderPicker();
+            }
+
+            if (persist)
+                Persist(scheduleSync: true);
+        }
+
         private async Task PickProviderAsync()
         {
             if (_store.Providers.Count == 0)
@@ -800,16 +878,12 @@ namespace SilentNotes.Platforms
             }
 
             string[] names = _store.Providers.Select(p => p.Name ?? "Provider").ToArray();
-            string choice = await DisplayActionSheetAsync("Provider", "Cancel", null, names).ConfigureAwait(true);
+            string choice = await DisplayActionSheetAsync("Provider for next message", "Cancel", null, names).ConfigureAwait(true);
             int index = Array.IndexOf(names, choice);
             if (index < 0)
                 return;
 
-            _provider = _store.Providers[index];
-            _conversation.ProviderId = _provider.Id;
-            _conversation.ModifiedAt = DateTime.UtcNow;
-            _providerLabel.Text = _provider.Name ?? "Provider";
-            Persist(scheduleSync: true);
+            ApplyProvider(_store.Providers[index], persist: true);
         }
 
         private void Persist(bool scheduleSync)

@@ -70,7 +70,7 @@ namespace SilentNotes.Models
             BookySyncRemotePath = "booky/bookmarks.json";
             PasswordVaultSyncRemotePath = "anote_password_vault.anote";
             AbroAiSyncEnabled = false;
-            AbroAiSyncRemotePath = "abro/ai.json";
+            AbroAiSyncRemotePath = "ai.json";
             AbroBookmarksSyncEnabled = false;
             AbroBookmarksSyncRemotePath = "abro/bookmarks.json";
             AbroHistorySyncEnabled = false;
@@ -481,7 +481,7 @@ namespace SilentNotes.Models
 
         /// <summary>
         /// Gets or sets the path of the Abro AI store file on the Booky WebDAV server, relative
-        /// to <see cref="BookySyncUrl"/>. Defaults to "abro/ai.json".
+        /// to the WebDAV root (File / Booky / notes credentials). Defaults to "ai.json".
         /// </summary>
         [XmlElement("abro_ai_sync_remote_path")]
         public string AbroAiSyncRemotePath { get; set; }
