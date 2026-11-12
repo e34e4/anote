@@ -1413,7 +1413,7 @@ namespace SilentNotes.Platforms
                 transportRow.SetGravity(GravityFlags.Center);
                 transportRow.SetPadding(0, (int)(4 * density), 0, (int)(2 * density));
 
-                TextView MakeTransportBtn(string label, Action onClick)
+                TextView MakeTransportBtn(string label, System.Action onClick)
                 {
                     var btn = new TextView(this)
                     {
@@ -1428,7 +1428,7 @@ namespace SilentNotes.Platforms
                 }
 
                 transportRow.AddView(MakeTransportBtn("⏮", () => PlayVideoOverlayRelative(-1)));
-                _videoPlayPauseBtn = MakeTransportBtn("⏸", ToggleVideoOverlayPlayPause);
+                _videoPlayPauseBtn = MakeTransportBtn("⏸", () => ToggleVideoOverlayPlayPause());
                 transportRow.AddView(_videoPlayPauseBtn);
                 transportRow.AddView(MakeTransportBtn("⏭", () => PlayVideoOverlayRelative(1)));
                 card.AddView(transportRow, new LinearLayout.LayoutParams(
