@@ -84,6 +84,18 @@ namespace SilentNotes.Platforms
                     StoreText(item.Text);
                 else
                     StoreImage(item.Uri);
+
+                // Replace the OS bottom toast with our top teal banner when possible.
+                string msg = null;
+                try
+                {
+                    msg = _serviceProvider?.GetService<ILanguageService>()?["clipboard_gesture_saved"];
+                }
+                catch (Exception)
+                {
+                }
+
+                AnoteToast.Show(_context, msg ?? "Pasted from your clipboard", FeedbackSeverity.Unknown);
             }
             catch (Exception ex)
             {

@@ -623,7 +623,8 @@ namespace SilentNotes.Platforms
 
                 string message = Ioc.Instance.GetService<ILanguageService>()?["clipboard_gesture_saved"];
                 Context context = Ioc.Instance.GetService<IAppContextService>()?.Context;
-                Toast.MakeText(context, message ?? "Text saved to the clipboard history", ToastLength.Short)?.Show();
+                if (context != null)
+                    AnoteToast.Show(context, message ?? "Pasted from your clipboard", FeedbackSeverity.Unknown);
             }
             catch (Exception ex)
             {

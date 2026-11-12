@@ -445,7 +445,7 @@ namespace SilentNotes.Platforms
 
             if (string.IsNullOrWhiteSpace(text))
             {
-                Toast.MakeText(this, language?["clipboard_gesture_none"] ?? "No text selected", ToastLength.Short)?.Show();
+                AnoteToast.Show(this, language?["clipboard_gesture_none"] ?? "No text selected", FeedbackSeverity.Warning);
                 return;
             }
 
@@ -453,7 +453,10 @@ namespace SilentNotes.Platforms
             {
                 _clipboardCapture = _clipboardCapture ?? new ClipboardCapture(this, GetServiceProvider());
                 _clipboardCapture.StoreText(text);
-                Toast.MakeText(this, language?["clipboard_gesture_saved"] ?? "Text saved to the clipboard history", ToastLength.Short)?.Show();
+                AnoteToast.Show(
+                    this,
+                    language?["clipboard_gesture_saved"] ?? "Pasted from your clipboard",
+                    FeedbackSeverity.Unknown);
             }
             catch (Exception ex)
             {

@@ -413,7 +413,7 @@ clipboard_add = Add
 clipboard_add_placeholder = Type or paste text…
 gui_clipboard_grant_overlay = Allow display over other apps
 gui_clipboard_longpress_hint = Long-press the floating button to save the selected text.
-clipboard_gesture_saved = Text saved to the clipboard history
+clipboard_gesture_saved = Pasted from your clipboard
 clipboard_gesture_none = No text selected
 
 tab_booky = Booky

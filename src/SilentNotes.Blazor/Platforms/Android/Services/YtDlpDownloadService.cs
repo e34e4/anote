@@ -8,6 +8,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Android.Webkit;
+using SilentNotes.Models;
 using SilentNotes.Services;
 using SilentNotes.Workers;
 
@@ -21,11 +23,16 @@ namespace SilentNotes.Platforms.Services
     {
         private readonly IMediaToolsService _mediaTools;
         private readonly IAppContextService _appContext;
+        private readonly ISettingsService _settingsService;
 
-        public YtDlpDownloadService(IMediaToolsService mediaTools, IAppContextService appContext)
+        public YtDlpDownloadService(
+            IMediaToolsService mediaTools,
+            IAppContextService appContext,
+            ISettingsService settingsService = null)
         {
             _mediaTools = mediaTools ?? throw new ArgumentNullException(nameof(mediaTools));
             _appContext = appContext ?? throw new ArgumentNullException(nameof(appContext));
+            _settingsService = settingsService;
         }
 
         /// <inheritdoc/>
@@ -108,8 +115,37 @@ namespace SilentNotes.Platforms.Services
 
             string ffmpeg = AnoteYtDlpRuntime.ResolvePackagedFfmpeg(context)
                 ?? ResolveFfmpegPath();
-            string downloadUrl = NormalizeDownloadUrl(url.Trim());
-            var args = new List<string>(choice.BuildArguments(outDir, ffmpeg)) { downloadUrl };
+            string originalUrl = url.Trim();
+            string downloadUrl = YtDlpUrlHelper.NormalizeDownloadUrl(originalUrl);
+            bool vkResolved = false;
+
+            if (YtDlpUrlHelper.IsVkUrl(originalUrl))
+            {
+                progress?.Report(new YtDlpDownloadProgress
+                {
+                    Percent = 0,
+                    StatusText = "Resolving VK Video via vkvideo.ru…",
+                });
+                string direct = await YtDlpUrlHelper.TryResolveVkDirectMediaUrlAsync(originalUrl, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(direct))
+                {
+                    AnoteFileLog.Append("ytdlp", "VK resolved direct media (bypass sinkholed vk.com): " + Truncate(direct, 160));
+                    downloadUrl = direct;
+                    vkResolved = true;
+                }
+                else
+                {
+                    AnoteFileLog.Append("ytdlp", "VK direct resolve failed; falling back to yt-dlp extractor for " + originalUrl);
+                }
+            }
+            else if (!string.Equals(downloadUrl, originalUrl, StringComparison.Ordinal))
+            {
+                AnoteFileLog.Append("ytdlp", "URL rewritten: " + originalUrl + " → " + downloadUrl);
+            }
+
+            var args = new List<string>(choice.BuildArguments(outDir, ffmpeg));
+            AppendCommonArgs(args, downloadUrl, originalUrl, vkResolved, out string cookiesPath);
 
             progress?.Report(new YtDlpDownloadProgress { Percent = 0, StatusText = "Starting yt-dlp…" });
 
@@ -128,6 +164,8 @@ namespace SilentNotes.Platforms.Services
                 (int code, string output, string lastPath) = await AnoteYtDlpRuntime.RunAsync(
                     context, script, args, runtimeProgress, cancellationToken).ConfigureAwait(false);
 
+                TryDelete(cookiesPath);
+
                 if (cancellationToken.IsCancellationRequested)
                     return Fail("Cancelled");
 
@@ -137,7 +175,7 @@ namespace SilentNotes.Platforms.Services
                     AnoteFileLog.Append("ytdlp", "exit=" + code + " url=" + url + "\n" + detail);
                     return Fail(string.IsNullOrWhiteSpace(detail)
                         ? "yt-dlp failed (exit " + code + ")"
-                        : "yt-dlp failed: " + FirstUsefulLine(detail));
+                        : "yt-dlp failed: " + FirstUsefulLine(detail) + HintForFailure(originalUrl, detail));
                 }
 
                 string path = lastPath;
@@ -156,26 +194,177 @@ namespace SilentNotes.Platforms.Services
             }
             catch (OperationCanceledException)
             {
+                TryDelete(cookiesPath);
                 return Fail("Cancelled");
             }
             catch (Exception ex)
             {
+                TryDelete(cookiesPath);
                 AnoteFileLog.Append("ytdlp", "Download exception for " + url + ": " + ex);
                 return Fail(ex.Message);
             }
         }
 
         /// <summary>
-        /// Light URL cleanup only. Do not rewrite vkvideo.ru → vk.com: on some networks
-        /// <c>vk.com</c> is DNS-sinkholed to 0.0.0.0 while vkvideo.ru still works (errno 111).
-        /// yt-dlp already understands vkvideo.ru / m.vkvideo.ru.
+        /// Light URL cleanup / Vimeo player rewrite. Prefer <see cref="YtDlpUrlHelper.NormalizeDownloadUrl"/>.
         /// </summary>
-        internal static string NormalizeDownloadUrl(string url)
-        {
-            if (string.IsNullOrWhiteSpace(url))
-                return url;
+        internal static string NormalizeDownloadUrl(string url) => YtDlpUrlHelper.NormalizeDownloadUrl(url);
 
-            return url.Trim();
+        private void AppendCommonArgs(
+            List<string> args,
+            string downloadUrl,
+            string originalUrl,
+            bool vkResolved,
+            out string cookiesPath)
+        {
+            cookiesPath = null;
+            args.Add("--user-agent");
+            args.Add(YtDlpUrlHelper.BrowserUserAgent);
+
+            SettingsModel settings = null;
+            try
+            {
+                settings = _settingsService?.LoadSettingsOrDefault();
+            }
+            catch (Exception)
+            {
+            }
+
+            if (settings != null && settings.Socks5Enabled && settings.HasSocks5Config)
+            {
+                string proxy = YtDlpUrlHelper.BuildSocks5ProxyArgument(
+                    settings.Socks5Host,
+                    settings.Socks5Port,
+                    settings.Socks5Username,
+                    settings.Socks5Password);
+                if (!string.IsNullOrEmpty(proxy))
+                {
+                    args.Add("--proxy");
+                    args.Add(proxy);
+                    AnoteFileLog.Append("ytdlp", "Using SOCKS5 proxy " + settings.Socks5Host + ":" + settings.Socks5Port);
+                }
+            }
+
+            bool needCookies = YtDlpUrlHelper.IsRedditUrl(originalUrl)
+                || YtDlpUrlHelper.IsVimeoUrl(originalUrl)
+                || (!vkResolved && YtDlpUrlHelper.IsVkUrl(originalUrl));
+
+            if (needCookies)
+            {
+                cookiesPath = TryWriteWebViewCookiesFile(originalUrl);
+                if (!string.IsNullOrEmpty(cookiesPath) && File.Exists(cookiesPath))
+                {
+                    args.Add("--cookies");
+                    args.Add(cookiesPath);
+                    AnoteFileLog.Append("ytdlp", "Attached WebView cookies for " + HostOf(originalUrl));
+                }
+                else if (YtDlpUrlHelper.IsRedditUrl(originalUrl) || YtDlpUrlHelper.IsVimeoUrl(originalUrl))
+                {
+                    AnoteFileLog.Append(
+                        "ytdlp",
+                        "No WebView cookies for " + HostOf(originalUrl)
+                        + " — open the site once in Abro browser (logged in if needed), then retry.");
+                }
+            }
+
+            if (YtDlpUrlHelper.IsVimeoUrl(originalUrl) || YtDlpUrlHelper.IsVimeoUrl(downloadUrl))
+            {
+                args.Add("--referer");
+                args.Add("https://vimeo.com/");
+            }
+
+            args.Add(downloadUrl);
+        }
+
+        private string TryWriteWebViewCookiesFile(string url)
+        {
+            try
+            {
+                if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
+                    return null;
+
+                CookieManager manager = CookieManager.Instance;
+                if (manager == null)
+                    return null;
+
+                string host = uri.Host ?? string.Empty;
+                var headers = new List<(string Domain, string CookieHeader)>();
+
+                void Add(string domain, string pageUrl)
+                {
+                    string raw = manager.GetCookie(pageUrl);
+                    if (!string.IsNullOrWhiteSpace(raw))
+                        headers.Add((domain, raw));
+                }
+
+                if (host.EndsWith("reddit.com", StringComparison.OrdinalIgnoreCase)
+                    || host.EndsWith("redd.it", StringComparison.OrdinalIgnoreCase))
+                {
+                    Add(".reddit.com", "https://www.reddit.com/");
+                    Add(".reddit.com", "https://old.reddit.com/");
+                    Add(".reddit.com", url);
+                }
+                else if (host.EndsWith("vimeo.com", StringComparison.OrdinalIgnoreCase))
+                {
+                    Add(".vimeo.com", "https://vimeo.com/");
+                    Add(".vimeo.com", "https://player.vimeo.com/");
+                    Add(".vimeo.com", url);
+                }
+                else if (host.Contains("vk", StringComparison.OrdinalIgnoreCase))
+                {
+                    Add(".vkvideo.ru", "https://vkvideo.ru/");
+                    Add(".vk.com", "https://vk.com/");
+                    Add(".vk.ru", "https://vk.ru/");
+                }
+                else
+                {
+                    Add("." + host.TrimStart('.'), url);
+                }
+
+                if (headers.Count == 0)
+                    return null;
+
+                string path = Path.Combine(
+                    _appContext.Context?.CacheDir?.AbsolutePath ?? Path.GetTempPath(),
+                    "ytdlp-cookies-" + Guid.NewGuid().ToString("N") + ".txt");
+                YtDlpUrlHelper.WriteNetscapeCookiesFile(path, headers);
+                return File.Exists(path) && new FileInfo(path).Length > 40 ? path : null;
+            }
+            catch (Exception ex)
+            {
+                AnoteFileLog.Append("ytdlp", "WebView cookie export failed: " + ex.Message);
+                return null;
+            }
+        }
+
+        private static string HintForFailure(string url, string detail)
+        {
+            string d = detail ?? string.Empty;
+            if (YtDlpUrlHelper.IsRedditUrl(url)
+                && (d.IndexOf("authentication", StringComparison.OrdinalIgnoreCase) >= 0
+                    || d.IndexOf("403", StringComparison.OrdinalIgnoreCase) >= 0
+                    || d.IndexOf("Blocked", StringComparison.OrdinalIgnoreCase) >= 0
+                    || d.IndexOf("impersonat", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                return " — Open reddit.com in Abro once (accept cookies), or enable SOCKS5 in Settings, then retry.";
+            }
+
+            if (YtDlpUrlHelper.IsVimeoUrl(url)
+                && (d.IndexOf("logged-in", StringComparison.OrdinalIgnoreCase) >= 0
+                    || d.IndexOf("authentication", StringComparison.OrdinalIgnoreCase) >= 0
+                    || d.IndexOf("impersonat", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                return " — Open the Vimeo page in Abro while logged in, or enable SOCKS5, then retry.";
+            }
+
+            if (YtDlpUrlHelper.IsVkUrl(url)
+                && (d.IndexOf("Connection refused", StringComparison.OrdinalIgnoreCase) >= 0
+                    || d.IndexOf("111", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                return " — vk.com is DNS-blocked on this network; enable SOCKS5 in Settings if direct resolve failed.";
+            }
+
+            return string.Empty;
         }
 
         private string ResolveYtDlpScript()
@@ -241,6 +430,23 @@ namespace SilentNotes.Platforms.Services
             }
 
             return Truncate(text.Trim(), 200);
+        }
+
+        private static string HostOf(string url)
+        {
+            return Uri.TryCreate(url, UriKind.Absolute, out Uri uri) ? uri.Host : url;
+        }
+
+        private static void TryDelete(string path)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                    File.Delete(path);
+            }
+            catch (Exception)
+            {
+            }
         }
 
         private static string Truncate(string text, int max)

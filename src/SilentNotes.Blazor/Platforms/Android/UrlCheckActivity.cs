@@ -485,7 +485,7 @@ namespace SilentNotes
                     history.AddText(CurrentUrl, limit);
                     sp.GetService<IClipboardWebdavSyncService>();
                     sp.GetService<IMessengerService>()?.Send(new ClipboardChangedMessage());
-                    Toast.MakeText(this, "Saved to aNote Clip", ToastLength.Short)?.Show();
+                    AnoteToast.Show(this, "Pasted from your clipboard", FeedbackSeverity.Unknown);
                 }
             }
             catch (Exception)

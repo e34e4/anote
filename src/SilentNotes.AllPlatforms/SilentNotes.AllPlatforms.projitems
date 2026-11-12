@@ -207,6 +207,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Workers\AnotePaths.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\AnoteFileLog.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\YtDlpQualityChoice.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\YtDlpUrlHelper.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\Socks5Helper.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\ContactListModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\ContactsViewModel.cs" />
