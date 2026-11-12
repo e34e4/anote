@@ -1,0 +1,2 @@
+• Reddit: run Chromium media fetch on UI thread (fixes JavaBridge crash)
+• Prefer DASH progressive over CMAF for v.redd.it

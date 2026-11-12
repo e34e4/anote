@@ -817,10 +817,14 @@ namespace SilentNotes.Platforms.Services
             if (string.IsNullOrEmpty(url))
                 return url;
 
-            if (url.IndexOf("v.redd.it/", StringComparison.OrdinalIgnoreCase) >= 0
-                && (url.IndexOf("DASHPlaylist.mpd", StringComparison.OrdinalIgnoreCase) >= 0
-                    || url.IndexOf("HLSPlaylist.m3u8", StringComparison.OrdinalIgnoreCase) >= 0
-                    || url.IndexOf("/DASHPlaylist", StringComparison.OrdinalIgnoreCase) >= 0))
+            if (url.IndexOf("v.redd.it/", StringComparison.OrdinalIgnoreCase) < 0)
+                return url;
+
+            // Playlists and CMAF variants → stable progressive DASH MP4 (what Abro plays).
+            if (url.IndexOf("DASHPlaylist.mpd", StringComparison.OrdinalIgnoreCase) >= 0
+                || url.IndexOf("HLSPlaylist.m3u8", StringComparison.OrdinalIgnoreCase) >= 0
+                || url.IndexOf("/DASHPlaylist", StringComparison.OrdinalIgnoreCase) >= 0
+                || url.IndexOf("CMAF_", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 int idx = url.IndexOf("v.redd.it/", StringComparison.OrdinalIgnoreCase);
                 string rest = url.Substring(idx + "v.redd.it/".Length);
@@ -1096,6 +1100,16 @@ namespace SilentNotes.Platforms.Services
             public void StartChromiumFetch(string mediaUrl)
             {
                 if (_fetchStarted || _webView == null || string.IsNullOrEmpty(mediaUrl))
+                    return;
+
+                // JavascriptInterface callbacks run on JavaBridge — EvaluateJavascript needs main.
+                if (Looper.MyLooper() != Looper.MainLooper)
+                {
+                    new Handler(Looper.MainLooper).Post(() => StartChromiumFetch(mediaUrl));
+                    return;
+                }
+
+                if (_fetchStarted || _webView == null)
                     return;
                 _fetchStarted = true;
                 string escaped = mediaUrl.Replace("\\", "\\\\").Replace("'", "\\'");
@@ -1452,11 +1466,12 @@ namespace SilentNotes.Platforms.Services
             string d = detail ?? string.Empty;
             if (YtDlpUrlHelper.IsRedditUrl(url)
                 && (d.IndexOf("authentication", StringComparison.OrdinalIgnoreCase) >= 0
+                    || d.IndexOf("unable to access the Reddit API", StringComparison.OrdinalIgnoreCase) >= 0
                     || d.IndexOf("403", StringComparison.OrdinalIgnoreCase) >= 0
                     || d.IndexOf("Blocked", StringComparison.OrdinalIgnoreCase) >= 0
                     || d.IndexOf("impersonat", StringComparison.OrdinalIgnoreCase) >= 0))
             {
-                return " — Open reddit.com in Abro once (accept cookies), or enable SOCKS5 in Settings, then retry.";
+                return " — Reddit JSON API is blocked for this IP; aNote downloads via WebView instead. Keep SOCKS5 on and retry.";
             }
 
             if (YtDlpUrlHelper.IsVimeoUrl(url)
