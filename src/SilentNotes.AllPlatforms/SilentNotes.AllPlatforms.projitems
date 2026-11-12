@@ -205,6 +205,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\IMediaToolsService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IYtDlpDownloadService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\AnotePaths.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\PlayerUrlHistoryStore.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\AnoteFileLog.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\YtDlpQualityChoice.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\YtDlpUrlHelper.cs" />
