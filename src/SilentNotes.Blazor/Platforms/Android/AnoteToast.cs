@@ -17,6 +17,7 @@ using Android.Widget;
 using SilentNotes.Services;
 using SilentNotes.Workers;
 using Color = global::Android.Graphics.Color;
+using AView = Android.Views.View;
 
 namespace SilentNotes.Platforms
 {
@@ -38,7 +39,7 @@ namespace SilentNotes.Platforms
         private static readonly Color ErrorFg = Color.ParseColor("#FFF5F5");
 
         private static readonly object Gate = new object();
-        private static View _activeBanner;
+        private static AView _activeBanner;
         private static IWindowManager _activeWm;
 
         public static void Show(

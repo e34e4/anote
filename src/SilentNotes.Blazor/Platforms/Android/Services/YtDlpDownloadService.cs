@@ -18,6 +18,7 @@ using SilentNotes.Services;
 using SilentNotes.Workers;
 using File = System.IO.File;
 using HttpURLConnection = Java.Net.HttpURLConnection;
+using AWebView = Android.Webkit.WebView;
 
 namespace SilentNotes.Platforms.Services
 {
@@ -390,14 +391,14 @@ namespace SilentNotes.Platforms.Services
             }
 
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            WebView webView = null;
+            AWebView webView = null;
 
             void Start()
             {
                 try
                 {
                     CookieManager.Instance?.SetAcceptCookie(true);
-                    webView = new WebView(activity);
+                    webView = new AWebView(activity);
                     webView.Tag = new Java.Lang.String(url);
                     webView.Settings.JavaScriptEnabled = true;
                     webView.Settings.DomStorageEnabled = true;
@@ -466,7 +467,7 @@ namespace SilentNotes.Platforms.Services
                 _tcs = tcs;
             }
 
-            public override void OnPageFinished(WebView view, string url)
+            public override void OnPageFinished(AWebView view, string url)
             {
                 base.OnPageFinished(view, url);
                 if (_done)
@@ -494,7 +495,7 @@ namespace SilentNotes.Platforms.Services
             }
 
             public override void OnReceivedError(
-                WebView view,
+                AWebView view,
                 IWebResourceRequest request,
                 WebResourceError error)
             {
