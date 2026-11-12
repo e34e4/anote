@@ -93,6 +93,11 @@ namespace SilentNotes.Workers
             Write(AnoteLogSeverity.Warn, page, message);
         }
 
+        public static void Warn(string page, string message, Exception ex)
+        {
+            Write(AnoteLogSeverity.Warn, page, FormatWithException(message, ex));
+        }
+
         public static void Error(string page, string message)
         {
             Write(AnoteLogSeverity.Error, page, message);
@@ -100,10 +105,15 @@ namespace SilentNotes.Workers
 
         public static void Error(string page, string message, Exception ex)
         {
+            Write(AnoteLogSeverity.Error, page, FormatWithException(message, ex));
+        }
+
+        private static string FormatWithException(string message, Exception ex)
+        {
             string detail = message ?? string.Empty;
             if (ex != null)
                 detail = string.IsNullOrEmpty(detail) ? ex.ToString() : detail + ": " + ex;
-            Write(AnoteLogSeverity.Error, page, detail);
+            return detail;
         }
 
         /// <summary>Writes a structured log line to <see cref="AnotePaths.LogFile"/>.</summary>

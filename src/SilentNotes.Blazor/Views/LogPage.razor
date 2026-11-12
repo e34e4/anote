@@ -90,9 +90,9 @@
 			<MudSelect T="string" Dense="true" Margin="Margin.Dense" Label="@LanguageService["log_filter_page"]"
 				Value="_pageFilter" ValueChanged="OnPageFilterChanged" Style="min-width:160px;max-width:240px">
 				<MudSelectItem T="string" Value="@AllPagesValue">@LanguageService["log_all_pages"]</MudSelectItem>
-				@foreach (string page in _pages)
+				@foreach (string pageName in _pages)
 				{
-					<MudSelectItem T="string" Value="@page">@page</MudSelectItem>
+					<MudSelectItem T="string" Value="@pageName">@pageName</MudSelectItem>
 				}
 			</MudSelect>
 			<MudText Typo="Typo.caption">@string.Format(LanguageService["log_matches"], _visible.Count)</MudText>
@@ -118,9 +118,9 @@
 					}
 					else
 					{
-						string code = entry.SeverityCode;
-						<div class="log-line log-@code">
-							<span class="log-meta">@(entry.Timestamp?.ToString("HH:mm:ss") ?? "--:--:--") [@code]</span>
+						string sevCode = entry.SeverityCode;
+						<div class="@($"log-line log-{sevCode}")">
+							<span class="log-meta">@(entry.Timestamp?.ToString("HH:mm:ss") ?? "--:--:--") [@sevCode]</span>
 							<span class="log-page">@entry.Page</span>
 							<span class="log-text">@entry.Message</span>
 						</div>
@@ -198,14 +198,7 @@
 			AnoteLogEntry e = list[i];
 			if (e.IsDayHeader)
 			{
-				bool hasChild = false;
-				for (int j = i + 1; j < list.Count; j++)
-				{
-					if (list[j].IsDayHeader)
-						break;
-					hasChild = true;
-					break;
-				}
+				bool hasChild = i + 1 < list.Count && !list[i + 1].IsDayHeader;
 				if (!hasChild)
 					continue;
 			}
