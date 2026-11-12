@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Threading.Tasks;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.Platforms
 {
