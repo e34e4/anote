@@ -309,6 +309,7 @@ namespace SilentNotes.Platforms
             catch (Exception ex)
             {
                 global::Android.Util.Log.Error(LogTag, "OnAccessibilityEvent failed: " + ex);
+                AnoteFileLog.Error("Accessibility", "OnAccessibilityEvent failed", ex);
             }
         }
 
@@ -579,6 +580,7 @@ namespace SilentNotes.Platforms
                 catch (Exception ex)
                 {
                     global::Android.Util.Log.Error(LogTag, "FindUrl failed: " + ex);
+                    AnoteFileLog.Error("Accessibility", "FindUrl failed", ex);
                 }
             }
         }

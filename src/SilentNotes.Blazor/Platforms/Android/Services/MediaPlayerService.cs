@@ -432,6 +432,8 @@ namespace SilentNotes.Platforms.Services
 
                     if (_environmentService?.FloatingButton?.TryShowFloatingImage(localPath, displayTitle) == true)
                         return;
+
+                    AnoteFileLog.Warn("Player", "Floating image viewer unavailable; opening activity");
                 }
 
                 SilentNotes.ImageViewerActivity.Start(
@@ -466,6 +468,8 @@ namespace SilentNotes.Platforms.Services
                     {
                         return;
                     }
+
+                    AnoteFileLog.Warn("Player", "Floating video viewer unavailable; opening activity");
                 }
 
                 SilentNotes.VideoPlayerActivity.Start(

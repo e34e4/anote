@@ -141,6 +141,14 @@ transfer_code_writedown = We recommend to write the transfercode down, you need 
 transfer_code_notification = 💡 Please don't forget to write down the transfercode, you can get it from the menu ‹{0}›! Without the transfercode a new installation of aNote won't be able to decrypt the notes from the online storage.
 
 show_info = Information
+show_log = Log
+log_refresh = Refresh
+log_share = Share anote.log
+log_errors_only = Errors only
+log_filter_page = Page
+log_all_pages = All pages
+log_matches = {0} lines
+log_empty = No log entries yet.
 show_system = System
 system_tab_battery = Battery
 system_tab_hardware = Hardware

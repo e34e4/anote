@@ -6,6 +6,7 @@
 using System;
 using System.Threading.Tasks;
 using SilentNotes.Models;
+using SilentNotes.Workers;
 using VanillaCloudStorageClient;
 
 namespace SilentNotes.Services
@@ -116,11 +117,13 @@ namespace SilentNotes.Services
                 }
 
                 await client.UploadFileAsync(fileName, winner, credentials);
+                AnoteFileLog.Info("Password", "Vault sync succeeded");
                 return PasswordVaultSyncResult.Success;
             }
             catch (Exception ex)
             {
                 LastError = ex.Message;
+                AnoteFileLog.Error("Password", "Vault sync failed", ex);
                 return PasswordVaultSyncResult.Failed;
             }
             finally

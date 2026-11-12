@@ -1,0 +1,231 @@
+@attribute [Route(RouteNames.Log)]
+@inherits PageBase
+
+@using System.IO
+@using System.Linq
+@using MudBlazor
+@using SilentNotes.Services
+@using SilentNotes.Workers
+
+@inject ILanguageService LanguageService
+@inject ISvgIconService IconService
+@inject INavigationService Navigation
+@inject ISharingService SharingService
+@inject IFeedbackService FeedbackService
+@inject IJSRuntime JSRuntime
+
+<style type="text/css">
+	.log-scroll {
+		overflow-y: auto;
+		max-height: calc(100vh - 200px);
+	}
+	.log-path {
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 0.75rem;
+		opacity: 0.75;
+		word-break: break-all;
+	}
+	.log-day {
+		margin: 12px 0 6px;
+		padding: 4px 8px;
+		font-weight: 600;
+		font-size: 0.85rem;
+		border-left: 3px solid var(--mud-palette-primary);
+		opacity: 0.9;
+	}
+	.log-line {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		padding: 5px 8px;
+		margin-bottom: 3px;
+		border-radius: 6px;
+		border: 1px solid rgba(255,255,255,0.06);
+		background: rgba(0,0,0,0.14);
+	}
+	.log-meta {
+		flex: 0 0 auto;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 0.72rem;
+		opacity: 0.85;
+		white-space: nowrap;
+	}
+	.log-page {
+		flex: 0 0 auto;
+		min-width: 64px;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 0.72rem;
+		font-weight: 600;
+	}
+	.log-text {
+		flex: 1 1 auto;
+		min-width: 0;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 0.78rem;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+		line-height: 1.35;
+	}
+	.log-D { color: #9e9e9e; }
+	.log-I { color: #81d4fa; }
+	.log-W { color: #ffb74d; }
+	.log-E { color: #ef5350; }
+</style>
+
+<MudAppBar Class="flex-none" Fixed="true" Dense="true" WrapContent="false">
+	<MudIconButton OnClick="@(() => Navigation.NavigateTo(BackRoute))" Icon="@IconService[IconNames.ArrowLeft]" Color="Color.Inherit" title="@LanguageService["back"]" Edge="Edge.Start" />
+	<MudText Typo="Typo.h6">@LanguageService["show_log"]</MudText>
+	<MudSpacer />
+	<MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Inherit" title="@LanguageService["log_refresh"]" OnClick="Refresh" Disabled="_loading" />
+	<MudIconButton Icon="@Icons.Material.Filled.Share" Color="Color.Inherit" title="@LanguageService["log_share"]" OnClick="ShareLogAsync" Disabled="_loading" />
+</MudAppBar>
+
+<MudMainContent>
+	<MudContainer Class="ms-0 px-2" MaxWidth="MaxWidth.Large">
+		<div class="log-path pa-1">@AnotePaths.LogFile</div>
+
+		<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2 mt-1" Spacing="2" Style="flex-wrap:wrap">
+			<MudCheckBox T="bool" Value="_errorsOnly" ValueChanged="OnErrorsOnlyChanged" Label="@LanguageService["log_errors_only"]" Color="Color.Error" Dense="true" />
+			<MudSelect T="string" Dense="true" Margin="Margin.Dense" Label="@LanguageService["log_filter_page"]"
+				Value="_pageFilter" ValueChanged="OnPageFilterChanged" Style="min-width:160px;max-width:240px">
+				<MudSelectItem T="string" Value="@AllPagesValue">@LanguageService["log_all_pages"]</MudSelectItem>
+				@foreach (string page in _pages)
+				{
+					<MudSelectItem T="string" Value="@page">@page</MudSelectItem>
+				}
+			</MudSelect>
+			<MudText Typo="Typo.caption">@string.Format(LanguageService["log_matches"], _visible.Count)</MudText>
+		</MudStack>
+
+		@if (_loading)
+		{
+			<MudProgressLinear Indeterminate="true" Class="mb-2" />
+		}
+
+		<div class="log-scroll pa-1">
+			@if (_visible.Count == 0)
+			{
+				<MudAlert Severity="Severity.Info" Dense="true">@LanguageService["log_empty"]</MudAlert>
+			}
+			else
+			{
+				@foreach (AnoteLogEntry entry in _visible)
+				{
+					if (entry.IsDayHeader)
+					{
+						<div class="log-day">@entry.Day</div>
+					}
+					else
+					{
+						string code = entry.SeverityCode;
+						<div class="log-line log-@code">
+							<span class="log-meta">@(entry.Timestamp?.ToString("HH:mm:ss") ?? "--:--:--") [@code]</span>
+							<span class="log-page">@entry.Page</span>
+							<span class="log-text">@entry.Message</span>
+						</div>
+					}
+				}
+			}
+		</div>
+	</MudContainer>
+</MudMainContent>
+
+@code {
+	private const string AllPagesValue = "";
+
+	private bool _loading;
+	private bool _errorsOnly;
+	private string _pageFilter = AllPagesValue;
+	private List<string> _pages = new();
+	private List<AnoteLogEntry> _all = new();
+	private List<AnoteLogEntry> _visible = new();
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (firstRender)
+		{
+			await KeyboardShortcuts.InitializeAsync(JSRuntime);
+			KeyboardShortcuts
+				.AddShortcut(new SnKeyboardShortcut(SnKey.Escape), () => Navigation.NavigateTo(BackRoute));
+			Refresh();
+		}
+	}
+
+	private Task OnErrorsOnlyChanged(bool value)
+	{
+		_errorsOnly = value;
+		ApplyFilter();
+		return Task.CompletedTask;
+	}
+
+	private Task OnPageFilterChanged(string value)
+	{
+		_pageFilter = value ?? AllPagesValue;
+		ApplyFilter();
+		return Task.CompletedTask;
+	}
+
+	private void Refresh()
+	{
+		_loading = true;
+		try
+		{
+			_all = AnoteFileLog.ReadEntries().ToList();
+			_pages = AnoteFileLog.ListPages(_all).ToList();
+			ApplyFilter(stateHasChanged: false);
+		}
+		finally
+		{
+			_loading = false;
+			StateHasChanged();
+		}
+	}
+
+	private void ApplyFilter(bool stateHasChanged = true)
+	{
+		IEnumerable<AnoteLogEntry> query = _all;
+		if (_errorsOnly)
+			query = query.Where(e => e.IsDayHeader || e.Severity == AnoteLogSeverity.Error);
+		if (!string.IsNullOrEmpty(_pageFilter))
+			query = query.Where(e => e.IsDayHeader || string.Equals(e.Page, _pageFilter, StringComparison.OrdinalIgnoreCase));
+
+		var list = query.ToList();
+		// Drop day headers that have no following entries in the filtered set.
+		var cleaned = new List<AnoteLogEntry>(list.Count);
+		for (int i = 0; i < list.Count; i++)
+		{
+			AnoteLogEntry e = list[i];
+			if (e.IsDayHeader)
+			{
+				bool hasChild = false;
+				for (int j = i + 1; j < list.Count; j++)
+				{
+					if (list[j].IsDayHeader)
+						break;
+					hasChild = true;
+					break;
+				}
+				if (!hasChild)
+					continue;
+			}
+			cleaned.Add(e);
+		}
+
+		_visible = cleaned;
+		if (stateHasChanged)
+			StateHasChanged();
+	}
+
+	private async Task ShareLogAsync()
+	{
+		string path = AnotePaths.LogFile;
+		if (!File.Exists(path))
+		{
+			FeedbackService.ShowToast(LanguageService["log_empty"]);
+			return;
+		}
+
+		await SharingService.ShareFile(path, "text/plain");
+	}
+}

@@ -25,6 +25,7 @@ namespace SilentNotes
         public const string Import = "/import";
         public const string FirstTimeSync = "/firsttimesync";
         public const string Info = "/info";
+        public const string Log = "/log";
         public const string System = "/system";
         public const string MergeChoice = "/mergechoice";
         public const string OpenSafe = "/opensafe";

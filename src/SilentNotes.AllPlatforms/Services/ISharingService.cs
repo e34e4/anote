@@ -27,5 +27,13 @@ namespace SilentNotes.Services
         /// <param name="text">The text to share.</param>
         /// <returns>Task for async calls.</returns>
         Task ShareText(string text);
+
+        /// <summary>
+        /// Shares an existing file on disk with other apps (FileProvider / share sheet).
+        /// </summary>
+        /// <param name="filePath">Absolute path to the file.</param>
+        /// <param name="mimeType">Optional MIME type; defaults to text/plain for .log files.</param>
+        /// <returns>Task for async calls.</returns>
+        Task ShareFile(string filePath, string mimeType = null);
     }
 }

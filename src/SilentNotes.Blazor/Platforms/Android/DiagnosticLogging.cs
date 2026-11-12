@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Android.Runtime;
 using Android.Webkit;
 using Microsoft.Extensions.Logging;
+using SilentNotes.Workers;
 using AndroidWebView = global::Android.Webkit.WebView;
 
 namespace SilentNotes.Platforms
@@ -87,12 +88,17 @@ namespace SilentNotes.Platforms
         private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             global::Android.Util.Log.Error(Tag, "UnhandledException (isTerminating=" + e.IsTerminating + "): " + e.ExceptionObject);
+            if (e.ExceptionObject is Exception unhandledEx)
+                AnoteFileLog.Error("Diag", "UnhandledException (isTerminating=" + e.IsTerminating + ")", unhandledEx);
+            else
+                AnoteFileLog.Error("Diag", "UnhandledException (isTerminating=" + e.IsTerminating + "): " + e.ExceptionObject);
             RequestReloadIfRenderBatchDesync(e.ExceptionObject);
         }
 
         private static void OnUnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs e)
         {
             global::Android.Util.Log.Error(Tag, "UnobservedTaskException: " + e.Exception);
+            AnoteFileLog.Error("Diag", "UnobservedTaskException", e.Exception);
             e.SetObserved();
             RequestReloadIfRenderBatchDesync(e.Exception);
         }
@@ -100,6 +106,7 @@ namespace SilentNotes.Platforms
         private static void OnAndroidUnhandledException(object sender, RaiseThrowableEventArgs e)
         {
             global::Android.Util.Log.Error(Tag, "AndroidUnhandledException: " + e.Exception);
+            AnoteFileLog.Error("Diag", "AndroidUnhandledException", e.Exception);
             RequestReloadIfRenderBatchDesync(e.Exception);
         }
 
@@ -125,6 +132,7 @@ namespace SilentNotes.Platforms
             }
 
             global::Android.Util.Log.Warn(Tag, "Render batch desync detected — requesting WebView auto-reload.");
+            AnoteFileLog.Warn("Diag", "Render batch desync — requesting WebView auto-reload");
             try
             {
                 Microsoft.Maui.ApplicationModel.MainThread.BeginInvokeOnMainThread(handler);

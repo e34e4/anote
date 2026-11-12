@@ -11,6 +11,7 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.ViewModels
 {
@@ -1345,6 +1346,7 @@ namespace SilentNotes.ViewModels
                 TelegramOperationResult result = await _telegramService.DownloadMediaAsync(mediaRef);
                 if (result.Success)
                 {
+                    AnoteFileLog.Info("Tg", "Media download succeeded");
                     StatusMessage = string.Format(_languageService?["tg_downloaded"] ?? "Saved: {0}", result.LocalPath ?? string.Empty);
                     // Finish the busy/status UI update before launching the viewer so Blazor can
                     // paint "Saved…" and so StartActivity runs after the download continuation.
@@ -1354,6 +1356,7 @@ namespace SilentNotes.ViewModels
                 }
                 else
                 {
+                    AnoteFileLog.Error("Tg", "Media download failed: " + (result.ErrorMessage ?? "unknown"));
                     StatusMessage = result.ErrorMessage ?? "Download failed";
                 }
             }
@@ -1391,9 +1394,10 @@ namespace SilentNotes.ViewModels
                 else
                     await _mediaPlayerService.PlayUriAsync(localPath, "video/*", title).ConfigureAwait(true);
             }
-            catch
+            catch (Exception ex)
             {
                 // Download already succeeded; viewing is best-effort.
+                AnoteFileLog.Warn("Tg", "Open downloaded media failed", ex);
             }
         }
 

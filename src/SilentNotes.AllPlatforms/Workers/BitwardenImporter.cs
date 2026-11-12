@@ -122,8 +122,9 @@ namespace SilentNotes.Workers
                     return result;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Password", "Bitwarden JSON import parse failed", ex);
                 return null;
             }
         }
@@ -178,8 +179,9 @@ namespace SilentNotes.Workers
                 }
                 return result;
             }
-            catch
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Password", "Bitwarden CSV import parse failed", ex);
                 return null;
             }
         }

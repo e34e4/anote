@@ -135,6 +135,8 @@ namespace SilentNotes.Services
                     forceDownload: true,
                     cancellationToken).ConfigureAwait(false);
                 RefreshPaths();
+                if (!ok || string.IsNullOrEmpty(FfmpegPath))
+                    AnoteFileLog.Error("Ffmpeg", "ffmpeg update failed");
                 return ok && !string.IsNullOrEmpty(FfmpegPath);
             }
             finally
@@ -161,6 +163,8 @@ namespace SilentNotes.Services
                     forceDownload: true,
                     cancellationToken).ConfigureAwait(false);
                 RefreshPaths();
+                if (!ok || string.IsNullOrEmpty(YtDlpPath))
+                    AnoteFileLog.Error("YtDlp", "yt-dlp update failed");
                 return ok && !string.IsNullOrEmpty(YtDlpPath);
             }
             finally
@@ -219,8 +223,10 @@ namespace SilentNotes.Services
                 MirrorToPublic(execPath, publicPath);
                 return File.Exists(execPath);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                string page = string.Equals(toolName, "ffmpeg", StringComparison.OrdinalIgnoreCase) ? "Ffmpeg" : "YtDlp";
+                AnoteFileLog.Error(page, toolName + " install failed", ex);
                 return File.Exists(execPath);
             }
         }

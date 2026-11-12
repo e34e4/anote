@@ -11,13 +11,14 @@ namespace SilentNotes.Workers
     /// <summary>
     /// Central paths under the shared <c>anote</c> storage root (Android: <c>/sdcard/anote</c>).
     /// Release builds may place ffmpeg / yt-dlp binaries in <see cref="FfmpegDir"/> and <see cref="YtDlpDir"/>.
-    /// Downloads land in <see cref="Down"/>; diagnostic logs under <see cref="LogDir"/>.
+    /// Downloads land in <see cref="Down"/>; diagnostic log is <see cref="LogFile"/>.
     /// </summary>
     public static class AnotePaths
     {
         public const string RootFolderName = "anote";
 
         private static string _rootDirectory;
+        private static bool _rootLogged;
 
         /// <summary>Resolved once; prefers writable external storage, then app-local fallback.</summary>
         public static string GetRootDirectory()
@@ -40,6 +41,7 @@ namespace SilentNotes.Workers
                 if (IsWritableDirectory(candidate))
                 {
                     _rootDirectory = candidate;
+                    LogRootOnce(candidate, appLocalRoot);
                     return _rootDirectory;
                 }
             }
@@ -53,7 +55,25 @@ namespace SilentNotes.Workers
             }
 
             _rootDirectory = appLocalRoot;
+            LogRootOnce(appLocalRoot, appLocalRoot);
             return _rootDirectory;
+        }
+
+        private static void LogRootOnce(string chosen, string appLocalRoot)
+        {
+            if (_rootLogged)
+                return;
+            _rootLogged = true;
+            try
+            {
+                if (string.Equals(chosen, appLocalRoot, StringComparison.Ordinal))
+                    AnoteFileLog.Warn("Storage", "Using app-local root (public /sdcard/anote not writable): " + chosen);
+                else
+                    AnoteFileLog.Info("Storage", "Root directory: " + chosen);
+            }
+            catch (Exception)
+            {
+            }
         }
 
         public static string Down => Path.Combine(GetRootDirectory(), "down");
@@ -71,14 +91,17 @@ namespace SilentNotes.Workers
 
         public static string YtDlpDir => Path.Combine(GetRootDirectory(), "yt-dlp");
 
-        /// <summary>App log directory (<c>/sdcard/anote/log</c>).</summary>
+        /// <summary>Legacy log directory (<c>/sdcard/anote/log</c>); prefer <see cref="LogFile"/>.</summary>
         public static string LogDir => Path.Combine(GetRootDirectory(), "log");
+
+        /// <summary>Unified app log file (<c>/sdcard/anote/anote.log</c>).</summary>
+        public static string LogFile => Path.Combine(GetRootDirectory(), "anote.log");
 
         /// <summary>Creates standard anote subfolders if missing; returns <see cref="GetRootDirectory"/>.</summary>
         public static string EnsureDirectories()
         {
             string root = GetRootDirectory();
-            foreach (string dir in new[] { Down, Pic, Tg, Abro, FileDir, FfmpegDir, YtDlpDir, LogDir })
+            foreach (string dir in new[] { Down, Pic, Tg, Abro, FileDir, FfmpegDir, YtDlpDir })
             {
                 try
                 {

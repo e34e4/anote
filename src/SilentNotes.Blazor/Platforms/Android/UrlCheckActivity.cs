@@ -318,8 +318,9 @@ namespace SilentNotes
 
                 _ = RunVirusTotalScanAsync(settings.VirusTotalApiKey.Trim());
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("UrlCheck", "Auto VirusTotal scan setup failed", ex);
             }
         }
 
@@ -344,10 +345,12 @@ namespace SilentNotes
 
             try
             {
+                AnoteFileLog.Info("UrlCheck", "Starting yt-dlp from URL check");
                 IServiceProvider sp = TryGetServiceProvider();
                 IYtDlpDownloadService download = sp?.GetService<IYtDlpDownloadService>();
                 if (download == null)
                 {
+                    AnoteFileLog.Error("UrlCheck", "yt-dlp service unavailable");
                     Toast.MakeText(this, "yt-dlp service unavailable", ToastLength.Short)?.Show();
                     return;
                 }
@@ -357,7 +360,7 @@ namespace SilentNotes
             }
             catch (Exception ex)
             {
-                AnoteFileLog.Append("ytdlp", "URLCheck yt-dlp failed: " + ex);
+                AnoteFileLog.Error("YtDlp", "URLCheck yt-dlp failed", ex);
                 Toast.MakeText(this, ex.Message, ToastLength.Long)?.Show();
             }
         }
@@ -379,6 +382,7 @@ namespace SilentNotes
 
                 if (!string.IsNullOrEmpty(result.ErrorMessage))
                 {
+                    AnoteFileLog.Warn("UrlCheck", "VirusTotal: " + result.ErrorMessage);
                     ShowVirusTotalStatus("VirusTotal: " + result.ErrorMessage, Color.ParseColor("#F87171"));
                     Toast.MakeText(this, result.ErrorMessage, ToastLength.Long)?.Show();
                     return;

@@ -33,6 +33,7 @@ namespace SilentNotes.Platforms
                 if (repo == null)
                 {
                     Log.Warn(LogTag, "Repository service unavailable");
+                    AnoteFileLog.Warn("Voice", "Repository service unavailable");
                     return false;
                 }
 
@@ -56,6 +57,7 @@ namespace SilentNotes.Platforms
             catch (Exception ex)
             {
                 Log.Error(LogTag, "Save failed: " + ex);
+                AnoteFileLog.Error("Voice", "Voice capture save failed", ex);
                 return false;
             }
         }

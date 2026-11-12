@@ -123,11 +123,13 @@ namespace SilentNotes.Services
 
                 if (changed)
                     _messengerService?.Send(new BookyChangedMessage());
+                AnoteFileLog.Info("WebDAV", "Bookmarks sync succeeded");
                 return BookySyncResult.Success;
             }
             catch (Exception ex)
             {
                 LastError = ex.Message;
+                AnoteFileLog.Error("WebDAV", "Bookmarks sync failed", ex);
                 return BookySyncResult.Failed;
             }
             finally

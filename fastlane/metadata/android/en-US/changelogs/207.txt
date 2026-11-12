@@ -1,0 +1,3 @@
+• Unified diagnostics log at /sdcard/anote/anote.log (day headers, severity, page tags)
+• New Log page in the overflow menu (after Information) with color, error/page filters, and share
+• Extra logging around storage, TG, accessibility, password, yt-dlp, scan, voice, and sync hotspots

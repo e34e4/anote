@@ -13,6 +13,7 @@ using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Devices;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 using Xamarin.Google.MLKit.Vision.BarCode;
 using Xamarin.Google.MLKit.Vision.Barcode.Common;
 using MlKitBarcodeScanning = Xamarin.Google.MLKit.Vision.BarCode.BarcodeScanning;
@@ -102,10 +103,13 @@ namespace SilentNotes.Platforms.Services
                 if (HasCameraPermission)
                     return true;
                 PermissionStatus status = await Permissions.RequestAsync<Permissions.Camera>();
+                if (status != PermissionStatus.Granted)
+                    AnoteFileLog.Warn("Scan", "Camera permission denied for QR scan");
                 return status == PermissionStatus.Granted;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Scan", "Camera permission request failed", ex);
                 return false;
             }
         }
@@ -132,8 +136,9 @@ namespace SilentNotes.Platforms.Services
                 });
                 return result;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Scan", "QR scan failed", ex);
                 return null;
             }
         }

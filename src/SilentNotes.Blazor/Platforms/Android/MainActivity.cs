@@ -212,9 +212,11 @@ namespace SilentNotes
             try
             {
                 AnotePaths.EnsureDirectories();
+                AnoteFileLog.Info("Storage", "Storage root: " + AnotePaths.GetRootDirectory());
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Storage", "EnsureDirectories failed", ex);
             }
 
             // Extract bundled ffmpeg / yt-dlp (or download if missing) in the background.
@@ -226,8 +228,9 @@ namespace SilentNotes
                     if (tools != null)
                         await tools.EnsureInstalledAsync().ConfigureAwait(false);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    AnoteFileLog.Error("YtDlp", "EnsureInstalledAsync failed (ffmpeg/yt-dlp)", ex);
                 }
             });
 

@@ -42,6 +42,30 @@ namespace SilentNotes.Platforms.Services
             return Task.CompletedTask;
         }
 
+        /// <inheritdoc/>
+        public async Task ShareFile(string filePath, string mimeType = null)
+        {
+            if (string.IsNullOrWhiteSpace(filePath) || !System.IO.File.Exists(filePath))
+                return;
+
+            try
+            {
+                var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(filePath);
+                await Windows.System.Launcher.LaunchFileAsync(file);
+            }
+            catch (Exception)
+            {
+                try
+                {
+                    string text = await System.IO.File.ReadAllTextAsync(filePath);
+                    Windows.ApplicationModel.DataTransfer.Clipboard.SetText(text);
+                }
+                catch (Exception)
+                {
+                }
+            }
+        }
+
         /// <summary>
         /// Replaces leading space characters in each line with a &amp;nbsp character.
         /// </summary>

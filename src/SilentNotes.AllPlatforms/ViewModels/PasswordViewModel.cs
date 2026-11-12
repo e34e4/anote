@@ -575,6 +575,8 @@ namespace SilentNotes.ViewModels
                 Reload();
                 _feedbackService.ShowToast(_languageService.LoadTextFmt("password_imported", added));
 
+                AnoteFileLog.Info("Password", "Bitwarden import added " + added + " entries");
+
                 bool saved = await Task.Run(() => _vaultService.Save());
                 if (!saved)
                     _feedbackService.ShowToast(_languageService["password_import_save_failed"]);
@@ -584,8 +586,9 @@ namespace SilentNotes.ViewModels
                     QueueVaultSync();
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Password", "Bitwarden import failed", ex);
                 _feedbackService.ShowToast(_languageService["password_import_failed"]);
             }
         }

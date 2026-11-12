@@ -129,6 +129,7 @@ namespace SilentNotes.Platforms
             _startAction = startAction;
 
             _rootDir = ResolveRootDirectory();
+            AnoteFileLog.Info("Abro", "Storage root: " + _rootDir);
             _historyDir = Path.Combine(_rootDir, "history");
             _bookmarksDir = Path.Combine(_rootDir, "bookmarks");
             _cookiesDir = Path.Combine(_rootDir, "cookies");
@@ -432,6 +433,7 @@ namespace SilentNotes.Platforms
             // No (all-files) storage access: fall back to the private app directory.
             string fallback = Path.Combine(FileSystem.AppDataDirectory, AnotePaths.RootFolderName, "abro");
             Directory.CreateDirectory(fallback);
+            AnoteFileLog.Warn("Abro", "Using private storage fallback: " + fallback);
             return fallback;
         }
 
@@ -536,8 +538,9 @@ namespace SilentNotes.Platforms
                 if (File.Exists(_tabsFile))
                     state = JsonSerializer.Deserialize<TabsState>(File.ReadAllText(_tabsFile));
             }
-            catch
+            catch (Exception ex)
             {
+                AnoteFileLog.Warn("Abro", "Restore tabs failed", ex);
             }
 
             List<string> urls = state?.Tabs?.Where(u => !string.IsNullOrWhiteSpace(u)).ToList();

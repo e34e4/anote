@@ -73,6 +73,7 @@ namespace SilentNotes.Platforms
                 if (_captureInProgress)
                 {
                     global::Android.Util.Log.Warn(LogTag, "Screenshot timed out; restoring floating button.");
+                    AnoteFileLog.Warn("Screenshot", "Screenshot capture timed out");
                     FinishCapture(success: false);
                 }
             }, 8000);
@@ -102,6 +103,7 @@ namespace SilentNotes.Platforms
             catch (Exception ex)
             {
                 global::Android.Util.Log.Error(LogTag, "TakeScreenshot failed: " + ex);
+                AnoteFileLog.Error("Screenshot", "TakeScreenshot failed", ex);
                 FinishCapture(success: false);
             }
         }
@@ -364,6 +366,7 @@ namespace SilentNotes.Platforms
             catch (Exception ex)
             {
                 global::Android.Util.Log.Error(LogTag, "Could not save screenshot: " + ex);
+                AnoteFileLog.Error("Screenshot", "Save screenshot failed", ex);
                 return null;
             }
         }
@@ -569,6 +572,7 @@ namespace SilentNotes.Platforms
                 catch (Exception ex)
                 {
                     global::Android.Util.Log.Error(LogTag, "Screenshot callback error: " + ex);
+                    AnoteFileLog.Error("Screenshot", "Screenshot callback error", ex);
                 }
 
                 Bitmap ready = bitmap;
@@ -578,6 +582,7 @@ namespace SilentNotes.Platforms
             public void OnFailure(int errorCode)
             {
                 global::Android.Util.Log.Error(LogTag, "Screenshot failed, code=" + errorCode);
+                AnoteFileLog.Warn("Screenshot", "Screenshot denied or failed, code=" + errorCode);
                 _owner._handler.Post(() => _owner.FinishCapture(false));
             }
         }

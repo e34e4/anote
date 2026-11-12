@@ -925,6 +925,7 @@ namespace SilentNotes.Services
             {
                 // Dispose the client so abandoned MTProto work cannot keep the process busy.
                 await DisconnectAccountAsync(accountId).ConfigureAwait(false);
+                AnoteFileLog.Error("Tg", "ConnectAccount failed", ex);
                 return TelegramOperationResult.Fail(
                     DescribeConnectionFailure(ex),
                     TelegramAuthState.Error);
@@ -1232,6 +1233,7 @@ namespace SilentNotes.Services
                 }
                 catch (Exception retryEx)
                 {
+                    AnoteFileLog.Error("Tg", "RefreshChats retry failed", retryEx);
                     return TelegramOperationResult.Fail(retryEx.Message, runtime.AuthState);
                 }
             }
@@ -1240,10 +1242,15 @@ namespace SilentNotes.Services
                 if (IsLikelyDeadConnection(ex, runtime))
                 {
                     await DisconnectAccountAsync(runtime.AccountId).ConfigureAwait(false);
+                    AnoteFileLog.Warn("Tg", "RefreshChats: connection dropped");
                     return TelegramOperationResult.Fail(
                         "Telegram connection dropped. Tap Refresh to reconnect.",
                         TelegramAuthState.Error);
                 }
+                if (ex is TimeoutException)
+                    AnoteFileLog.Warn("Tg", "RefreshChats timed out: " + ex.Message);
+                else
+                    AnoteFileLog.Error("Tg", "RefreshChats failed", ex);
                 return TelegramOperationResult.Fail(ex.Message, runtime.AuthState);
             }
         }
@@ -2121,6 +2128,7 @@ namespace SilentNotes.Services
             }
             catch (Exception ex)
             {
+                AnoteFileLog.Error("Tg", "DownloadMedia failed", ex);
                 return TelegramOperationResult.Fail(ex.Message, runtime.AuthState);
             }
         }

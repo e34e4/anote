@@ -12,6 +12,7 @@ using SilentNotes.Models;
 using SilentNotes.Platforms.Services;
 using SilentNotes.Services;
 using SilentNotes.Stories.SynchronizationStory;
+using SilentNotes.Workers;
 
 namespace SilentNotes.Platforms
 {
@@ -641,8 +642,9 @@ namespace SilentNotes.Platforms
             {
                 AccessibilityServiceWatchdog.EnsureEnabled(activity);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                AnoteFileLog.Warn("Lifecycle", "Accessibility watchdog failed on resume", ex);
             }
 
             // Re-check tab extras after SetIntent(OnNewIntent): covers races where Blazor was
@@ -652,8 +654,9 @@ namespace SilentNotes.Platforms
                 ConsumeTabIntent(activity?.Intent);
                 ConsumeRouteIntent(activity?.Intent);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Lifecycle", "Consume tab/route intent failed on resume", ex);
             }
 
             var synchronizationService = Ioc.Instance.GetService<ISynchronizationService>();

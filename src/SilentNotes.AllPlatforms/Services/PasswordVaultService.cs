@@ -110,8 +110,9 @@ namespace SilentNotes.Services
                 ReplaceMasterPassword(masterPassword);
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Password", "UnlockWithMaster failed", ex);
                 Lock();
                 return false;
             }
@@ -142,8 +143,9 @@ namespace SilentNotes.Services
                 masterPassword?.Dispose();
                 return ok;
             }
-            catch
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Password", "UnlockWithPin failed", ex);
                 Lock();
                 return false;
             }
@@ -173,8 +175,9 @@ namespace SilentNotes.Services
                 _settingsService.TrySaveSettingsToLocalDevice(settings);
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Password", "SetPin failed", ex);
                 return false;
             }
         }
@@ -228,8 +231,9 @@ namespace SilentNotes.Services
                 new AtomicFileWriter { MinValidFileSize = 32 }.Write(path, stream => stream.Write(cipher, 0, cipher.Length));
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Password", "Save vault failed", ex);
                 return false;
             }
         }
@@ -271,8 +275,9 @@ namespace SilentNotes.Services
             {
                 return File.ReadAllBytes(path);
             }
-            catch
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Password", "Read encrypted vault failed", ex);
                 return null;
             }
         }
@@ -293,8 +298,9 @@ namespace SilentNotes.Services
                 Lock();
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Password", "Write encrypted vault failed", ex);
                 return false;
             }
         }
@@ -325,8 +331,9 @@ namespace SilentNotes.Services
                     return PasswordVaultMergeResult.DecryptFailed;
                 return PasswordVaultMergeResult.RemoteApplied;
             }
-            catch
+            catch (Exception ex)
             {
+                AnoteFileLog.Error("Password", "Merge remote vault failed", ex);
                 return PasswordVaultMergeResult.DecryptFailed;
             }
         }
