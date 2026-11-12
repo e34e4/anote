@@ -172,21 +172,24 @@ namespace SilentNotes.Platforms.Services
                     Percent = 0,
                     StatusText = "Resolving Reddit media via WebView…",
                 });
-                string redditDirect = await ResolveRedditDirectViaWebViewAsync(originalUrl, cancellationToken)
+                string stem = "reddit_" + (ExtractRedditPostId(originalUrl)
+                    ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture));
+                // v.redd.it is TLS-fingerprinted (Java/curl → 403). Resolve + download inside Chromium.
+                string redditSaved = await DownloadRedditViaWebViewAsync(
+                        originalUrl, outDir, stem, progress, cancellationToken)
                     .ConfigureAwait(false);
-                if (!string.IsNullOrEmpty(redditDirect))
+                if (!string.IsNullOrEmpty(redditSaved) && File.Exists(redditSaved))
                 {
-                    AnoteFileLog.Append("ytdlp", "Reddit resolved direct media: " + Truncate(redditDirect, 160));
-                    downloadUrl = redditDirect;
-                    directMedia = true;
-                    referer = "https://www.reddit.com/";
-                    shortOutputStem = "reddit_" + (ExtractRedditPostId(originalUrl)
-                        ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    progress?.Report(new YtDlpDownloadProgress { Percent = 100, StatusText = "Done" });
+                    return new YtDlpDownloadResult
+                    {
+                        Success = true,
+                        OutputPath = redditSaved,
+                        Message = "Saved: " + Path.GetFileName(redditSaved),
+                    };
                 }
-                else
-                {
-                    AnoteFileLog.Append("ytdlp", "Reddit direct resolve failed; falling back to yt-dlp with cookies");
-                }
+
+                AnoteFileLog.Append("ytdlp", "Reddit WebView download failed; falling back to yt-dlp with cookies");
             }
             else if (!string.Equals(downloadUrl, originalUrl, StringComparison.Ordinal))
             {
@@ -624,11 +627,16 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <summary>
-        /// Resolve a direct v.redd.it URL inside Chromium WebView (TLS fingerprint works;
-        /// curl / yt-dlp Python get 403). Warms cookies, loads the post with a real-sized
-        /// WebView, intercepts media, and fetches .json via in-page JS bridge.
+        /// Resolve + download Reddit media inside Chromium. v.redd.it is TLS-fingerprinted
+        /// (Java/curl → 403); packaged-media.redd.it often works with Java. Prefers packaged-media,
+        /// otherwise streams the file through an in-page fetch into a JS bridge.
         /// </summary>
-        private async Task<string> ResolveRedditDirectViaWebViewAsync(string url, CancellationToken cancellationToken)
+        private async Task<string> DownloadRedditViaWebViewAsync(
+            string url,
+            string outDir,
+            string stem,
+            IProgress<YtDlpDownloadProgress> progress,
+            CancellationToken cancellationToken)
         {
             Activity activity = _appContext.RootActivity;
             if (activity == null || activity.IsFinishing)
@@ -639,10 +647,12 @@ namespace SilentNotes.Platforms.Services
 
             string pageUrl = BuildRedditPageUrl(url);
             string postId = ExtractRedditPostId(url);
+            string destPath = Path.Combine(outDir, stem + ".mp4");
             var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             AWebView webView = null;
             ViewGroup host = null;
             RedditMediaBridge bridge = null;
+            RedditResolveWebViewClient client = null;
 
             void Start()
             {
@@ -659,7 +669,6 @@ namespace SilentNotes.Platforms.Services
                     webView.Settings.UserAgentString = YtDlpUrlHelper.BrowserUserAgent;
                     ACookieManager.Instance?.SetAcceptThirdPartyCookies(webView, true);
 
-                    // Real size required — shreddit skips media init in 1×1 / Invisible views.
                     host = activity.FindViewById(global::Android.Resource.Id.Content) as ViewGroup;
                     if (host != null)
                     {
@@ -669,26 +678,59 @@ namespace SilentNotes.Platforms.Services
                             (int)(640 * density))
                         {
                             Gravity = GravityFlags.Top | GravityFlags.Start,
-                            LeftMargin = 0,
-                            TopMargin = 0,
                         };
                         webView.Alpha = 0.02f;
                         webView.Visibility = ViewStates.Visible;
                         host.AddView(webView, lp);
                     }
 
-                    bridge = new RedditMediaBridge(media =>
-                    {
-                        if (string.IsNullOrWhiteSpace(media))
-                            return;
-                        string prefer = PreferProgressiveRedditUrl(media.Trim());
-                        AnoteFileLog.Append("ytdlp", "Reddit bridge media: " + Truncate(prefer, 160));
-                        tcs.TrySetResult(prefer);
-                    });
+                    bridge = new RedditMediaBridge(
+                        destPath,
+                        progress,
+                        savedPath => tcs.TrySetResult(savedPath),
+                        err =>
+                        {
+                            AnoteFileLog.Append("ytdlp", "Reddit bridge fail: " + err);
+                            tcs.TrySetResult(null);
+                        });
                     webView.AddJavascriptInterface(bridge, "AnoteReddit");
-                    webView.SetWebViewClient(new RedditResolveWebViewClient(tcs, pageUrl, postId));
+                    client = new RedditResolveWebViewClient(
+                        webView,
+                        pageUrl,
+                        postId,
+                        mediaUrl =>
+                        {
+                            AnoteFileLog.Append("ytdlp", "Reddit picked media: " + Truncate(mediaUrl, 160));
+                            // Prefer Java for packaged-media (worked for 1xafo7x); Chromium fetch for v.redd.it.
+                            if (mediaUrl.IndexOf("packaged-media.redd.it", StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                Task.Run(() =>
+                                {
+                                    string saved = DownloadDirectViaJava(
+                                        mediaUrl,
+                                        outDir,
+                                        stem,
+                                        "https://www.reddit.com/",
+                                        progress,
+                                        cancellationToken);
+                                    if (!string.IsNullOrEmpty(saved))
+                                        tcs.TrySetResult(saved);
+                                    else
+                                    {
+                                        activity.RunOnUiThread(() =>
+                                            client?.StartChromiumFetch(mediaUrl));
+                                    }
+                                }, cancellationToken);
+                            }
+                            else
+                            {
+                                client?.StartChromiumFetch(mediaUrl);
+                            }
+                        },
+                        () => tcs.TrySetResult(null));
+                    bridge.SetMediaHandler(u => client?.OfferCandidate(u));
+                    webView.SetWebViewClient(client);
                     AnoteFileLog.Append("ytdlp", "Reddit WebView warm-up then " + pageUrl);
-                    // Warm cookies / challenge first, then navigate to the post.
                     webView.LoadUrl("https://www.reddit.com/");
                 }
                 catch (Exception ex)
@@ -705,11 +747,11 @@ namespace SilentNotes.Platforms.Services
 
             try
             {
-                Task finished = await Task.WhenAny(tcs.Task, Task.Delay(45000, cancellationToken))
+                Task finished = await Task.WhenAny(tcs.Task, Task.Delay(90000, cancellationToken))
                     .ConfigureAwait(false);
                 if (finished != tcs.Task)
                 {
-                    AnoteFileLog.Append("ytdlp", "Reddit WebView resolve timed out");
+                    AnoteFileLog.Append("ytdlp", "Reddit WebView download timed out");
                     return null;
                 }
 
@@ -751,7 +793,6 @@ namespace SilentNotes.Platforms.Services
             if (path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                 path = path.Substring(0, path.Length - 5);
 
-            // www shreddit page — WebView TLS passes where curl/Python get 403.
             return "https://www.reddit.com" + path + uri.Query;
         }
 
@@ -775,41 +816,208 @@ namespace SilentNotes.Platforms.Services
             return url;
         }
 
+        private static int RankRedditMediaUrl(string url)
+        {
+            if (string.IsNullOrEmpty(url))
+                return -1;
+            if (url.IndexOf("DASH_AUDIO", StringComparison.OrdinalIgnoreCase) >= 0
+                || url.IndexOf("/audio", StringComparison.OrdinalIgnoreCase) >= 0)
+                return -1;
+            if (url.IndexOf("packaged-media.redd.it", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                if (url.IndexOf("1080", StringComparison.OrdinalIgnoreCase) >= 0) return 90;
+                if (url.IndexOf("854", StringComparison.OrdinalIgnoreCase) >= 0
+                    || url.IndexOf("720", StringComparison.OrdinalIgnoreCase) >= 0) return 80;
+                return 70;
+            }
+
+            if (url.IndexOf("v.redd.it", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                if (url.IndexOf("DASH_1080", StringComparison.OrdinalIgnoreCase) >= 0) return 60;
+                if (url.IndexOf("DASH_720", StringComparison.OrdinalIgnoreCase) >= 0) return 50;
+                if (url.IndexOf("DASH_480", StringComparison.OrdinalIgnoreCase) >= 0) return 40;
+                if (url.IndexOf("DASH_360", StringComparison.OrdinalIgnoreCase) >= 0) return 30;
+                return 20;
+            }
+
+            return 0;
+        }
+
         private sealed class RedditMediaBridge : Java.Lang.Object
         {
-            private readonly Action<string> _onMedia;
+            private readonly string _destPath;
+            private readonly IProgress<YtDlpDownloadProgress> _progress;
+            private readonly System.Action<string> _onSaved;
+            private readonly System.Action<string> _onFail;
+            private System.Action<string> _onMediaUrl;
+            private readonly object _gate = new object();
+            private FileStream _stream;
+            private long _written;
+            private long _total;
+            private bool _closed;
 
-            public RedditMediaBridge(Action<string> onMedia)
+            public RedditMediaBridge(
+                string destPath,
+                IProgress<YtDlpDownloadProgress> progress,
+                System.Action<string> onSaved,
+                System.Action<string> onFail)
             {
-                _onMedia = onMedia;
+                _destPath = destPath;
+                _progress = progress;
+                _onSaved = onSaved;
+                _onFail = onFail;
             }
+
+            public void SetMediaHandler(System.Action<string> onMediaUrl) => _onMediaUrl = onMediaUrl;
 
             [global::Android.Webkit.JavascriptInterface]
             [Java.Interop.Export("onMedia")]
             public void OnMedia(string url)
             {
-                try { _onMedia?.Invoke(url); } catch (Exception) { }
+                try { _onMediaUrl?.Invoke(url); } catch (Exception) { }
+            }
+
+            [global::Android.Webkit.JavascriptInterface]
+            [Java.Interop.Export("begin")]
+            public void Begin(string path, long totalBytes)
+            {
+                lock (_gate)
+                {
+                    try
+                    {
+                        TryDelete(_destPath);
+                        TryDelete(_destPath + ".part");
+                        _stream = File.Create(_destPath + ".part");
+                        _written = 0;
+                        _total = totalBytes;
+                        _closed = false;
+                        AnoteFileLog.Append("ytdlp", "Reddit Chromium fetch begin total=" + totalBytes);
+                    }
+                    catch (Exception ex)
+                    {
+                        _onFail?.Invoke(ex.Message);
+                    }
+                }
+            }
+
+            [global::Android.Webkit.JavascriptInterface]
+            [Java.Interop.Export("chunk")]
+            public void Chunk(string base64)
+            {
+                lock (_gate)
+                {
+                    if (_stream == null || _closed || string.IsNullOrEmpty(base64))
+                        return;
+                    try
+                    {
+                        byte[] data = Convert.FromBase64String(base64);
+                        _stream.Write(data, 0, data.Length);
+                        _written += data.Length;
+                        if (_total > 0)
+                        {
+                            int pct = (int)Math.Min(99, (_written * 100) / _total);
+                            if (pct % 5 == 0)
+                            {
+                                _progress?.Report(new YtDlpDownloadProgress
+                                {
+                                    Percent = pct,
+                                    StatusText = "Downloading… " + pct + "%",
+                                });
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        CloseStream();
+                        _onFail?.Invoke(ex.Message);
+                    }
+                }
+            }
+
+            [global::Android.Webkit.JavascriptInterface]
+            [Java.Interop.Export("end")]
+            public void End()
+            {
+                lock (_gate)
+                {
+                    try
+                    {
+                        if (_stream == null)
+                        {
+                            _onFail?.Invoke("no stream");
+                            return;
+                        }
+
+                        _stream.Flush();
+                        CloseStream();
+                        string part = _destPath + ".part";
+                        if (!File.Exists(part) || new FileInfo(part).Length < 1000)
+                        {
+                            TryDelete(part);
+                            _onFail?.Invoke("empty file");
+                            return;
+                        }
+
+                        if (File.Exists(_destPath))
+                            File.Delete(_destPath);
+                        File.Move(part, _destPath);
+                        AnoteFileLog.Append(
+                            "ytdlp",
+                            "Reddit Chromium saved " + _destPath + " (" + new FileInfo(_destPath).Length + " bytes)");
+                        _onSaved?.Invoke(_destPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        CloseStream();
+                        _onFail?.Invoke(ex.Message);
+                    }
+                }
+            }
+
+            [global::Android.Webkit.JavascriptInterface]
+            [Java.Interop.Export("fail")]
+            public void Fail(string message)
+            {
+                lock (_gate)
+                {
+                    CloseStream();
+                    TryDelete(_destPath + ".part");
+                    _onFail?.Invoke(message ?? "fail");
+                }
+            }
+
+            private void CloseStream()
+            {
+                if (_closed)
+                    return;
+                _closed = true;
+                try { _stream?.Dispose(); } catch (Exception) { }
+                _stream = null;
             }
         }
 
         private sealed class RedditResolveWebViewClient : WebViewClient
         {
-            private readonly TaskCompletionSource<string> _tcs;
+            private readonly AWebView _webView;
             private readonly string _pageUrl;
             private readonly string _postId;
-            private bool _done;
+            private readonly System.Action<string> _onPicked;
+            private readonly System.Action _onFatal;
             private bool _loadedPost;
+            private bool _pickStarted;
+            private bool _fetchStarted;
+            private bool _debounceScheduled;
+            private string _bestUrl;
+            private int _bestRank = -1;
             private int _extractAttempts;
 
-            // Sync DOM/HTML scrape.
             private const string ExtractJs =
                 "(function(){"
                 + "try{"
-                + "function pick(rv){if(!rv)return'';return rv.fallback_url||rv.dash_url||rv.hls_url||'';}"
                 + "var html=document.documentElement?document.documentElement.innerHTML:'';"
-                + "var m=html.match(/https:\\/\\/v\\.redd\\.it\\/[A-Za-z0-9]+\\/DASH_\\d+\\.mp4[^\\\"\\s]*/);"
+                + "var m=html.match(/https:\\/\\/packaged-media\\.redd\\.it\\/[^\\\"\\s]+\\.mp4[^\\\"\\s]*/);"
                 + "if(m) return m[0].replace(/&amp;/g,'&');"
-                + "m=html.match(/https:\\/\\/v\\.redd\\.it\\/[A-Za-z0-9]+\\/(?:DASHPlaylist\\.mpd|HLSPlaylist\\.m3u8)[^\\\"\\s]*/);"
+                + "m=html.match(/https:\\/\\/v\\.redd\\.it\\/[A-Za-z0-9]+\\/DASH_\\d+\\.mp4[^\\\"\\s]*/);"
                 + "if(m) return m[0].replace(/&amp;/g,'&');"
                 + "m=html.match(/\"fallback_url\"\\s*:\\s*\"(https:[^\"]+)\"/);"
                 + "if(m) return m[1].replace(/\\\\u0026/g,'&').replace(/\\\\\\//g,'/');"
@@ -817,12 +1025,10 @@ namespace SilentNotes.Platforms.Services
                 + "if(m) return 'https://v.redd.it/'+m[1]+'/DASH_720.mp4?source=fallback';"
                 + "var v=document.querySelector('video');"
                 + "if(v && v.currentSrc && v.currentSrc.indexOf('redd.it')>=0) return v.currentSrc;"
-                + "if(v && v.src && v.src.indexOf('redd.it')>=0) return v.src;"
                 + "}catch(e){return '';}"
                 + "return '';"
                 + "})()";
 
-            // Async JSON fetch through Chromium (same TLS/cookies as the page).
             private const string FetchJsonJs =
                 "(function(){"
                 + "try{"
@@ -847,58 +1053,86 @@ namespace SilentNotes.Platforms.Services
                 + "if(i>=urls.length){return;}"
                 + "fetch(urls[i],{credentials:'include',headers:{'Accept':'application/json'}})"
                 + ".then(function(r){return r.ok?r.json():Promise.reject(r.status);})"
-                + ".then(function(j){var u=dig(j); if(u&&window.AnoteReddit) window.AnoteReddit.onMedia(u); else go(i+1);})"
+                + ".then(function(j){var u=dig(j); if(u&&window.AnoteRedditPick) window.AnoteRedditPick(u); else go(i+1);})"
                 + ".catch(function(){go(i+1);});"
                 + "}"
                 + "go(0);"
                 + "}catch(e){}"
                 + "})()";
 
-            public RedditResolveWebViewClient(TaskCompletionSource<string> tcs, string pageUrl, string postId)
+            public RedditResolveWebViewClient(
+                AWebView webView,
+                string pageUrl,
+                string postId,
+                System.Action<string> onPicked,
+                System.Action onFatal)
             {
-                _tcs = tcs;
+                _webView = webView;
                 _pageUrl = pageUrl;
                 _postId = postId ?? string.Empty;
+                _onPicked = onPicked;
+                _onFatal = onFatal;
+            }
+
+            public void StartChromiumFetch(string mediaUrl)
+            {
+                if (_fetchStarted || _webView == null || string.IsNullOrEmpty(mediaUrl))
+                    return;
+                _fetchStarted = true;
+                string escaped = mediaUrl.Replace("\\", "\\\\").Replace("'", "\\'");
+                string js =
+                    "(async function(){"
+                    + "try{"
+                    + "var url='" + escaped + "';"
+                    + "var r=await fetch(url,{credentials:'include',headers:{"
+                    + "'Referer':'https://www.reddit.com/','Origin':'https://www.reddit.com',"
+                    + "'Accept':'*/*'}});"
+                    + "if(!r.ok){AnoteReddit.fail('HTTP '+r.status);return;}"
+                    + "var total=Number(r.headers.get('content-length')||0);"
+                    + "AnoteReddit.begin('', total);"
+                    + "var reader=r.body.getReader();"
+                    + "while(true){"
+                    + "var n=await reader.read();"
+                    + "if(n.done)break;"
+                    + "var value=n.value; var s='';"
+                    + "for(var i=0;i<value.length;i++) s+=String.fromCharCode(value[i]);"
+                    + "AnoteReddit.chunk(btoa(s));"
+                    + "}"
+                    + "AnoteReddit.end();"
+                    + "}catch(e){AnoteReddit.fail(String(e));}"
+                    + "})();";
+                try
+                {
+                    AnoteFileLog.Append("ytdlp", "Reddit Chromium fetch start " + Truncate(mediaUrl, 120));
+                    _webView.EvaluateJavascript(js, null);
+                }
+                catch (Exception ex)
+                {
+                    AnoteFileLog.Append("ytdlp", "Reddit Chromium fetch inject failed: " + ex.Message);
+                    _onFatal?.Invoke();
+                }
             }
 
             public override WebResourceResponse ShouldInterceptRequest(AWebView view, IWebResourceRequest request)
             {
-                try
-                {
-                    string reqUrl = request?.Url?.ToString();
-                    if (!_done && IsRedditMediaUrl(reqUrl))
-                    {
-                        string prefer = PreferProgressiveRedditUrl(reqUrl);
-                        AnoteFileLog.Append("ytdlp", "Reddit intercepted media: " + Truncate(prefer, 160));
-                        Complete(prefer);
-                    }
-                }
-                catch (Exception)
-                {
-                }
-
+                try { OfferCandidate(request?.Url?.ToString()); }
+                catch (Exception) { }
                 return base.ShouldInterceptRequest(view, request);
             }
 
             public override void OnLoadResource(AWebView view, string url)
             {
                 base.OnLoadResource(view, url);
-                if (!_done && IsRedditMediaUrl(url))
-                {
-                    string prefer = PreferProgressiveRedditUrl(url);
-                    AnoteFileLog.Append("ytdlp", "Reddit OnLoadResource media: " + Truncate(prefer, 160));
-                    Complete(prefer);
-                }
+                OfferCandidate(url);
             }
 
             public override void OnPageFinished(AWebView view, string url)
             {
                 base.OnPageFinished(view, url);
-                if (_done || view == null)
+                if (_pickStarted || view == null)
                     return;
 
                 string current = url ?? string.Empty;
-                // After warm-up homepage, open the target post.
                 if (!_loadedPost
                     && current.IndexOf("reddit.com", StringComparison.OrdinalIgnoreCase) >= 0
                     && current.IndexOf("/comments/", StringComparison.OrdinalIgnoreCase) < 0)
@@ -910,27 +1144,34 @@ namespace SilentNotes.Platforms.Services
                         + (string.IsNullOrEmpty(_postId) ? string.Empty : " id=" + _postId));
                     new Handler(Looper.MainLooper).PostDelayed(() =>
                     {
-                        if (_done || view == null)
+                        if (_pickStarted || view == null)
                             return;
                         try { view.LoadUrl(_pageUrl); } catch (Exception) { }
                     }, 700);
                     return;
                 }
 
-                if (current.IndexOf("/comments/", StringComparison.OrdinalIgnoreCase) >= 0
-                    || (!_loadedPost && string.Equals(current, _pageUrl, StringComparison.OrdinalIgnoreCase)))
+                if (current.IndexOf("/comments/", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     _loadedPost = true;
+                    // Expose pick helper for JSON fetch callback.
+                    try
+                    {
+                        view.EvaluateJavascript(
+                            "window.AnoteRedditPick=function(u){if(u){AnoteReddit&&AnoteReddit.onMedia&&AnoteReddit.onMedia(u);}};",
+                            null);
+                    }
+                    catch (Exception) { }
+
                     ScheduleExtract(view, 800);
-                    ScheduleExtract(view, 2000);
-                    ScheduleExtract(view, 4000);
-                    ScheduleExtract(view, 8000);
+                    ScheduleExtract(view, 2200);
+                    ScheduleExtract(view, 5000);
                     new Handler(Looper.MainLooper).PostDelayed(() =>
                     {
-                        if (_done || view == null)
+                        if (_pickStarted || view == null)
                             return;
                         try { view.EvaluateJavascript(FetchJsonJs, null); } catch (Exception) { }
-                    }, 1200);
+                    }, 1400);
                 }
             }
 
@@ -938,26 +1179,16 @@ namespace SilentNotes.Platforms.Services
             {
                 new Handler(Looper.MainLooper).PostDelayed(() =>
                 {
-                    if (_done || view == null)
+                    if (_pickStarted || view == null)
                         return;
                     _extractAttempts++;
                     try
                     {
                         view.EvaluateJavascript(ExtractJs, new RedditJsCallback(result =>
                         {
-                            if (_done)
-                                return;
                             string media = UnwrapJsString(result);
-                            if (!string.IsNullOrWhiteSpace(media)
-                                && media.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                            {
-                                AnoteFileLog.Append("ytdlp", "Reddit JS media: " + Truncate(media, 160));
-                                Complete(PreferProgressiveRedditUrl(media.Trim()));
-                            }
-                            else if (_extractAttempts >= 4)
-                            {
-                                AnoteFileLog.Append("ytdlp", "Reddit JS extract empty after retries");
-                            }
+                            if (!string.IsNullOrWhiteSpace(media))
+                                OfferCandidate(media.Trim());
                         }));
                     }
                     catch (Exception ex)
@@ -973,20 +1204,53 @@ namespace SilentNotes.Platforms.Services
                 WebResourceError error)
             {
                 base.OnReceivedError(view, request, error);
-                if (request?.IsForMainFrame == true && !_done && _loadedPost)
+                if (request?.IsForMainFrame == true && _loadedPost && !_pickStarted)
                 {
                     AnoteFileLog.Append("ytdlp", "Reddit WebView main-frame error: " + error?.Description);
-                    Complete(null);
+                    _onFatal?.Invoke();
                 }
             }
 
-            private void Complete(string media)
+            public void OfferCandidate(string rawUrl)
             {
-                if (_done)
+                if (_pickStarted || string.IsNullOrEmpty(rawUrl) || !IsRedditMediaUrl(rawUrl))
                     return;
-                _done = true;
+
+                string url = PreferProgressiveRedditUrl(rawUrl);
+                int rank = RankRedditMediaUrl(url);
+                if (rank < 0)
+                    return;
+
+                if (rank > _bestRank)
+                {
+                    _bestRank = rank;
+                    _bestUrl = url;
+                    AnoteFileLog.Append("ytdlp", "Reddit candidate rank=" + rank + " " + Truncate(url, 140));
+                }
+
+                // packaged-media: take immediately. v.redd.it: wait briefly for a better URL.
+                if (rank >= 70)
+                {
+                    FinishPick();
+                    return;
+                }
+
+                if (!_debounceScheduled)
+                {
+                    _debounceScheduled = true;
+                    new Handler(Looper.MainLooper).PostDelayed(FinishPick, 2800);
+                }
+            }
+
+            private void FinishPick()
+            {
+                if (_pickStarted)
+                    return;
+                if (string.IsNullOrEmpty(_bestUrl))
+                    return;
+                _pickStarted = true;
                 try { ACookieManager.Instance?.Flush(); } catch (Exception) { }
-                _tcs.TrySetResult(media);
+                _onPicked?.Invoke(_bestUrl);
             }
 
             private static bool IsRedditMediaUrl(string url)
@@ -1020,9 +1284,9 @@ namespace SilentNotes.Platforms.Services
 
         private sealed class RedditJsCallback : Java.Lang.Object, IValueCallback
         {
-            private readonly Action<string> _onResult;
+            private readonly System.Action<string> _onResult;
 
-            public RedditJsCallback(Action<string> onResult)
+            public RedditJsCallback(System.Action<string> onResult)
             {
                 _onResult = onResult;
             }

@@ -1,0 +1,2 @@
+• Reddit: download v.redd.it via Chromium fetch (fixes 403 from Java/curl)
+• Prefer packaged-media.redd.it when available
