@@ -1589,48 +1589,20 @@ namespace SilentNotes.Platforms
                     return;
                 }
 
-                var executor = new AbroProxyExecutor();
-                var listener = new AbroProxyRunnable();
-
-                if (settings != null && settings.Socks5Enabled && settings.HasSocks5Config)
+                // Reuse shared helper: ProxyConfig rejects userinfo; auth goes through local forwarder.
+                var mapped = new SettingsModel
                 {
-                    string rule = "socks://" + settings.Socks5Host.Trim() + ":" + settings.Socks5Port.ToString(CultureInfo.InvariantCulture);
-                    if (!string.IsNullOrWhiteSpace(settings.Socks5Username))
-                    {
-                        string user = Uri.EscapeDataString(settings.Socks5Username.Trim());
-                        string pass = Uri.EscapeDataString(settings.Socks5Password ?? string.Empty);
-                        rule = "socks://" + user + ":" + pass + "@" + settings.Socks5Host.Trim() + ":"
-                            + settings.Socks5Port.ToString(CultureInfo.InvariantCulture);
-                    }
-
-                    AndroidX.WebKit.ProxyConfig config = new AndroidX.WebKit.ProxyConfig.Builder()
-                        .AddProxyRule(rule)
-                        .Build();
-                    AndroidX.WebKit.ProxyController.Instance.SetProxyOverride(config, executor, listener);
-                }
-                else
-                {
-                    AndroidX.WebKit.ProxyController.Instance.ClearProxyOverride(executor, listener);
-                }
+                    Socks5Enabled = settings?.Socks5Enabled == true,
+                    Socks5Host = settings?.Socks5Host,
+                    Socks5Port = settings?.Socks5Port ?? 0,
+                    Socks5Username = settings?.Socks5Username,
+                    Socks5Password = settings?.Socks5Password,
+                };
+                _ = WebViewSocksProxy.ApplyAsync(mapped);
             }
             catch (Exception ex)
             {
                 ShowToast("Proxy apply failed: " + ex.Message);
-            }
-        }
-
-        private sealed class AbroProxyExecutor : Java.Lang.Object, Java.Util.Concurrent.IExecutor
-        {
-            public void Execute(Java.Lang.IRunnable command)
-            {
-                command?.Run();
-            }
-        }
-
-        private sealed class AbroProxyRunnable : Java.Lang.Object, Java.Lang.IRunnable
-        {
-            public void Run()
-            {
             }
         }
 

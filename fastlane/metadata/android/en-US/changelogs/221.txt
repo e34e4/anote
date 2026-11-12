@@ -1,0 +1,3 @@
+• Reddit: fix Chromium media download (CORS credentials)
+• WebView SOCKS: local forwarder for username/password proxies
+• Abro: same SOCKS auth fix via shared helper

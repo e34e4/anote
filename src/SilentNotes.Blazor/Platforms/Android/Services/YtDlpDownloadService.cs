@@ -654,13 +654,21 @@ namespace SilentNotes.Platforms.Services
             RedditMediaBridge bridge = null;
             RedditResolveWebViewClient client = null;
 
+            // Match Abro: process-wide WebView SOCKS (via local forwarder when auth is set).
+            // Must finish before LoadUrl or CDN requests bypass the proxy.
+            try
+            {
+                await WebViewSocksProxy.ApplyFromSettingsAsync(_settingsService).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                AnoteFileLog.Append("ytdlp", "Reddit WebView SOCKS prepare failed: " + ex.Message);
+            }
+
             void Start()
             {
                 try
                 {
-                    // Match Abro: process-wide WebView SOCKS so Reddit/CDN is reachable.
-                    WebViewSocksProxy.ApplyFromSettings(_settingsService);
-
                     ACookieManager.Instance?.SetAcceptCookie(true);
                     webView = new AWebView(activity);
                     webView.Settings.JavaScriptEnabled = true;
@@ -1091,12 +1099,15 @@ namespace SilentNotes.Platforms.Services
                     return;
                 _fetchStarted = true;
                 string escaped = mediaUrl.Replace("\\", "\\\\").Replace("'", "\\'");
+                // credentials:'include' + Access-Control-Allow-Origin:* is rejected by Chromium
+                // (v.redd.it uses ACAO:*). Omit credentials so the body is readable.
                 string js =
                     "(async function(){"
                     + "try{"
                     + "var url='" + escaped + "';"
-                    + "var r=await fetch(url,{credentials:'include',headers:{"
-                    + "'Referer':'https://www.reddit.com/','Origin':'https://www.reddit.com',"
+                    + "function b64(u8){var s='';var n=u8.length;for(var i=0;i<n;i++)s+=String.fromCharCode(u8[i]);return btoa(s);}"
+                    + "var r=await fetch(url,{credentials:'omit',mode:'cors',headers:{"
+                    + "'Referer':'https://www.reddit.com/',"
                     + "'Accept':'*/*'}});"
                     + "if(!r.ok){AnoteReddit.fail('HTTP '+r.status);return;}"
                     + "var total=Number(r.headers.get('content-length')||0);"
@@ -1105,12 +1116,10 @@ namespace SilentNotes.Platforms.Services
                     + "while(true){"
                     + "var n=await reader.read();"
                     + "if(n.done)break;"
-                    + "var value=n.value; var s='';"
-                    + "for(var i=0;i<value.length;i++) s+=String.fromCharCode(value[i]);"
-                    + "AnoteReddit.chunk(btoa(s));"
+                    + "AnoteReddit.chunk(b64(n.value));"
                     + "}"
                     + "AnoteReddit.end();"
-                    + "}catch(e){AnoteReddit.fail(String(e));}"
+                    + "}catch(e){AnoteReddit.fail(String(e&&e.message?e.message:e));}"
                     + "})();";
                 try
                 {
