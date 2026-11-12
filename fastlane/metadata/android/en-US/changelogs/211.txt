@@ -1,0 +1,3 @@
+• Fix VK Video resolve via Android HTTP (bypass sinkholed vk.com)
+• Reddit: warm WebView session cookies before yt-dlp; cookies file without UTF-8 BOM
+• Clipboard toast: top teal overlay / MudBlazor snackbar (not default bottom Toast)

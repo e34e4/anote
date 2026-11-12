@@ -77,34 +77,60 @@ namespace SilentNotes.Workers
             {
                 using var handler = new HttpClientHandler
                 {
-                    AutomaticDecompression = DecompressionMethods.All,
+                    AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
                 };
                 using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
                 client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", BrowserUserAgent);
                 client.DefaultRequestHeaders.TryAddWithoutValidation("Referer", "https://vkvideo.ru/");
                 client.DefaultRequestHeaders.TryAddWithoutValidation("X-Requested-With", "XMLHttpRequest");
                 client.DefaultRequestHeaders.TryAddWithoutValidation("Origin", "https://vkvideo.ru");
+                client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "*/*");
+                client.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9,ru;q=0.8");
 
-                using var content = new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["al"] = "1",
-                    ["act"] = "show",
-                    ["video"] = videoId,
-                });
+                using var content = new ByteArrayContent(
+                    Encoding.ASCII.GetBytes("al=1&act=show&video=" + Uri.EscapeDataString(videoId)));
+                content.Headers.TryAddWithoutValidation("Content-Type", "application/x-www-form-urlencoded");
 
                 using HttpResponseMessage response = await client
                     .PostAsync("https://vkvideo.ru/al_video.php", content, cancellationToken)
                     .ConfigureAwait(false);
-                string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (string.IsNullOrEmpty(body))
+                byte[] raw = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+                if (raw == null || raw.Length == 0)
                     return null;
 
-                return PickBestVkSource(body);
+                string body = DecodeVkBody(raw);
+                string media = PickBestVkSource(body);
+                if (media == null)
+                {
+                    // Fallback: response sometimes arrives as windows-1251.
+                    try
+                    {
+                        body = Encoding.GetEncoding(1251).GetString(raw);
+                        media = PickBestVkSource(body);
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+
+                return media;
             }
             catch (Exception)
             {
                 return null;
             }
+        }
+
+        /// <summary>Decode VK AJAX body; URLs are ASCII so Latin-1 is a safe fallback.</summary>
+        public static string DecodeVkBody(byte[] raw)
+        {
+            if (raw == null || raw.Length == 0)
+                return string.Empty;
+            string utf8 = Encoding.UTF8.GetString(raw);
+            if (utf8.IndexOf("okcdn", StringComparison.OrdinalIgnoreCase) >= 0
+                || utf8.IndexOf("<source", StringComparison.OrdinalIgnoreCase) >= 0)
+                return utf8;
+            return Encoding.Latin1.GetString(raw);
         }
 
         /// <summary>True when the URL looks like Reddit.</summary>
@@ -196,7 +222,8 @@ namespace SilentNotes.Workers
                 }
             }
 
-            System.IO.File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+            // No BOM — yt-dlp rejects UTF-8 BOM as an invalid Netscape cookies file.
+            System.IO.File.WriteAllText(path, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         }
 
         public static string RewriteVimeoToPlayer(string originalUrl, Uri uri)
@@ -304,6 +331,18 @@ namespace SilentNotes.Workers
                 Consider(m.Groups["url"].Value, m.Groups["type"].Value);
             foreach (Match m in SourceSrcRegex.Matches(decoded))
                 Consider(m.Groups["url"].Value, m.Groups["type"].Value);
+
+            if (bestMp4 == null && bestHls == null)
+            {
+                // Escaped JSON sometimes leaves URLs without a clean <source> tag after decode.
+                foreach (Match m in Regex.Matches(
+                    decoded,
+                    @"https://[^\s""'<>\\]+okcdn\.ru[^\s""'<>\\]+",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                {
+                    Consider(m.Value.TrimEnd('\\', '"', '\'', ','), null);
+                }
+            }
 
             // Prefer progressive mp4 (no ffmpeg merge needed); fall back to HLS.
             return bestMp4 ?? bestHls;

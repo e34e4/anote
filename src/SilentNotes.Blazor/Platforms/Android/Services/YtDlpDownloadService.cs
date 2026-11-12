@@ -6,12 +6,18 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Android.App;
+using Android.OS;
 using Android.Webkit;
+using Java.Net;
 using SilentNotes.Models;
 using SilentNotes.Services;
 using SilentNotes.Workers;
+using File = System.IO.File;
+using HttpURLConnection = Java.Net.HttpURLConnection;
 
 namespace SilentNotes.Platforms.Services
 {
@@ -126,8 +132,17 @@ namespace SilentNotes.Platforms.Services
                     Percent = 0,
                     StatusText = "Resolving VK Video via vkvideo.ru…",
                 });
-                string direct = await YtDlpUrlHelper.TryResolveVkDirectMediaUrlAsync(originalUrl, cancellationToken)
-                    .ConfigureAwait(false);
+
+                // Prefer Android HttpURLConnection (matches curl on-device); HttpClient often fails here.
+                string direct = await Task.Run(
+                    () => ResolveVkDirectViaJava(originalUrl),
+                    cancellationToken).ConfigureAwait(false);
+                if (string.IsNullOrEmpty(direct))
+                {
+                    direct = await YtDlpUrlHelper.TryResolveVkDirectMediaUrlAsync(originalUrl, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
                 if (!string.IsNullOrEmpty(direct))
                 {
                     AnoteFileLog.Append("ytdlp", "VK resolved direct media (bypass sinkholed vk.com): " + Truncate(direct, 160));
@@ -138,6 +153,15 @@ namespace SilentNotes.Platforms.Services
                 {
                     AnoteFileLog.Append("ytdlp", "VK direct resolve failed; falling back to yt-dlp extractor for " + originalUrl);
                 }
+            }
+            else if (YtDlpUrlHelper.IsRedditUrl(originalUrl))
+            {
+                progress?.Report(new YtDlpDownloadProgress
+                {
+                    Percent = 0,
+                    StatusText = "Warming Reddit session via WebView…",
+                });
+                await WarmWebViewSessionAsync(originalUrl, cancellationToken).ConfigureAwait(false);
             }
             else if (!string.Equals(downloadUrl, originalUrl, StringComparison.Ordinal))
             {
@@ -274,6 +298,213 @@ namespace SilentNotes.Platforms.Services
             }
 
             args.Add(downloadUrl);
+        }
+
+        /// <summary>
+        /// Resolve VK media with Java HttpURLConnection — more reliable on-device than .NET HttpClient.
+        /// </summary>
+        private static string ResolveVkDirectViaJava(string url)
+        {
+            if (!YtDlpUrlHelper.TryParseVkVideoId(url, out string videoId))
+                return null;
+
+            HttpURLConnection conn = null;
+            try
+            {
+                var endpoint = new URL("https://vkvideo.ru/al_video.php");
+                conn = (HttpURLConnection)endpoint.OpenConnection();
+                conn.RequestMethod = "POST";
+                conn.ConnectTimeout = 15000;
+                conn.ReadTimeout = 20000;
+                conn.DoInput = true;
+                conn.DoOutput = true;
+                conn.InstanceFollowRedirects = true;
+                conn.SetRequestProperty("User-Agent", YtDlpUrlHelper.BrowserUserAgent);
+                conn.SetRequestProperty("Referer", "https://vkvideo.ru/");
+                conn.SetRequestProperty("Origin", "https://vkvideo.ru/");
+                conn.SetRequestProperty("X-Requested-With", "XMLHttpRequest");
+                conn.SetRequestProperty("Accept", "*/*");
+                conn.SetRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+                conn.SetRequestProperty("Accept-Language", "en-US,en;q=0.9,ru;q=0.8");
+
+                byte[] bodyBytes = Encoding.ASCII.GetBytes("al=1&act=show&video=" + Uri.EscapeDataString(videoId));
+                using (var os = conn.OutputStream)
+                    os.Write(bodyBytes, 0, bodyBytes.Length);
+
+                int code = (int)conn.ResponseCode;
+                Stream stream = code >= 400 ? conn.ErrorStream : conn.InputStream;
+                if (stream == null)
+                {
+                    AnoteFileLog.Append("ytdlp", "VK Java HTTP empty stream, code=" + code);
+                    return null;
+                }
+
+                byte[] raw;
+                using (stream)
+                using (var ms = new MemoryStream())
+                {
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = stream.Read(buf, 0, buf.Length)) > 0)
+                        ms.Write(buf, 0, n);
+                    raw = ms.ToArray();
+                }
+
+                AnoteFileLog.Append("ytdlp", "VK Java HTTP code=" + code + " bytes=" + raw.Length);
+                string text = YtDlpUrlHelper.DecodeVkBody(raw);
+                string media = YtDlpUrlHelper.PickBestVkSource(text);
+                if (media == null)
+                {
+                    try
+                    {
+                        media = YtDlpUrlHelper.PickBestVkSource(Encoding.GetEncoding(1251).GetString(raw));
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+
+                return media;
+            }
+            catch (Exception ex)
+            {
+                AnoteFileLog.Append("ytdlp", "VK Java resolve error: " + ex.Message);
+                return null;
+            }
+            finally
+            {
+                try { conn?.Disconnect(); } catch (Exception) { }
+            }
+        }
+
+        /// <summary>
+        /// Load the page in a hidden WebView so CookieManager gets a Chromium TLS session (Reddit/Vimeo).
+        /// </summary>
+        private async Task WarmWebViewSessionAsync(string url, CancellationToken cancellationToken)
+        {
+            Activity activity = _appContext.RootActivity;
+            if (activity == null || activity.IsFinishing)
+            {
+                AnoteFileLog.Append("ytdlp", "WebView warm-up skipped (no activity)");
+                return;
+            }
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            WebView webView = null;
+
+            void Start()
+            {
+                try
+                {
+                    CookieManager.Instance?.SetAcceptCookie(true);
+                    webView = new WebView(activity);
+                    webView.Tag = new Java.Lang.String(url);
+                    webView.Settings.JavaScriptEnabled = true;
+                    webView.Settings.DomStorageEnabled = true;
+                    webView.Settings.UserAgentString = YtDlpUrlHelper.BrowserUserAgent;
+                    CookieManager.Instance?.SetAcceptThirdPartyCookies(webView, true);
+                    webView.SetWebViewClient(new WarmWebViewClient(tcs));
+                    // old.reddit often sets session cookies without Cloudflare Turnstile.
+                    if (YtDlpUrlHelper.IsRedditUrl(url))
+                        webView.LoadUrl("https://old.reddit.com/");
+                    else
+                        webView.LoadUrl(url);
+                }
+                catch (Exception ex)
+                {
+                    AnoteFileLog.Append("ytdlp", "WebView warm-up start failed: " + ex.Message);
+                    tcs.TrySetResult(false);
+                }
+            }
+
+            if (Looper.MyLooper() == Looper.MainLooper)
+                Start();
+            else
+                activity.RunOnUiThread(Start);
+
+            try
+            {
+                Task finished = await Task.WhenAny(tcs.Task, Task.Delay(14000, cancellationToken))
+                    .ConfigureAwait(false);
+                if (finished == tcs.Task)
+                    AnoteFileLog.Append("ytdlp", "WebView warm-up finished for " + HostOf(url));
+                else
+                    AnoteFileLog.Append("ytdlp", "WebView warm-up timed out for " + HostOf(url));
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                try
+                {
+                    activity.RunOnUiThread(() =>
+                    {
+                        try
+                        {
+                            webView?.StopLoading();
+                            webView?.Destroy();
+                        }
+                        catch (Exception)
+                        {
+                        }
+                    });
+                }
+                catch (Exception)
+                {
+                }
+            }
+        }
+
+        private sealed class WarmWebViewClient : WebViewClient
+        {
+            private readonly TaskCompletionSource<bool> _tcs;
+            private bool _done;
+
+            public WarmWebViewClient(TaskCompletionSource<bool> tcs)
+            {
+                _tcs = tcs;
+            }
+
+            public override void OnPageFinished(WebView view, string url)
+            {
+                base.OnPageFinished(view, url);
+                if (_done)
+                    return;
+
+                // After old.reddit, load the original target so shreddit cookies land too.
+                string current = url ?? string.Empty;
+                if (current.IndexOf("old.reddit.com", StringComparison.OrdinalIgnoreCase) >= 0
+                    && view?.Tag is Java.Lang.String target
+                    && !string.IsNullOrEmpty(target.ToString()))
+                {
+                    view.LoadUrl(target.ToString());
+                    return;
+                }
+
+                // Give Reddit a moment to set loid / challenge cookies.
+                new Handler(Looper.MainLooper).PostDelayed(() =>
+                {
+                    if (_done)
+                        return;
+                    _done = true;
+                    try { CookieManager.Instance?.Flush(); } catch (Exception) { }
+                    _tcs.TrySetResult(true);
+                }, 1800);
+            }
+
+            public override void OnReceivedError(
+                WebView view,
+                IWebResourceRequest request,
+                WebResourceError error)
+            {
+                base.OnReceivedError(view, request, error);
+                if (request?.IsForMainFrame == true && !_done)
+                {
+                    _done = true;
+                    _tcs.TrySetResult(false);
+                }
+            }
         }
 
         private string TryWriteWebViewCookiesFile(string url)

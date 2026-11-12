@@ -15,13 +15,14 @@ using Android.Util;
 using Android.Views;
 using Android.Widget;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 using Color = global::Android.Graphics.Color;
 
 namespace SilentNotes.Platforms
 {
     /// <summary>
-    /// Top-centered status banner styled like MudBlazor snackbars (custom Toast views are blocked
-    /// on Android 11+). Falls back to a gravity-top text toast when no window is available.
+    /// Top-centered teal/status banner. Avoids Android Toast (gravity ignored on API 30+,
+    /// default gray bottom look) and draws a WindowManager / activity overlay instead.
     /// </summary>
     internal static class AnoteToast
     {
@@ -36,6 +37,10 @@ namespace SilentNotes.Platforms
         private static readonly Color ErrorBg = Color.ParseColor("#B32121");
         private static readonly Color ErrorFg = Color.ParseColor("#FFF5F5");
 
+        private static readonly object Gate = new object();
+        private static View _activeBanner;
+        private static IWindowManager _activeWm;
+
         public static void Show(
             Context context,
             string message,
@@ -47,44 +52,70 @@ namespace SilentNotes.Platforms
 
             int durationMs = length == ToastLength.Long ? 3500 : 2200;
             (Color bg, Color fg) = ColorsFor(severity);
+            Context appCtx = context.ApplicationContext ?? context;
 
-            try
+            void Run()
             {
-                Activity activity = context as Activity;
-                if (activity != null && !activity.IsFinishing)
+                try
                 {
-                    activity.RunOnUiThread(() => ShowOnActivity(activity, message, bg, fg, durationMs));
-                    return;
+                    // Prefer an activity content overlay when the UI is visible.
+                    Activity activity = context as Activity
+                        ?? (context is ContextWrapper cw ? FindActivity(cw) : null);
+                    if (activity != null && !activity.IsFinishing && !activity.IsDestroyed)
+                    {
+                        if (ShowOnActivity(activity, message, bg, fg, durationMs))
+                            return;
+                    }
+
+                    // Accessibility service: TYPE_ACCESSIBILITY_OVERLAY (no user overlay grant).
+                    if (context is AccessibilityService a11y)
+                    {
+                        if (ShowViaWindowManager(a11y, message, bg, fg, durationMs, WindowManagerTypes.AccessibilityOverlay))
+                            return;
+                    }
+
+                    // App overlay permission (same as floating button).
+                    if (ShowViaWindowManager(appCtx, message, bg, fg, durationMs, WindowManagerTypes.ApplicationOverlay))
+                        return;
+
+                    // Last resort: still avoid default bottom Toast — try Phone type on older APIs.
+                    if (Build.VERSION.SdkInt < BuildVersionCodes.O
+                        && ShowViaWindowManager(appCtx, message, bg, fg, durationMs, WindowManagerTypes.Phone))
+                        return;
+
+                    AnoteFileLog.Append("toast", "Overlay failed; muted fallback for: " + message);
                 }
-
-                if (TryShowViaWindowManager(context, message, bg, fg, durationMs))
-                    return;
-            }
-            catch (Exception)
-            {
+                catch (Exception ex)
+                {
+                    AnoteFileLog.Append("toast", "Show failed: " + ex.Message);
+                }
             }
 
-            try
-            {
-                Toast toast = Toast.MakeText(context.ApplicationContext ?? context, message, length);
-#pragma warning disable CS0618
-                toast?.SetGravity(GravityFlags.Top | GravityFlags.CenterHorizontal, 0, 48);
-#pragma warning restore CS0618
-                toast?.Show();
-            }
-            catch (Exception)
-            {
-            }
+            Looper main = Looper.MainLooper;
+            if (main != null && Looper.MyLooper() != main)
+                new Handler(main).Post(Run);
+            else
+                Run();
         }
 
-        private static void ShowOnActivity(Activity activity, string message, Color bg, Color fg, int durationMs)
+        private static Activity FindActivity(ContextWrapper wrapper)
+        {
+            Context c = wrapper;
+            for (int i = 0; i < 6 && c != null; i++)
+            {
+                if (c is Activity a)
+                    return a;
+                c = (c as ContextWrapper)?.BaseContext;
+            }
+
+            return null;
+        }
+
+        private static bool ShowOnActivity(Activity activity, string message, Color bg, Color fg, int durationMs)
         {
             ViewGroup root = activity.FindViewById(global::Android.Resource.Id.Content) as ViewGroup;
             if (root == null)
-            {
-                Toast.MakeText(activity, message, ToastLength.Short)?.Show();
-                return;
-            }
+                return false;
 
             float density = activity.Resources?.DisplayMetrics?.Density ?? 1f;
             TextView banner = BuildBanner(activity, message, bg, fg, density);
@@ -93,31 +124,32 @@ namespace SilentNotes.Platforms
                 ViewGroup.LayoutParams.WrapContent,
                 GravityFlags.Top | GravityFlags.CenterHorizontal)
             {
-                TopMargin = Dp(density, 10),
+                TopMargin = Dp(density, 48),
                 LeftMargin = Dp(density, 8),
                 RightMargin = Dp(density, 8),
             };
 
+            DismissActive();
             root.AddView(banner, lp);
-            var handler = new Handler(Looper.MainLooper);
-            handler.PostDelayed(() =>
+            _activeBanner = banner;
+            _activeWm = null;
+
+            new Handler(Looper.MainLooper).PostDelayed(() =>
             {
-                try
-                {
-                    root.RemoveView(banner);
-                }
-                catch (Exception)
-                {
-                }
+                try { root.RemoveView(banner); } catch (Exception) { }
+                if (ReferenceEquals(_activeBanner, banner))
+                    _activeBanner = null;
             }, durationMs);
+            return true;
         }
 
-        private static bool TryShowViaWindowManager(
+        private static bool ShowViaWindowManager(
             Context context,
             string message,
             Color bg,
             Color fg,
-            int durationMs)
+            int durationMs,
+            WindowManagerTypes type)
         {
             try
             {
@@ -128,46 +160,61 @@ namespace SilentNotes.Platforms
                 float density = context.Resources?.DisplayMetrics?.Density ?? 1f;
                 TextView banner = BuildBanner(context, message, bg, fg, density);
 
-                var type = Build.VERSION.SdkInt >= BuildVersionCodes.O
-                    ? WindowManagerTypes.ApplicationOverlay
-                    : WindowManagerTypes.Phone;
-
-                // Accessibility services can use TYPE_ACCESSIBILITY_OVERLAY without the user
-                // overlay permission when the service is enabled.
-                if (context is AccessibilityService)
-                    type = WindowManagerTypes.AccessibilityOverlay;
-
                 var lp = new WindowManagerLayoutParams(
                     ViewGroup.LayoutParams.WrapContent,
                     ViewGroup.LayoutParams.WrapContent,
                     type,
                     WindowManagerFlags.NotFocusable
                         | WindowManagerFlags.NotTouchable
-                        | WindowManagerFlags.KeepScreenOn,
+                        | WindowManagerFlags.LayoutInScreen
+                        | WindowManagerFlags.LayoutNoLimits,
                     Format.Translucent)
                 {
                     Gravity = GravityFlags.Top | GravityFlags.CenterHorizontal,
-                    Y = Dp(density, 10),
+                    Y = Dp(density, 48),
                     Title = "aNoteToast",
+                    WindowAnimations = 0,
                 };
 
+                DismissActive();
                 wm.AddView(banner, lp);
-                var handler = new Handler(Looper.MainLooper);
-                handler.PostDelayed(() =>
+                _activeBanner = banner;
+                _activeWm = wm;
+
+                Context captured = context;
+                new Handler(Looper.MainLooper).PostDelayed(() =>
                 {
-                    try
+                    try { wm.RemoveView(banner); } catch (Exception) { }
+                    if (ReferenceEquals(_activeBanner, banner))
                     {
-                        wm.RemoveView(banner);
-                    }
-                    catch (Exception)
-                    {
+                        _activeBanner = null;
+                        _activeWm = null;
                     }
                 }, durationMs);
                 return true;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                AnoteFileLog.Append("toast", "WindowManager " + type + " failed: " + ex.Message);
                 return false;
+            }
+        }
+
+        private static void DismissActive()
+        {
+            lock (Gate)
+            {
+                try
+                {
+                    if (_activeBanner != null && _activeWm != null)
+                        _activeWm.RemoveView(_activeBanner);
+                }
+                catch (Exception)
+                {
+                }
+
+                _activeBanner = null;
+                _activeWm = null;
             }
         }
 
@@ -176,25 +223,17 @@ namespace SilentNotes.Platforms
             var text = new TextView(context);
             text.Text = message;
             text.SetTextColor(fg);
-            text.SetTextSize(ComplexUnitType.Sp, 12.5f);
-            text.SetPadding(Dp(density, 10), Dp(density, 5), Dp(density, 10), Dp(density, 5));
+            text.SetTextSize(ComplexUnitType.Sp, 13f);
+            text.SetPadding(Dp(density, 14), Dp(density, 8), Dp(density, 14), Dp(density, 8));
             text.SetMaxLines(4);
             text.Ellipsize = TextUtils.TruncateAt.End;
             text.Gravity = GravityFlags.Center;
 
-            try
-            {
-                var shape = new GradientDrawable();
-                shape.SetColor(bg);
-                shape.SetCornerRadius(Dp(density, 8));
-                text.Background = shape;
-            }
-            catch (Exception)
-            {
-                text.SetBackgroundColor(bg);
-            }
-
-            text.Elevation = 8f;
+            var shape = new GradientDrawable();
+            shape.SetColor(bg);
+            shape.SetCornerRadius(Dp(density, 10));
+            text.Background = shape;
+            text.Elevation = 12f;
             return text;
         }
 

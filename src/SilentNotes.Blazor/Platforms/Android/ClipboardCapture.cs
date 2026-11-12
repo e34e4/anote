@@ -85,7 +85,7 @@ namespace SilentNotes.Platforms
                 else
                     StoreImage(item.Uri);
 
-                // Replace the OS bottom toast with our top teal banner when possible.
+                // Prefer MudBlazor top teal snackbar when the UI is alive; else native overlay.
                 string msg = null;
                 try
                 {
@@ -95,7 +95,19 @@ namespace SilentNotes.Platforms
                 {
                 }
 
-                AnoteToast.Show(_context, msg ?? "Pasted from your clipboard", FeedbackSeverity.Unknown);
+                msg ??= "Pasted from your clipboard";
+                try
+                {
+                    var feedback = _serviceProvider?.GetService<IFeedbackService>();
+                    if (feedback != null)
+                        feedback.ShowToast(msg, FeedbackSeverity.Unknown);
+                    else
+                        AnoteToast.Show(_context, msg, FeedbackSeverity.Unknown);
+                }
+                catch (Exception)
+                {
+                    AnoteToast.Show(_context, msg, FeedbackSeverity.Unknown);
+                }
             }
             catch (Exception ex)
             {
