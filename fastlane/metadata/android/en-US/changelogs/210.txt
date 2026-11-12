@@ -1,0 +1,4 @@
+• yt-dlp: resolve VK Video via vkvideo.ru (bypass sinkholed vk.com)
+• yt-dlp: rewrite Vimeo links to player.vimeo.com; attach Abro cookies for Reddit/Vimeo
+• yt-dlp: use SOCKS5 proxy when enabled; clearer auth/network hints
+• Clipboard paste toast moved to top and colorized (teal)

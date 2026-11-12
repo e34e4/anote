@@ -172,7 +172,7 @@ namespace SilentNotes.Workers
                 if (string.IsNullOrWhiteSpace(domain) || string.IsNullOrWhiteSpace(header))
                     continue;
 
-                string cookieDomain = domain.StartsWith('.', StringComparison.Ordinal)
+                string cookieDomain = domain.StartsWith(".", StringComparison.Ordinal)
                     ? domain
                     : "." + domain.TrimStart('.');
 
@@ -222,7 +222,7 @@ namespace SilentNotes.Workers
         {
             if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(key))
                 return null;
-            string q = query.StartsWith('?') ? query.Substring(1) : query;
+            string q = query.StartsWith("?", StringComparison.Ordinal) ? query.Substring(1) : query;
             foreach (string part in q.Split('&', StringSplitOptions.RemoveEmptyEntries))
             {
                 int eq = part.IndexOf('=');

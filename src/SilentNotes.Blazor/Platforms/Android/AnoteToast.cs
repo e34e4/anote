@@ -8,12 +8,14 @@ using Android.AccessibilityServices;
 using Android.App;
 using Android.Content;
 using Android.Graphics;
+using Android.Graphics.Drawables;
 using Android.OS;
+using Android.Text;
 using Android.Util;
 using Android.Views;
 using Android.Widget;
 using SilentNotes.Services;
-using Color = Android.Graphics.Color;
+using Color = global::Android.Graphics.Color;
 
 namespace SilentNotes.Platforms
 {
@@ -77,7 +79,7 @@ namespace SilentNotes.Platforms
 
         private static void ShowOnActivity(Activity activity, string message, Color bg, Color fg, int durationMs)
         {
-            ViewGroup root = activity.FindViewById(Android.Resource.Id.Content) as ViewGroup;
+            ViewGroup root = activity.FindViewById(global::Android.Resource.Id.Content) as ViewGroup;
             if (root == null)
             {
                 Toast.MakeText(activity, message, ToastLength.Short)?.Show();
@@ -177,12 +179,12 @@ namespace SilentNotes.Platforms
             text.SetTextSize(ComplexUnitType.Sp, 12.5f);
             text.SetPadding(Dp(density, 10), Dp(density, 5), Dp(density, 10), Dp(density, 5));
             text.SetMaxLines(4);
-            text.Ellipsize = Android.Text.TextUtils.TruncateAt.End;
+            text.Ellipsize = TextUtils.TruncateAt.End;
             text.Gravity = GravityFlags.Center;
 
             try
             {
-                var shape = new Android.Graphics.Drawables.GradientDrawable();
+                var shape = new GradientDrawable();
                 shape.SetColor(bg);
                 shape.SetCornerRadius(Dp(density, 8));
                 text.Background = shape;
