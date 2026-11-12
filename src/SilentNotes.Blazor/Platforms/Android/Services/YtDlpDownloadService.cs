@@ -19,6 +19,8 @@ using SilentNotes.Workers;
 using File = System.IO.File;
 using HttpURLConnection = Java.Net.HttpURLConnection;
 using AWebView = Android.Webkit.WebView;
+using ACookieManager = Android.Webkit.CookieManager;
+using OperationCanceledException = System.OperationCanceledException;
 
 namespace SilentNotes.Platforms.Services
 {
@@ -397,13 +399,13 @@ namespace SilentNotes.Platforms.Services
             {
                 try
                 {
-                    CookieManager.Instance?.SetAcceptCookie(true);
+                    ACookieManager.Instance?.SetAcceptCookie(true);
                     webView = new AWebView(activity);
                     webView.Tag = new Java.Lang.String(url);
                     webView.Settings.JavaScriptEnabled = true;
                     webView.Settings.DomStorageEnabled = true;
                     webView.Settings.UserAgentString = YtDlpUrlHelper.BrowserUserAgent;
-                    CookieManager.Instance?.SetAcceptThirdPartyCookies(webView, true);
+                    ACookieManager.Instance?.SetAcceptThirdPartyCookies(webView, true);
                     webView.SetWebViewClient(new WarmWebViewClient(tcs));
                     // old.reddit often sets session cookies without Cloudflare Turnstile.
                     if (YtDlpUrlHelper.IsRedditUrl(url))
@@ -489,7 +491,7 @@ namespace SilentNotes.Platforms.Services
                     if (_done)
                         return;
                     _done = true;
-                    try { CookieManager.Instance?.Flush(); } catch (Exception) { }
+                    try { ACookieManager.Instance?.Flush(); } catch (Exception) { }
                     _tcs.TrySetResult(true);
                 }, 1800);
             }
@@ -515,7 +517,7 @@ namespace SilentNotes.Platforms.Services
                 if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
                     return null;
 
-                CookieManager manager = CookieManager.Instance;
+                ACookieManager manager = ACookieManager.Instance;
                 if (manager == null)
                     return null;
 
