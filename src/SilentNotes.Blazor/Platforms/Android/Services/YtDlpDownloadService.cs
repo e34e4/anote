@@ -728,10 +728,12 @@ namespace SilentNotes.Platforms.Services
                             }
                         },
                         () => tcs.TrySetResult(null));
-                    bridge.SetMediaHandler(u => client?.OfferCandidate(u));
+                    bridge.SetMediaHandler(u => client?.OfferCandidate(u, fromJson: true));
                     webView.SetWebViewClient(client);
-                    AnoteFileLog.Append("ytdlp", "Reddit WebView warm-up then " + pageUrl);
-                    webView.LoadUrl("https://www.reddit.com/");
+                    // Load the post directly — homepage warm-up was grabbing feed videos
+                    // (same wrong packaged-media URL for every download).
+                    AnoteFileLog.Append("ytdlp", "Reddit WebView loading post " + pageUrl);
+                    webView.LoadUrl(pageUrl);
                 }
                 catch (Exception ex)
                 {
@@ -1003,7 +1005,7 @@ namespace SilentNotes.Platforms.Services
             private readonly string _postId;
             private readonly System.Action<string> _onPicked;
             private readonly System.Action _onFatal;
-            private bool _loadedPost;
+            private bool _mediaArmed;
             private bool _pickStarted;
             private bool _fetchStarted;
             private bool _debounceScheduled;
@@ -1011,19 +1013,19 @@ namespace SilentNotes.Platforms.Services
             private int _bestRank = -1;
             private int _extractAttempts;
 
+            // Prefer post-specific reddit_video / v.redd.it — never first packaged-media in page
+            // (homepage/related rails inject unrelated packaged-media URLs).
             private const string ExtractJs =
                 "(function(){"
                 + "try{"
                 + "var html=document.documentElement?document.documentElement.innerHTML:'';"
-                + "var m=html.match(/https:\\/\\/packaged-media\\.redd\\.it\\/[^\\\"\\s]+\\.mp4[^\\\"\\s]*/);"
-                + "if(m) return m[0].replace(/&amp;/g,'&');"
+                + "var m=html.match(/\"fallback_url\"\\s*:\\s*\"(https:[^\"]*v\\.redd\\.it[^\"]+)\"/);"
+                + "if(m) return m[1].replace(/\\\\u0026/g,'&').replace(/\\\\\\//g,'/');"
                 + "m=html.match(/https:\\/\\/v\\.redd\\.it\\/[A-Za-z0-9]+\\/DASH_\\d+\\.mp4[^\\\"\\s]*/);"
                 + "if(m) return m[0].replace(/&amp;/g,'&');"
-                + "m=html.match(/\"fallback_url\"\\s*:\\s*\"(https:[^\"]+)\"/);"
-                + "if(m) return m[1].replace(/\\\\u0026/g,'&').replace(/\\\\\\//g,'/');"
                 + "m=html.match(/v\\.redd\\.it\\/([A-Za-z0-9]+)/);"
                 + "if(m) return 'https://v.redd.it/'+m[1]+'/DASH_720.mp4?source=fallback';"
-                + "var v=document.querySelector('video');"
+                + "var v=document.querySelector('shreddit-player video, video');"
                 + "if(v && v.currentSrc && v.currentSrc.indexOf('redd.it')>=0) return v.currentSrc;"
                 + "}catch(e){return '';}"
                 + "return '';"
@@ -1034,13 +1036,16 @@ namespace SilentNotes.Platforms.Services
                 + "try{"
                 + "var id=document.location.pathname.match(/comments\\/([a-z0-9]+)/i);"
                 + "id=id?id[1]:'';"
-                + "var urls=[];"
-                + "if(id) urls.push('https://www.reddit.com/comments/'+id+'.json');"
-                + "urls.push(document.location.origin+document.location.pathname.replace(/\\/$/,'')+'.json');"
+                + "if(!id) return;"
+                + "var urls=["
+                + "'https://www.reddit.com/comments/'+id+'.json',"
+                + "document.location.origin+document.location.pathname.replace(/\\/$/,'')+'.json'"
+                + "];"
                 + "function pick(rv){if(!rv)return'';return rv.fallback_url||rv.dash_url||rv.hls_url||'';}"
                 + "function dig(j){"
                 + "try{"
                 + "var d=j[0].data.children[0].data;"
+                + "if(d.id&&id&&d.id!==id&&d.name!=='t3_'+id) return '';"
                 + "var rv=(d.secure_media&&d.secure_media.reddit_video)||(d.media&&d.media.reddit_video);"
                 + "if(!rv&&d.crosspost_parent_list&&d.crosspost_parent_list[0]){"
                 + "var c=d.crosspost_parent_list[0];"
@@ -1115,7 +1120,7 @@ namespace SilentNotes.Platforms.Services
 
             public override WebResourceResponse ShouldInterceptRequest(AWebView view, IWebResourceRequest request)
             {
-                try { OfferCandidate(request?.Url?.ToString()); }
+                try { OfferCandidate(request?.Url?.ToString(), fromJson: false); }
                 catch (Exception) { }
                 return base.ShouldInterceptRequest(view, request);
             }
@@ -1123,7 +1128,7 @@ namespace SilentNotes.Platforms.Services
             public override void OnLoadResource(AWebView view, string url)
             {
                 base.OnLoadResource(view, url);
-                OfferCandidate(url);
+                OfferCandidate(url, fromJson: false);
             }
 
             public override void OnPageFinished(AWebView view, string url)
@@ -1133,28 +1138,31 @@ namespace SilentNotes.Platforms.Services
                     return;
 
                 string current = url ?? string.Empty;
-                if (!_loadedPost
-                    && current.IndexOf("reddit.com", StringComparison.OrdinalIgnoreCase) >= 0
-                    && current.IndexOf("/comments/", StringComparison.OrdinalIgnoreCase) < 0)
+                if (!IsTargetPostUrl(current))
                 {
-                    _loadedPost = true;
-                    AnoteFileLog.Append(
-                        "ytdlp",
-                        "Reddit warm-up done; loading post"
-                        + (string.IsNullOrEmpty(_postId) ? string.Empty : " id=" + _postId));
-                    new Handler(Looper.MainLooper).PostDelayed(() =>
+                    // Redirected away from the post (login/challenge) — try hard navigation once.
+                    if (!string.IsNullOrEmpty(_pageUrl)
+                        && current.IndexOf("/comments/", StringComparison.OrdinalIgnoreCase) < 0)
                     {
-                        if (_pickStarted || view == null)
-                            return;
-                        try { view.LoadUrl(_pageUrl); } catch (Exception) { }
-                    }, 700);
+                        AnoteFileLog.Append("ytdlp", "Reddit not on post yet (" + Truncate(current, 80) + "); reloading target");
+                        new Handler(Looper.MainLooper).PostDelayed(() =>
+                        {
+                            if (_pickStarted || view == null || _mediaArmed)
+                                return;
+                            try { view.LoadUrl(_pageUrl); } catch (Exception) { }
+                        }, 900);
+                    }
+
                     return;
                 }
 
-                if (current.IndexOf("/comments/", StringComparison.OrdinalIgnoreCase) >= 0)
+                if (!_mediaArmed)
                 {
-                    _loadedPost = true;
-                    // Expose pick helper for JSON fetch callback.
+                    _mediaArmed = true;
+                    AnoteFileLog.Append(
+                        "ytdlp",
+                        "Reddit media armed for post"
+                        + (string.IsNullOrEmpty(_postId) ? string.Empty : " id=" + _postId));
                     try
                     {
                         view.EvaluateJavascript(
@@ -1171,15 +1179,25 @@ namespace SilentNotes.Platforms.Services
                         if (_pickStarted || view == null)
                             return;
                         try { view.EvaluateJavascript(FetchJsonJs, null); } catch (Exception) { }
-                    }, 1400);
+                    }, 1000);
                 }
+            }
+
+            private bool IsTargetPostUrl(string url)
+            {
+                if (string.IsNullOrEmpty(url)
+                    || url.IndexOf("/comments/", StringComparison.OrdinalIgnoreCase) < 0)
+                    return false;
+                if (string.IsNullOrEmpty(_postId))
+                    return true;
+                return url.IndexOf("/comments/" + _postId, StringComparison.OrdinalIgnoreCase) >= 0;
             }
 
             private void ScheduleExtract(AWebView view, int delayMs)
             {
                 new Handler(Looper.MainLooper).PostDelayed(() =>
                 {
-                    if (_pickStarted || view == null)
+                    if (_pickStarted || view == null || !_mediaArmed)
                         return;
                     _extractAttempts++;
                     try
@@ -1188,7 +1206,7 @@ namespace SilentNotes.Platforms.Services
                         {
                             string media = UnwrapJsString(result);
                             if (!string.IsNullOrWhiteSpace(media))
-                                OfferCandidate(media.Trim());
+                                OfferCandidate(media.Trim(), fromJson: false);
                         }));
                     }
                     catch (Exception ex)
@@ -1204,32 +1222,47 @@ namespace SilentNotes.Platforms.Services
                 WebResourceError error)
             {
                 base.OnReceivedError(view, request, error);
-                if (request?.IsForMainFrame == true && _loadedPost && !_pickStarted)
+                if (request?.IsForMainFrame == true && _mediaArmed && !_pickStarted)
                 {
                     AnoteFileLog.Append("ytdlp", "Reddit WebView main-frame error: " + error?.Description);
                     _onFatal?.Invoke();
                 }
             }
 
-            public void OfferCandidate(string rawUrl)
+            public void OfferCandidate(string rawUrl, bool fromJson = false)
             {
-                if (_pickStarted || string.IsNullOrEmpty(rawUrl) || !IsRedditMediaUrl(rawUrl))
+                // Ignore feed/homepage media until the target comments page is ready.
+                if (!_mediaArmed || _pickStarted || string.IsNullOrEmpty(rawUrl) || !IsRedditMediaUrl(rawUrl))
                     return;
 
                 string url = PreferProgressiveRedditUrl(rawUrl);
+                // Network packaged-media is often a related/feed clip, not this post's video.
+                // Only trust it when the post JSON (or explicit bridge) provided it.
+                if (!fromJson
+                    && url.IndexOf("packaged-media.redd.it", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return;
+
                 int rank = RankRedditMediaUrl(url);
                 if (rank < 0)
                     return;
+
+                // Post JSON is authoritative — boost above incidental network hits.
+                if (fromJson)
+                    rank += 100;
 
                 if (rank > _bestRank)
                 {
                     _bestRank = rank;
                     _bestUrl = url;
-                    AnoteFileLog.Append("ytdlp", "Reddit candidate rank=" + rank + " " + Truncate(url, 140));
+                    AnoteFileLog.Append(
+                        "ytdlp",
+                        "Reddit candidate rank=" + rank
+                        + (fromJson ? " json" : " net")
+                        + " " + Truncate(url, 140));
                 }
 
-                // packaged-media: take immediately. v.redd.it: wait briefly for a better URL.
-                if (rank >= 70)
+                // JSON hit: take soon. Network packaged-media: debounce so JSON can win.
+                if (fromJson || rank >= 150)
                 {
                     FinishPick();
                     return;
@@ -1238,7 +1271,7 @@ namespace SilentNotes.Platforms.Services
                 if (!_debounceScheduled)
                 {
                     _debounceScheduled = true;
-                    new Handler(Looper.MainLooper).PostDelayed(FinishPick, 2800);
+                    new Handler(Looper.MainLooper).PostDelayed(FinishPick, 3500);
                 }
             }
 

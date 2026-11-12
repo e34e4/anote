@@ -1,0 +1,1 @@
+• Reddit: only accept media after the target post loads (fixes wrong/same feed video)
