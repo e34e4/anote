@@ -187,6 +187,24 @@
 		<div class="player-toolbar">
 			<MudTextField T="string" @bind-Value="ViewModel.UrlDraft" Placeholder="@LanguageService["player_url_hint"]"
 				Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1" Immediate="true" />
+			<MudMenu Icon="@Icons.Material.Filled.History" Color="Color.Inherit"
+				Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
+				title="@LanguageService["player_url_history"]">
+				@if (ViewModel.UrlHistory.Count == 0)
+				{
+					<MudMenuItem Disabled="true">@LanguageService["player_url_history_empty"]</MudMenuItem>
+				}
+				else
+				{
+					@foreach (string histUrl in ViewModel.UrlHistory)
+					{
+						string captured = histUrl;
+						<MudMenuItem OnClick="() => OnHistoryUrlClick(captured)">
+							<span style="max-width:280px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@captured</span>
+						</MudMenuItem>
+					}
+				}
+			</MudMenu>
 			<MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Color="Color.Primary"
 				OnClick="() => ViewModel.OpenUrlCommand.Execute(null)" title="@LanguageService["player_open_url"]" />
 		</div>
@@ -295,6 +313,12 @@
 			ViewModel?.Reload();
 			StateHasChanged();
 		}));
+	}
+
+	private void OnHistoryUrlClick(string url)
+	{
+		ViewModel?.ApplyHistoryUrl(url);
+		StateHasChanged();
 	}
 
 	private void OnViewModelStateChanged()

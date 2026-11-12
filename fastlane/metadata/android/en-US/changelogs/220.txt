@@ -1,0 +1,3 @@
+• Log page: newest entries first
+• Viewer: URL history button + Settings clear
+• Reddit: apply SOCKS to WebView resolve + force-play media scan

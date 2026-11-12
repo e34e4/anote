@@ -132,6 +132,7 @@ namespace SilentNotes.ViewModels
             ResetMainTabOrderCommand = new RelayCommand(ResetMainTabOrder);
             UpdateFfmpegCommand = new AsyncRelayCommand(UpdateFfmpegAsync);
             UpdateYtDlpCommand = new AsyncRelayCommand(UpdateYtDlpAsync);
+            ClearPlayerUrlHistoryCommand = new RelayCommand(ClearPlayerUrlHistory);
             RebuildMainTabOrderDisplayItems();
         }
 
@@ -1166,6 +1167,22 @@ namespace SilentNotes.ViewModels
         {
             get { return Model.Socks5Password; }
             set { SetProperty(Model.Socks5Password, value, (string v) => Model.Socks5Password = v); }
+        }
+
+        /// <summary>Clears the Player-tab URL history list.</summary>
+        public ICommand ClearPlayerUrlHistoryCommand { get; private set; }
+
+        private void ClearPlayerUrlHistory()
+        {
+            try
+            {
+                Workers.PlayerUrlHistoryStore.Clear();
+                _feedbackService?.ShowToast(Language["player_url_history_cleared"]);
+            }
+            catch (Exception)
+            {
+                _feedbackService?.ShowToast(Language["player_url_history_cleared"]);
+            }
         }
 
         /// <summary>Gets or sets a value indicating whether Abro AI HTTP calls use the SOCKS5 proxy.</summary>

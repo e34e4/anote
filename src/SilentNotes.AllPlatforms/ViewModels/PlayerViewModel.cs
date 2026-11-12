@@ -13,6 +13,7 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.ViewModels
 {
@@ -361,6 +362,8 @@ namespace SilentNotes.ViewModels
             if (string.IsNullOrEmpty(url))
                 return;
 
+            PlayerUrlHistoryStore.Add(url);
+
             try
             {
                 if (_ytDlpPrompt != null)
@@ -379,6 +382,17 @@ namespace SilentNotes.ViewModels
             {
                 _feedbackService?.ShowToast(_languageService.LoadTextFmt("player_play_failed", ex.Message), FeedbackSeverity.Warning);
             }
+            RaiseStateChanged();
+        }
+
+        /// <summary>Recent Player URL history (newest first).</summary>
+        public IReadOnlyList<string> UrlHistory => PlayerUrlHistoryStore.Load();
+
+        public void ApplyHistoryUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return;
+            UrlDraft = url.Trim();
             RaiseStateChanged();
         }
 

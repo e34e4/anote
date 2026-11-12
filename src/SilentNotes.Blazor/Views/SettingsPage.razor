@@ -522,6 +522,10 @@
 						{
 							<MudText Typo="Typo.caption">@ViewModel.MediaToolsMessage</MudText>
 						}
+						<MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+							OnClick="() => ViewModel.ClearPlayerUrlHistoryCommand.Execute(null)">
+							@LanguageService["player_url_history_clear"]
+						</MudButton>
 					</MudStack>
 				</div>
 			</div>

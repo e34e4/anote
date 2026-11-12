@@ -191,18 +191,34 @@
 			query = query.Where(e => e.IsDayHeader || string.Equals(e.Page, _pageFilter, StringComparison.OrdinalIgnoreCase));
 
 		var list = query.ToList();
-		// Drop day headers that have no following entries in the filtered set.
-		var cleaned = new List<AnoteLogEntry>(list.Count);
-		for (int i = 0; i < list.Count; i++)
+		// Group by day, newest day first, newest entries first within each day.
+		var groups = new List<(AnoteLogEntry Header, List<AnoteLogEntry> Items)>();
+		(AnoteLogEntry Header, List<AnoteLogEntry> Items)? current = null;
+		foreach (AnoteLogEntry e in list)
 		{
-			AnoteLogEntry e = list[i];
 			if (e.IsDayHeader)
 			{
-				bool hasChild = i + 1 < list.Count && !list[i + 1].IsDayHeader;
-				if (!hasChild)
-					continue;
+				if (current != null && current.Value.Items.Count > 0)
+					groups.Add(current.Value);
+				current = (e, new List<AnoteLogEntry>());
+				continue;
 			}
-			cleaned.Add(e);
+
+			if (current == null)
+				current = (null, new List<AnoteLogEntry>());
+			current.Value.Items.Add(e);
+		}
+		if (current != null && current.Value.Items.Count > 0)
+			groups.Add(current.Value);
+
+		groups.Reverse();
+		var cleaned = new List<AnoteLogEntry>();
+		foreach ((AnoteLogEntry header, List<AnoteLogEntry> items) in groups)
+		{
+			items.Reverse();
+			if (header != null)
+				cleaned.Add(header);
+			cleaned.AddRange(items);
 		}
 
 		_visible = cleaned;

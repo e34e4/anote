@@ -658,6 +658,9 @@ namespace SilentNotes.Platforms.Services
             {
                 try
                 {
+                    // Match Abro: process-wide WebView SOCKS so Reddit/CDN is reachable.
+                    WebViewSocksProxy.ApplyFromSettings(_settingsService);
+
                     ACookieManager.Instance?.SetAcceptCookie(true);
                     webView = new AWebView(activity);
                     webView.Settings.JavaScriptEnabled = true;
@@ -673,13 +676,16 @@ namespace SilentNotes.Platforms.Services
                     if (host != null)
                     {
                         float density = activity.Resources?.DisplayMetrics?.Density ?? 1f;
+                        // Real on-screen size — tiny/invisible WebViews often never start media.
                         var lp = new FrameLayout.LayoutParams(
-                            (int)(360 * density),
-                            (int)(640 * density))
+                            (int)(320 * density),
+                            (int)(480 * density))
                         {
-                            Gravity = GravityFlags.Top | GravityFlags.Start,
+                            Gravity = GravityFlags.Bottom | GravityFlags.End,
+                            RightMargin = (int)(8 * density),
+                            BottomMargin = (int)(8 * density),
                         };
-                        webView.Alpha = 0.02f;
+                        webView.Alpha = 0.15f;
                         webView.Visibility = ViewStates.Visible;
                         host.AddView(webView, lp);
                     }
@@ -1171,16 +1177,57 @@ namespace SilentNotes.Platforms.Services
                     }
                     catch (Exception) { }
 
-                    ScheduleExtract(view, 800);
-                    ScheduleExtract(view, 2200);
-                    ScheduleExtract(view, 5000);
+                    ScheduleForcePlayScan(view, 600);
+                    ScheduleForcePlayScan(view, 2000);
+                    ScheduleForcePlayScan(view, 4500);
+                    ScheduleExtract(view, 900);
+                    ScheduleExtract(view, 2500);
+                    ScheduleExtract(view, 5500);
                     new Handler(Looper.MainLooper).PostDelayed(() =>
                     {
                         if (_pickStarted || view == null)
                             return;
                         try { view.EvaluateJavascript(FetchJsonJs, null); } catch (Exception) { }
-                    }, 1000);
+                    }, 1100);
                 }
+            }
+
+            private const string ForcePlayScanJs =
+                "(function(){"
+                + "try{"
+                + "document.querySelectorAll('video,shreddit-player').forEach(function(el){"
+                + "try{if(el.tagName==='VIDEO'){el.muted=true;el.playsInline=true;el.play();}else{var v=el.querySelector&&el.querySelector('video');if(v){v.muted=true;v.play();}} }catch(e){}"
+                + "});"
+                + "var hits=[];"
+                + "performance.getEntriesByType('resource').forEach(function(e){"
+                + "if(e&&e.name&&e.name.indexOf('v.redd.it')>=0) hits.push(e.name);"
+                + "});"
+                + "return hits.join('\\n');"
+                + "}catch(e){return '';}"
+                + "})()";
+
+            private void ScheduleForcePlayScan(AWebView view, int delayMs)
+            {
+                new Handler(Looper.MainLooper).PostDelayed(() =>
+                {
+                    if (_pickStarted || view == null || !_mediaArmed)
+                        return;
+                    try
+                    {
+                        view.EvaluateJavascript(ForcePlayScanJs, new RedditJsCallback(result =>
+                        {
+                            string text = UnwrapJsString(result);
+                            if (string.IsNullOrWhiteSpace(text))
+                                return;
+                            foreach (string line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                                OfferCandidate(line, fromJson: false);
+                        }));
+                    }
+                    catch (Exception ex)
+                    {
+                        AnoteFileLog.Append("ytdlp", "Reddit force-play scan failed: " + ex.Message);
+                    }
+                }, delayMs);
             }
 
             private bool IsTargetPostUrl(string url)
