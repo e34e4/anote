@@ -13,6 +13,7 @@ using Android.Content;
 using Android.Content.PM;
 using Android.Graphics;
 using Android.Graphics.Drawables;
+using Android.Media;
 using Android.Provider;
 using Android.OS;
 using Android.Runtime;
@@ -151,8 +152,13 @@ namespace SilentNotes.Platforms
         private string _imageOverlayPath;
         private global::Android.Views.View _videoOverlayView;
         private WindowManagerLayoutParams _videoLayoutParams;
-        private VideoView _videoOverlayVideoView;
+        private TextureView _videoOverlayTexture;
+        private MediaPlayer _videoOverlayPlayer;
+        private TextView _videoPlayPauseBtn;
         private string _videoOverlayPath;
+        private List<string> _videoOverlayPlaylist;
+        private int _videoOverlayIndex;
+        private bool _videoOverlayPlaying;
         private bool _captureEnabled;
         private bool _menuShowingApps;
         private bool _menuLaunchAsFloating;
@@ -1292,6 +1298,7 @@ namespace SilentNotes.Platforms
 
         /// <summary>
         /// Shows a movable/resizable floating video player (accessibility overlay). Returns false on failure.
+        /// Uses TextureView+MediaPlayer — VideoView/SurfaceView stays black in WindowManager overlays.
         /// </summary>
         internal bool ShowVideoOverlay(string path, string title = null)
         {
@@ -1323,6 +1330,14 @@ namespace SilentNotes.Platforms
                 int defaultY = Math.Max(0, (screenH - winHeight) / 2);
                 int winX = Math.Clamp(preferences.GetInt(PreferenceKeyVideoX, defaultX), 0, Math.Max(0, screenW - minWidth / 2));
                 int winY = Math.Clamp(preferences.GetInt(PreferenceKeyVideoY, defaultY), 0, Math.Max(0, screenH - minHeight / 2));
+
+                _videoOverlayPlaylist = BuildVideoPlaylist(path);
+                _videoOverlayIndex = Math.Max(0, _videoOverlayPlaylist.IndexOf(path));
+                if (_videoOverlayIndex < 0)
+                {
+                    _videoOverlayPlaylist.Insert(0, path);
+                    _videoOverlayIndex = 0;
+                }
 
                 _videoOverlayPath = path;
 
@@ -1360,6 +1375,7 @@ namespace SilentNotes.Platforms
                 titleView.SetSingleLine(true);
                 titleView.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
                 titleView.SetTextColor(Color.White);
+                titleView.Tag = "video_title";
                 headerRow.AddView(titleView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
                 var editBtn = new TextView(this)
@@ -1387,16 +1403,40 @@ namespace SilentNotes.Platforms
                 headerRow.SetOnTouchListener(new VideoDragTouchListener(this));
                 card.AddView(headerRow);
 
-                _videoOverlayVideoView = new VideoView(this);
-                _videoOverlayVideoView.SetBackgroundColor(Color.Black);
-                _videoOverlayVideoView.SetVideoPath(path);
-                _videoOverlayVideoView.Start();
-                card.AddView(_videoOverlayVideoView, new LinearLayout.LayoutParams(
+                // TextureView composites in overlays; VideoView/SurfaceView does not (black frame).
+                _videoOverlayTexture = new TextureView(this);
+                _videoOverlayTexture.SurfaceTextureListener = new VideoOverlaySurfaceListener(this);
+                card.AddView(_videoOverlayTexture, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MatchParent, 0, 1f));
+
+                var transportRow = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+                transportRow.SetGravity(GravityFlags.Center);
+                transportRow.SetPadding(0, (int)(4 * density), 0, (int)(2 * density));
+
+                TextView MakeTransportBtn(string label, Action onClick)
+                {
+                    var btn = new TextView(this)
+                    {
+                        Text = label,
+                        TextSize = 16f,
+                        Gravity = GravityFlags.Center,
+                    };
+                    btn.SetTextColor(Color.White);
+                    btn.SetPadding((int)(14 * density), (int)(4 * density), (int)(14 * density), (int)(4 * density));
+                    btn.Click += (s, e) => onClick();
+                    return btn;
+                }
+
+                transportRow.AddView(MakeTransportBtn("⏮", () => PlayVideoOverlayRelative(-1)));
+                _videoPlayPauseBtn = MakeTransportBtn("⏸", ToggleVideoOverlayPlayPause);
+                transportRow.AddView(_videoPlayPauseBtn);
+                transportRow.AddView(MakeTransportBtn("⏭", () => PlayVideoOverlayRelative(1)));
+                card.AddView(transportRow, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
 
                 var footerRow = new LinearLayout(this) { Orientation = Orientation.Horizontal };
                 footerRow.SetGravity(GravityFlags.CenterVertical);
-                footerRow.SetPadding(0, (int)(4 * density), 0, 0);
+                footerRow.SetPadding(0, (int)(2 * density), 0, 0);
 
                 var bottomResizePill = new TextView(this)
                 {
@@ -1449,13 +1489,7 @@ namespace SilentNotes.Platforms
 
         internal void HideVideoOverlay()
         {
-            try
-            {
-                _videoOverlayVideoView?.StopPlayback();
-            }
-            catch (Exception)
-            {
-            }
+            ReleaseVideoOverlayPlayer();
 
             if (_videoOverlayView != null && _windowManager != null)
             {
@@ -1471,8 +1505,249 @@ namespace SilentNotes.Platforms
 
             _videoOverlayView = null;
             _videoLayoutParams = null;
-            _videoOverlayVideoView = null;
+            _videoOverlayTexture = null;
+            _videoPlayPauseBtn = null;
             _videoOverlayPath = null;
+            _videoOverlayPlaylist = null;
+            _videoOverlayIndex = 0;
+            _videoOverlayPlaying = false;
+        }
+
+        private void ReleaseVideoOverlayPlayer()
+        {
+            try
+            {
+                if (_videoOverlayPlayer != null)
+                {
+                    try { _videoOverlayPlayer.Stop(); } catch (Exception) { }
+                    try { _videoOverlayPlayer.Reset(); } catch (Exception) { }
+                    _videoOverlayPlayer.Release();
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            _videoOverlayPlayer = null;
+            _videoOverlayPlaying = false;
+        }
+
+        private void StartVideoOverlayPlayback(string path)
+        {
+            if (_videoOverlayTexture == null || string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+                return;
+
+            SurfaceTexture surface = _videoOverlayTexture.SurfaceTexture;
+            if (surface == null)
+                return;
+
+            try
+            {
+                ReleaseVideoOverlayPlayer();
+                _videoOverlayPath = path;
+                _videoOverlayPlayer = new MediaPlayer();
+                _videoOverlayPlayer.SetDataSource(path);
+                _videoOverlayPlayer.SetSurface(new Surface(surface));
+                _videoOverlayPlayer.SetAudioStreamType(Android.Media.Stream.Music);
+                _videoOverlayPlayer.Looping = false;
+                _videoOverlayPlayer.Prepared += (s, e) =>
+                {
+                    try
+                    {
+                        FitVideoOverlayTexture();
+                        _videoOverlayPlayer.Start();
+                        _videoOverlayPlaying = true;
+                        UpdateVideoPlayPauseLabel();
+                    }
+                    catch (Exception ex)
+                    {
+                        global::Android.Util.Log.Error(LogTag, "Video overlay start failed: " + ex.Message);
+                    }
+                };
+                _videoOverlayPlayer.Completion += (s, e) =>
+                {
+                    _videoOverlayPlaying = false;
+                    UpdateVideoPlayPauseLabel();
+                };
+                _videoOverlayPlayer.Error += (s, e) =>
+                {
+                    global::Android.Util.Log.Error(LogTag, "Video overlay MediaPlayer error what=" + e.What + " extra=" + e.Extra);
+                    _videoOverlayPlaying = false;
+                    UpdateVideoPlayPauseLabel();
+                    AnoteToast.Show(this, "Playback failed", FeedbackSeverity.Error);
+                };
+                _videoOverlayPlayer.PrepareAsync();
+                UpdateVideoOverlayTitle();
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Video overlay prepare failed: " + ex);
+                AnoteToast.Show(this, "Playback failed: " + ex.Message, FeedbackSeverity.Error);
+            }
+        }
+
+        private void FitVideoOverlayTexture()
+        {
+            try
+            {
+                if (_videoOverlayTexture == null || _videoOverlayPlayer == null)
+                    return;
+                int vw = _videoOverlayPlayer.VideoWidth;
+                int vh = _videoOverlayPlayer.VideoHeight;
+                if (vw <= 0 || vh <= 0)
+                    return;
+
+                int tw = _videoOverlayTexture.Width;
+                int th = _videoOverlayTexture.Height;
+                if (tw <= 0 || th <= 0)
+                    return;
+
+                float scale = Math.Min((float)tw / vw, (float)th / vh);
+                float scaledW = vw * scale;
+                float scaledH = vh * scale;
+                float dx = (tw - scaledW) / 2f;
+                float dy = (th - scaledH) / 2f;
+
+                var matrix = new Matrix();
+                matrix.SetScale(scaledW / tw, scaledH / th);
+                matrix.PostTranslate(dx, dy);
+                _videoOverlayTexture.SetTransform(matrix);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private void ToggleVideoOverlayPlayPause()
+        {
+            try
+            {
+                if (_videoOverlayPlayer == null)
+                    return;
+                if (_videoOverlayPlayer.IsPlaying)
+                {
+                    _videoOverlayPlayer.Pause();
+                    _videoOverlayPlaying = false;
+                }
+                else
+                {
+                    _videoOverlayPlayer.Start();
+                    _videoOverlayPlaying = true;
+                }
+
+                UpdateVideoPlayPauseLabel();
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Video overlay toggle failed: " + ex.Message);
+            }
+        }
+
+        private void UpdateVideoPlayPauseLabel()
+        {
+            if (_videoPlayPauseBtn == null)
+                return;
+            _videoPlayPauseBtn.Text = _videoOverlayPlaying ? "⏸" : "▶";
+        }
+
+        private void UpdateVideoOverlayTitle()
+        {
+            try
+            {
+                if (_videoOverlayView is not ViewGroup root || string.IsNullOrEmpty(_videoOverlayPath))
+                    return;
+                var titleView = root.FindViewWithTag("video_title") as TextView;
+                if (titleView != null)
+                    titleView.Text = "⠿ " + System.IO.Path.GetFileName(_videoOverlayPath);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private void PlayVideoOverlayRelative(int delta)
+        {
+            if (_videoOverlayPlaylist == null || _videoOverlayPlaylist.Count == 0)
+                return;
+            int next = _videoOverlayIndex + delta;
+            if (next < 0 || next >= _videoOverlayPlaylist.Count)
+            {
+                AnoteToast.Show(this, delta < 0 ? "No previous video" : "No next video", FeedbackSeverity.Info);
+                return;
+            }
+
+            _videoOverlayIndex = next;
+            string path = _videoOverlayPlaylist[next];
+            if (!System.IO.File.Exists(path))
+            {
+                AnoteToast.Show(this, "File missing", FeedbackSeverity.Warning);
+                return;
+            }
+
+            StartVideoOverlayPlayback(path);
+        }
+
+        private static List<string> BuildVideoPlaylist(string currentPath)
+        {
+            var list = new List<string>();
+            try
+            {
+                string dir = System.IO.Path.GetDirectoryName(currentPath);
+                if (string.IsNullOrEmpty(dir) || !System.IO.Directory.Exists(dir))
+                {
+                    list.Add(currentPath);
+                    return list;
+                }
+
+                string[] exts = { ".mp4", ".webm", ".mkv", ".3gp", ".mov", ".m4v" };
+                foreach (string file in System.IO.Directory.EnumerateFiles(dir)
+                    .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+                {
+                    string ext = System.IO.Path.GetExtension(file);
+                    if (exts.Any(e => string.Equals(e, ext, StringComparison.OrdinalIgnoreCase)))
+                        list.Add(file);
+                }
+
+                if (!list.Contains(currentPath))
+                    list.Add(currentPath);
+            }
+            catch (Exception)
+            {
+                list.Clear();
+                list.Add(currentPath);
+            }
+
+            return list;
+        }
+
+        private sealed class VideoOverlaySurfaceListener : Java.Lang.Object, TextureView.ISurfaceTextureListener
+        {
+            private readonly FloatingButtonAccessibilityService _service;
+
+            public VideoOverlaySurfaceListener(FloatingButtonAccessibilityService service)
+            {
+                _service = service;
+            }
+
+            public void OnSurfaceTextureAvailable(SurfaceTexture surface, int width, int height)
+            {
+                _service.StartVideoOverlayPlayback(_service._videoOverlayPath);
+            }
+
+            public bool OnSurfaceTextureDestroyed(SurfaceTexture surface)
+            {
+                _service.ReleaseVideoOverlayPlayer();
+                return true;
+            }
+
+            public void OnSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height)
+            {
+                _service.FitVideoOverlayTexture();
+            }
+
+            public void OnSurfaceTextureUpdated(SurfaceTexture surface)
+            {
+            }
         }
 
         private void SaveVideoBounds()

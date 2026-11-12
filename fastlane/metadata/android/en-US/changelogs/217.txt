@@ -1,0 +1,2 @@
+• Floating video: TextureView playback (fixes black screen) + play/pause/prev/next
+• Reddit: warmer WebView resolve with JSON bridge and media intercept
