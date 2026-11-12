@@ -344,3 +344,6 @@ src/SilentNotes.Blazor/Resources/Raw/mediatools/ffmpeg.*
 src/SilentNotes.Blazor/Resources/Raw/mediatools/yt-dlp.*
 !src/SilentNotes.Blazor/Resources/Raw/mediatools/.gitkeep
 tools/anote-web/anote-web.service
+
+# Prefetched youtubedl-android AARs (downloaded in CI; ~190MB)
+src/SilentNotes.Blazor/libs/youtubedl-android/

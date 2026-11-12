@@ -112,13 +112,49 @@ jobs:
       shell: pwsh
       run: pwsh -File tools/fetch-mediatools.ps1
 
+    # Prefetch youtubedl-android AARs (ffmpeg is ~133MB). AndroidMavenLibrary alone
+    # intermittently 404s on GitHub-hosted runners (XA4236) even when Central has the files.
+    - name: Cache youtubedl-android AARs
+      uses: actions/cache@v4
+      with:
+        path: src/SilentNotes.Blazor/libs/youtubedl-android
+        key: youtubedl-android-0.18.1
+
+    - name: Download youtubedl-android AARs
+      shell: pwsh
+      run: |
+        $dir = "src/SilentNotes.Blazor/libs/youtubedl-android"
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        $base = "https://repo1.maven.org/maven2/io/github/junkfood02/youtubedl-android"
+        foreach ($name in @("common", "library", "ffmpeg")) {
+          $file = Join-Path $dir "$name-0.18.1.aar"
+          if ((Test-Path $file) -and ((Get-Item $file).Length -gt 1000)) {
+            Write-Host "Cached $file ($((Get-Item $file).Length) bytes)"
+            continue
+          }
+          $url = "$base/$name/0.18.1/$name-0.18.1.aar"
+          Write-Host "Downloading $url"
+          $ok = $false
+          for ($i = 1; $i -le 5; $i++) {
+            try {
+              Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing
+              if ((Test-Path $file) -and ((Get-Item $file).Length -gt 1000)) { $ok = $true; break }
+            } catch {
+              Write-Warning "Attempt $i failed: $_"
+              Start-Sleep -Seconds (3 * $i)
+            }
+          }
+          if (-not $ok) { throw "Failed to download $url" }
+          Write-Host "Saved $file ($((Get-Item $file).Length) bytes)"
+        }
+
     - name: Restore NuGet packages
       run: dotnet restore
 
     # Build application
     # The keystore location seems to be relative to the csproj file, so we placed it in the same directory and pass only the filename
     - name: Build application
-      run: dotnet publish "${{ env.Project_Path }}" -c Release -f ${{ env.Target_Framework_Android }} -o ".\bin" -p:AndroidPackageFormats=apk -p:AndroidKeyStore=True -p:AndroidSigningKeyStore=silentnotes.keystore -p:AndroidSigningKeyAlias=androidmartinstoeckli -p:AndroidSigningKeyPass=${{ env.KeystorePassword }} -p:AndroidSigningStorePass=${{ env.KeystorePassword }}
+      run: dotnet publish "${{ env.Project_Path }}" -c Release -f ${{ env.Target_Framework_Android }} -o ".\bin" -p:AndroidPackageFormats=apk -p:AndroidKeyStore=True -p:AndroidSigningKeyStore=silentnotes.keystore -p:AndroidSigningKeyAlias=androidmartinstoeckli -p:AndroidSigningKeyPass=${{ env.KeystorePassword }} -p:AndroidSigningStorePass=${{ env.KeystorePassword }} -p:YoutubeDlAndroidLocal="${{ github.workspace }}\src\SilentNotes.Blazor\libs\youtubedl-android"
       env:
         KeystorePassword: ${{ secrets.SILENTNOTESANDROIDKEYSTOREPASSWORD }}
         

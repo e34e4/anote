@@ -23,8 +23,8 @@
         <ApplicationIdGuid>11EC9146-7F8B-417D-B616-3CF75D22866E</ApplicationIdGuid>
 
         <!-- Versions -->
-        <ApplicationDisplayVersion>1.3.108</ApplicationDisplayVersion>
-        <ApplicationVersion>214</ApplicationVersion>
+        <ApplicationDisplayVersion>1.3.109</ApplicationDisplayVersion>
+        <ApplicationVersion>215</ApplicationVersion>
 
         <!-- Workaround: for https://github.com/dotnet/maui/issues/12859 -->
         <Version>$(ApplicationDisplayVersion)</Version>
@@ -131,10 +131,14 @@
         <Version>2.10.3</Version>
       </PackageReference>
       <PackageReference Include="Xamarin.AndroidX.WebKit" Version="1.17.1" />
-      <!-- Android Python + libffmpeg for yt-dlp (Linux yt-dlp ELFs cannot run on Android). -->
-      <AndroidMavenLibrary Include="io.github.junkfood02.youtubedl-android:common" Version="0.18.1" Bind="false" VerifyDependencies="false" />
-      <AndroidMavenLibrary Include="io.github.junkfood02.youtubedl-android:library" Version="0.18.1" Bind="false" VerifyDependencies="false" />
-      <AndroidMavenLibrary Include="io.github.junkfood02.youtubedl-android:ffmpeg" Version="0.18.1" Bind="false" VerifyDependencies="false" />
+      <!-- Android Python + libffmpeg for yt-dlp (Linux yt-dlp ELFs cannot run on Android).
+           Prefer CI-prefetched local AARs when YoutubeDlAndroidLocal is set (avoids flaky XA4236). -->
+      <AndroidLibrary Include="$(YoutubeDlAndroidLocal)\common-0.18.1.aar" Bind="false" Condition="'$(YoutubeDlAndroidLocal)' != ''" />
+      <AndroidLibrary Include="$(YoutubeDlAndroidLocal)\library-0.18.1.aar" Bind="false" Condition="'$(YoutubeDlAndroidLocal)' != ''" />
+      <AndroidLibrary Include="$(YoutubeDlAndroidLocal)\ffmpeg-0.18.1.aar" Bind="false" Condition="'$(YoutubeDlAndroidLocal)' != ''" />
+      <AndroidMavenLibrary Include="io.github.junkfood02.youtubedl-android:common" Version="0.18.1" Bind="false" VerifyDependencies="false" Repository="https://repo1.maven.org/maven2/" Condition="'$(YoutubeDlAndroidLocal)' == ''" />
+      <AndroidMavenLibrary Include="io.github.junkfood02.youtubedl-android:library" Version="0.18.1" Bind="false" VerifyDependencies="false" Repository="https://repo1.maven.org/maven2/" Condition="'$(YoutubeDlAndroidLocal)' == ''" />
+      <AndroidMavenLibrary Include="io.github.junkfood02.youtubedl-android:ffmpeg" Version="0.18.1" Bind="false" VerifyDependencies="false" Repository="https://repo1.maven.org/maven2/" Condition="'$(YoutubeDlAndroidLocal)' == ''" />
     </ItemGroup>
 
     <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">
