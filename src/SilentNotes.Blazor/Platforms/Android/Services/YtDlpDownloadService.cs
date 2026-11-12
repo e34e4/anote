@@ -11,7 +11,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Android.App;
 using Android.OS;
+using Android.Views;
 using Android.Webkit;
+using Android.Widget;
 using Java.Net;
 using SilentNotes.Models;
 using SilentNotes.Services;
@@ -126,7 +128,9 @@ namespace SilentNotes.Platforms.Services
                 ?? ResolveFfmpegPath();
             string originalUrl = url.Trim();
             string downloadUrl = YtDlpUrlHelper.NormalizeDownloadUrl(originalUrl);
-            bool vkResolved = false;
+            bool directMedia = false;
+            string shortOutputStem = null;
+            string referer = null;
 
             if (YtDlpUrlHelper.IsVkUrl(originalUrl))
             {
@@ -150,7 +154,11 @@ namespace SilentNotes.Platforms.Services
                 {
                     AnoteFileLog.Append("ytdlp", "VK resolved direct media (bypass sinkholed vk.com): " + Truncate(direct, 160));
                     downloadUrl = direct;
-                    vkResolved = true;
+                    directMedia = true;
+                    referer = "https://vkvideo.ru/";
+                    shortOutputStem = YtDlpUrlHelper.TryParseVkVideoId(originalUrl, out string vid)
+                        ? "vk_" + vid
+                        : "vk_" + DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture);
                 }
                 else
                 {
@@ -162,9 +170,23 @@ namespace SilentNotes.Platforms.Services
                 progress?.Report(new YtDlpDownloadProgress
                 {
                     Percent = 0,
-                    StatusText = "Warming Reddit session via WebView…",
+                    StatusText = "Resolving Reddit media via WebView…",
                 });
-                await WarmWebViewSessionAsync(originalUrl, cancellationToken).ConfigureAwait(false);
+                string redditDirect = await ResolveRedditDirectViaWebViewAsync(originalUrl, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(redditDirect))
+                {
+                    AnoteFileLog.Append("ytdlp", "Reddit resolved direct media: " + Truncate(redditDirect, 160));
+                    downloadUrl = redditDirect;
+                    directMedia = true;
+                    referer = "https://www.reddit.com/";
+                    shortOutputStem = "reddit_" + (ExtractRedditPostId(originalUrl)
+                        ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
+                else
+                {
+                    AnoteFileLog.Append("ytdlp", "Reddit direct resolve failed; falling back to yt-dlp with cookies");
+                }
             }
             else if (!string.Equals(downloadUrl, originalUrl, StringComparison.Ordinal))
             {
@@ -172,7 +194,15 @@ namespace SilentNotes.Platforms.Services
             }
 
             var args = new List<string>(choice.BuildArguments(outDir, ffmpeg));
-            AppendCommonArgs(args, downloadUrl, originalUrl, vkResolved, out string cookiesPath);
+            if (directMedia && !string.IsNullOrEmpty(shortOutputStem))
+            {
+                // Generic CDN URLs make %(title)/%(id) enormous → ENAMETOOLONG on Android.
+                SetOutputTemplate(args, Path.Combine(outDir, shortOutputStem + ".%(ext)s"));
+                // Single progressive/HLS URL — do not require separate video+audio formats.
+                SetFormatSelector(args, "b/best");
+            }
+
+            AppendCommonArgs(args, downloadUrl, originalUrl, directMedia, referer, out string cookiesPath);
 
             progress?.Report(new YtDlpDownloadProgress { Percent = 0, StatusText = "Starting yt-dlp…" });
 
@@ -241,7 +271,8 @@ namespace SilentNotes.Platforms.Services
             List<string> args,
             string downloadUrl,
             string originalUrl,
-            bool vkResolved,
+            bool directMedia,
+            string referer,
             out string cookiesPath)
         {
             cookiesPath = null;
@@ -272,9 +303,10 @@ namespace SilentNotes.Platforms.Services
                 }
             }
 
-            bool needCookies = YtDlpUrlHelper.IsRedditUrl(originalUrl)
+            bool needCookies = !directMedia && (
+                YtDlpUrlHelper.IsRedditUrl(originalUrl)
                 || YtDlpUrlHelper.IsVimeoUrl(originalUrl)
-                || (!vkResolved && YtDlpUrlHelper.IsVkUrl(originalUrl));
+                || YtDlpUrlHelper.IsVkUrl(originalUrl));
 
             if (needCookies)
             {
@@ -294,13 +326,61 @@ namespace SilentNotes.Platforms.Services
                 }
             }
 
-            if (YtDlpUrlHelper.IsVimeoUrl(originalUrl) || YtDlpUrlHelper.IsVimeoUrl(downloadUrl))
+            if (!string.IsNullOrEmpty(referer))
+            {
+                args.Add("--referer");
+                args.Add(referer);
+            }
+            else if (YtDlpUrlHelper.IsVimeoUrl(originalUrl) || YtDlpUrlHelper.IsVimeoUrl(downloadUrl))
             {
                 args.Add("--referer");
                 args.Add("https://vimeo.com/");
             }
 
             args.Add(downloadUrl);
+        }
+
+        private static void SetOutputTemplate(List<string> args, string template)
+        {
+            for (int i = 0; i < args.Count - 1; i++)
+            {
+                if (string.Equals(args[i], "-o", StringComparison.Ordinal)
+                    || string.Equals(args[i], "--output", StringComparison.Ordinal))
+                {
+                    args[i + 1] = template;
+                    return;
+                }
+            }
+
+            args.Insert(0, template);
+            args.Insert(0, "-o");
+        }
+
+        private static void SetFormatSelector(List<string> args, string format)
+        {
+            for (int i = 0; i < args.Count - 1; i++)
+            {
+                if (string.Equals(args[i], "-f", StringComparison.Ordinal)
+                    || string.Equals(args[i], "--format", StringComparison.Ordinal))
+                {
+                    args[i + 1] = format;
+                    return;
+                }
+            }
+
+            args.Add("-f");
+            args.Add(format);
+        }
+
+        private static string ExtractRedditPostId(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return null;
+            var m = System.Text.RegularExpressions.Regex.Match(
+                url,
+                @"/comments/([a-z0-9]+)/",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+            return m.Success ? m.Groups[1].Value : null;
         }
 
         /// <summary>
@@ -381,19 +461,22 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <summary>
-        /// Load the page in a hidden WebView so CookieManager gets a Chromium TLS session (Reddit/Vimeo).
+        /// Resolve a direct v.redd.it / HLS URL inside Chromium WebView (TLS fingerprint works;
+        /// plain HttpClient / yt-dlp Python TLS gets 403).
         /// </summary>
-        private async Task WarmWebViewSessionAsync(string url, CancellationToken cancellationToken)
+        private async Task<string> ResolveRedditDirectViaWebViewAsync(string url, CancellationToken cancellationToken)
         {
             Activity activity = _appContext.RootActivity;
             if (activity == null || activity.IsFinishing)
             {
-                AnoteFileLog.Append("ytdlp", "WebView warm-up skipped (no activity)");
-                return;
+                AnoteFileLog.Append("ytdlp", "Reddit WebView resolve skipped (no activity)");
+                return null;
             }
 
-            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            string jsonUrl = BuildRedditJsonUrl(url);
+            var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             AWebView webView = null;
+            ViewGroup host = null;
 
             void Start()
             {
@@ -401,22 +484,28 @@ namespace SilentNotes.Platforms.Services
                 {
                     ACookieManager.Instance?.SetAcceptCookie(true);
                     webView = new AWebView(activity);
-                    webView.Tag = new Java.Lang.String(url);
                     webView.Settings.JavaScriptEnabled = true;
                     webView.Settings.DomStorageEnabled = true;
                     webView.Settings.UserAgentString = YtDlpUrlHelper.BrowserUserAgent;
                     ACookieManager.Instance?.SetAcceptThirdPartyCookies(webView, true);
-                    webView.SetWebViewClient(new WarmWebViewClient(tcs));
-                    // old.reddit often sets session cookies without Cloudflare Turnstile.
-                    if (YtDlpUrlHelper.IsRedditUrl(url))
-                        webView.LoadUrl("https://old.reddit.com/");
-                    else
-                        webView.LoadUrl(url);
+
+                    // Must be attached — detached WebViews often never finish loading on OEM builds.
+                    host = activity.FindViewById(global::Android.Resource.Id.Content) as ViewGroup;
+                    if (host != null)
+                    {
+                        var lp = new FrameLayout.LayoutParams(1, 1);
+                        webView.Visibility = ViewStates.Gone;
+                        host.AddView(webView, lp);
+                    }
+
+                    webView.SetWebViewClient(new RedditResolveWebViewClient(tcs, jsonUrl));
+                    // Prefer old.reddit JSON — less Cloudflare, body is raw JSON text.
+                    webView.LoadUrl(jsonUrl);
                 }
                 catch (Exception ex)
                 {
-                    AnoteFileLog.Append("ytdlp", "WebView warm-up start failed: " + ex.Message);
-                    tcs.TrySetResult(false);
+                    AnoteFileLog.Append("ytdlp", "Reddit WebView start failed: " + ex.Message);
+                    tcs.TrySetResult(null);
                 }
             }
 
@@ -427,15 +516,19 @@ namespace SilentNotes.Platforms.Services
 
             try
             {
-                Task finished = await Task.WhenAny(tcs.Task, Task.Delay(14000, cancellationToken))
+                Task finished = await Task.WhenAny(tcs.Task, Task.Delay(20000, cancellationToken))
                     .ConfigureAwait(false);
-                if (finished == tcs.Task)
-                    AnoteFileLog.Append("ytdlp", "WebView warm-up finished for " + HostOf(url));
-                else
-                    AnoteFileLog.Append("ytdlp", "WebView warm-up timed out for " + HostOf(url));
+                if (finished != tcs.Task)
+                {
+                    AnoteFileLog.Append("ytdlp", "Reddit WebView resolve timed out");
+                    return null;
+                }
+
+                return await tcs.Task.ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
+                return null;
             }
             finally
             {
@@ -446,6 +539,7 @@ namespace SilentNotes.Platforms.Services
                         try
                         {
                             webView?.StopLoading();
+                            host?.RemoveView(webView);
                             webView?.Destroy();
                         }
                         catch (Exception)
@@ -459,14 +553,59 @@ namespace SilentNotes.Platforms.Services
             }
         }
 
-        private sealed class WarmWebViewClient : WebViewClient
+        private static string BuildRedditJsonUrl(string url)
         {
-            private readonly TaskCompletionSource<bool> _tcs;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
+                return url;
+
+            string path = uri.AbsolutePath ?? string.Empty;
+            if (!path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!path.EndsWith("/", StringComparison.Ordinal))
+                    path += "/";
+                path += ".json";
+            }
+
+            // old.reddit serves JSON without the shreddit SPA shell.
+            return "https://old.reddit.com" + path + uri.Query;
+        }
+
+        private sealed class RedditResolveWebViewClient : WebViewClient
+        {
+            private readonly TaskCompletionSource<string> _tcs;
+            private readonly string _jsonUrl;
             private bool _done;
 
-            public WarmWebViewClient(TaskCompletionSource<bool> tcs)
+            // Pull fallback_url / hls_url from reddit listing JSON or from a video element.
+            private const string ExtractJs =
+                "(function(){"
+                + "try{"
+                + "var t=document.body&& (document.body.innerText||document.body.textContent)||'';"
+                + "if(t && t.charAt(0)==='['){"
+                + "var j=JSON.parse(t);"
+                + "var d=j[0].data.children[0].data;"
+                + "var rv=(d.secure_media&&d.secure_media.reddit_video)||(d.media&&d.media.reddit_video);"
+                + "if(!rv && d.crosspost_parent_list && d.crosspost_parent_list[0]){"
+                + "var c=d.crosspost_parent_list[0];"
+                + "rv=(c.secure_media&&c.secure_media.reddit_video)||(c.media&&c.media.reddit_video);"
+                + "}"
+                + "if(rv) return rv.fallback_url||rv.hls_url||'';"
+                + "}"
+                + "var v=document.querySelector('video');"
+                + "if(v && v.currentSrc) return v.currentSrc;"
+                + "if(v && v.src) return v.src;"
+                + "var s=document.querySelector('video source');"
+                + "if(s && s.src) return s.src;"
+                + "var m=t.match(/https:\\/\\/v\\.redd\\.it\\/[A-Za-z0-9]+[^\\\"\\s]*/);"
+                + "if(m) return m[0];"
+                + "}catch(e){return '';}"
+                + "return '';"
+                + "})()";
+
+            public RedditResolveWebViewClient(TaskCompletionSource<string> tcs, string jsonUrl)
             {
                 _tcs = tcs;
+                _jsonUrl = jsonUrl;
             }
 
             public override void OnPageFinished(AWebView view, string url)
@@ -475,25 +614,49 @@ namespace SilentNotes.Platforms.Services
                 if (_done)
                     return;
 
-                // After old.reddit, load the original target so shreddit cookies land too.
-                string current = url ?? string.Empty;
-                if (current.IndexOf("old.reddit.com", StringComparison.OrdinalIgnoreCase) >= 0
-                    && view?.Tag is Java.Lang.String target
-                    && !string.IsNullOrEmpty(target.ToString()))
-                {
-                    view.LoadUrl(target.ToString());
-                    return;
-                }
-
-                // Give Reddit a moment to set loid / challenge cookies.
                 new Handler(Looper.MainLooper).PostDelayed(() =>
                 {
-                    if (_done)
+                    if (_done || view == null)
                         return;
-                    _done = true;
-                    try { ACookieManager.Instance?.Flush(); } catch (Exception) { }
-                    _tcs.TrySetResult(true);
-                }, 1800);
+                    try
+                    {
+                        view.EvaluateJavascript(ExtractJs, new RedditJsCallback(result =>
+                        {
+                            if (_done)
+                                return;
+                            string media = UnwrapJsString(result);
+                            if (!string.IsNullOrWhiteSpace(media)
+                                && media.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _done = true;
+                                try { ACookieManager.Instance?.Flush(); } catch (Exception) { }
+                                _tcs.TrySetResult(media.Trim());
+                                return;
+                            }
+
+                            // First load may be a challenge page — retry once on www if old failed.
+                            string current = url ?? string.Empty;
+                            if (current.IndexOf("old.reddit.com", StringComparison.OrdinalIgnoreCase) >= 0
+                                && _jsonUrl.IndexOf("old.reddit.com", StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                string www = _jsonUrl.Replace("https://old.reddit.com", "https://www.reddit.com", StringComparison.OrdinalIgnoreCase);
+                                AnoteFileLog.Append("ytdlp", "Reddit old.reddit JSON empty; retrying www");
+                                view.LoadUrl(www);
+                                return;
+                            }
+
+                            _done = true;
+                            try { ACookieManager.Instance?.Flush(); } catch (Exception) { }
+                            _tcs.TrySetResult(null);
+                        }));
+                    }
+                    catch (Exception ex)
+                    {
+                        AnoteFileLog.Append("ytdlp", "Reddit JS extract failed: " + ex.Message);
+                        _done = true;
+                        _tcs.TrySetResult(null);
+                    }
+                }, 1200);
             }
 
             public override void OnReceivedError(
@@ -504,9 +667,45 @@ namespace SilentNotes.Platforms.Services
                 base.OnReceivedError(view, request, error);
                 if (request?.IsForMainFrame == true && !_done)
                 {
+                    AnoteFileLog.Append("ytdlp", "Reddit WebView main-frame error: " + error?.Description);
                     _done = true;
-                    _tcs.TrySetResult(false);
+                    _tcs.TrySetResult(null);
                 }
+            }
+
+            private static string UnwrapJsString(string result)
+            {
+                if (string.IsNullOrWhiteSpace(result) || result == "null" || result == "\"\"")
+                    return null;
+                result = result.Trim();
+                if (result.Length >= 2 && result[0] == '"' && result[^1] == '"')
+                {
+                    try
+                    {
+                        return System.Text.Json.JsonSerializer.Deserialize<string>(result);
+                    }
+                    catch (Exception)
+                    {
+                        return result.Substring(1, result.Length - 2);
+                    }
+                }
+
+                return result;
+            }
+        }
+
+        private sealed class RedditJsCallback : Java.Lang.Object, IValueCallback
+        {
+            private readonly Action<string> _onResult;
+
+            public RedditJsCallback(Action<string> onResult)
+            {
+                _onResult = onResult;
+            }
+
+            public void OnReceiveValue(Java.Lang.Object value)
+            {
+                _onResult?.Invoke(value?.ToString());
             }
         }
 
