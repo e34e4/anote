@@ -10,10 +10,12 @@ using Android.Content;
 using Android.Graphics;
 using Android.Graphics.Drawables;
 using Android.OS;
+using Android.Runtime;
 using Android.Text;
 using Android.Util;
 using Android.Views;
 using Android.Widget;
+using Microsoft.Maui.ApplicationModel;
 using SilentNotes.Services;
 using SilentNotes.Workers;
 using Color = global::Android.Graphics.Color;
@@ -23,7 +25,8 @@ namespace SilentNotes.Platforms
 {
     /// <summary>
     /// Top-centered teal/status banner. Avoids Android Toast (gravity ignored on API 30+,
-    /// default gray bottom look) and draws a WindowManager / activity overlay instead.
+    /// default gray bottom look; ColorOS also shows a separate "aNote pasted…" system toast).
+    /// Draws via the accessibility WindowManager when available (same path as the floating button).
     /// </summary>
     internal static class AnoteToast
     {
@@ -53,38 +56,42 @@ namespace SilentNotes.Platforms
 
             int durationMs = length == ToastLength.Long ? 3500 : 2200;
             (Color bg, Color fg) = ColorsFor(severity);
-            Context appCtx = context.ApplicationContext ?? context;
 
             void Run()
             {
                 try
                 {
-                    // Prefer an activity content overlay when the UI is visible.
+                    // 1) Accessibility service WM — proven to work for the floating button.
+                    FloatingButtonAccessibilityService a11y = FloatingButtonAccessibilityService.Instance
+                        ?? (context as FloatingButtonAccessibilityService);
+                    if (a11y != null
+                        && ShowViaWindowManager(a11y, message, bg, fg, durationMs, WindowManagerTypes.AccessibilityOverlay))
+                        return;
+
+                    if (context is AccessibilityService otherA11y
+                        && ShowViaWindowManager(otherA11y, message, bg, fg, durationMs, WindowManagerTypes.AccessibilityOverlay))
+                        return;
+
+                    // 2) Activity content overlay when the UI is visible.
                     Activity activity = context as Activity
-                        ?? (context is ContextWrapper cw ? FindActivity(cw) : null);
+                        ?? (context is ContextWrapper cw ? FindActivity(cw) : null)
+                        ?? TryGetRootActivity();
                     if (activity != null && !activity.IsFinishing && !activity.IsDestroyed)
                     {
                         if (ShowOnActivity(activity, message, bg, fg, durationMs))
                             return;
                     }
 
-                    // Accessibility service: TYPE_ACCESSIBILITY_OVERLAY (no user overlay grant).
-                    if (context is AccessibilityService a11y)
-                    {
-                        if (ShowViaWindowManager(a11y, message, bg, fg, durationMs, WindowManagerTypes.AccessibilityOverlay))
-                            return;
-                    }
-
-                    // App overlay permission (same as floating button).
+                    // 3) App overlay permission (same as SYSTEM_ALERT_WINDOW).
+                    Context appCtx = context.ApplicationContext ?? context;
                     if (ShowViaWindowManager(appCtx, message, bg, fg, durationMs, WindowManagerTypes.ApplicationOverlay))
                         return;
 
-                    // Last resort: still avoid default bottom Toast — try Phone type on older APIs.
                     if (Build.VERSION.SdkInt < BuildVersionCodes.O
                         && ShowViaWindowManager(appCtx, message, bg, fg, durationMs, WindowManagerTypes.Phone))
                         return;
 
-                    AnoteFileLog.Append("toast", "Overlay failed; muted fallback for: " + message);
+                    AnoteFileLog.Append("toast", "Overlay failed; no banner for: " + message);
                 }
                 catch (Exception ex)
                 {
@@ -97,6 +104,18 @@ namespace SilentNotes.Platforms
                 new Handler(main).Post(Run);
             else
                 Run();
+        }
+
+        private static Activity TryGetRootActivity()
+        {
+            try
+            {
+                return Platform.CurrentActivity;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         private static Activity FindActivity(ContextWrapper wrapper)
@@ -132,14 +151,20 @@ namespace SilentNotes.Platforms
 
             DismissActive();
             root.AddView(banner, lp);
-            _activeBanner = banner;
-            _activeWm = null;
+            lock (Gate)
+            {
+                _activeBanner = banner;
+                _activeWm = null;
+            }
 
             new Handler(Looper.MainLooper).PostDelayed(() =>
             {
                 try { root.RemoveView(banner); } catch (Exception) { }
-                if (ReferenceEquals(_activeBanner, banner))
-                    _activeBanner = null;
+                lock (Gate)
+                {
+                    if (ReferenceEquals(_activeBanner, banner))
+                        _activeBanner = null;
+                }
             }, durationMs);
             return true;
         }
@@ -154,21 +179,22 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                var wm = context.GetSystemService(Context.WindowService) as IWindowManager;
+                IWindowManager wm = ResolveWindowManager(context);
                 if (wm == null)
+                {
+                    AnoteFileLog.Append("toast", "WindowManager null for " + type);
                     return false;
+                }
 
                 float density = context.Resources?.DisplayMetrics?.Density ?? 1f;
                 TextView banner = BuildBanner(context, message, bg, fg, density);
 
+                // Match floating-button flags (LayoutInScreen/NoLimits caused OEM AddView failures).
                 var lp = new WindowManagerLayoutParams(
                     ViewGroup.LayoutParams.WrapContent,
                     ViewGroup.LayoutParams.WrapContent,
                     type,
-                    WindowManagerFlags.NotFocusable
-                        | WindowManagerFlags.NotTouchable
-                        | WindowManagerFlags.LayoutInScreen
-                        | WindowManagerFlags.LayoutNoLimits,
+                    WindowManagerFlags.NotFocusable | WindowManagerFlags.NotTouchModal,
                     Format.Translucent)
                 {
                     Gravity = GravityFlags.Top | GravityFlags.CenterHorizontal,
@@ -179,17 +205,22 @@ namespace SilentNotes.Platforms
 
                 DismissActive();
                 wm.AddView(banner, lp);
-                _activeBanner = banner;
-                _activeWm = wm;
+                lock (Gate)
+                {
+                    _activeBanner = banner;
+                    _activeWm = wm;
+                }
 
-                Context captured = context;
                 new Handler(Looper.MainLooper).PostDelayed(() =>
                 {
                     try { wm.RemoveView(banner); } catch (Exception) { }
-                    if (ReferenceEquals(_activeBanner, banner))
+                    lock (Gate)
                     {
-                        _activeBanner = null;
-                        _activeWm = null;
+                        if (ReferenceEquals(_activeBanner, banner))
+                        {
+                            _activeBanner = null;
+                            _activeWm = null;
+                        }
                     }
                 }, durationMs);
                 return true;
@@ -198,6 +229,26 @@ namespace SilentNotes.Platforms
             {
                 AnoteFileLog.Append("toast", "WindowManager " + type + " failed: " + ex.Message);
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Same cast path as <see cref="FloatingButtonAccessibilityService"/> — soft
+        /// <c>as IWindowManager</c> often returns null on MAUI/Android proxies.
+        /// </summary>
+        private static IWindowManager ResolveWindowManager(Context context)
+        {
+            try
+            {
+                Java.Lang.Object systemService = context.GetSystemService(Context.WindowService);
+                if (systemService == null)
+                    return null;
+                return systemService.JavaCast<IWindowManager>();
+            }
+            catch (Exception ex)
+            {
+                AnoteFileLog.Append("toast", "ResolveWindowManager failed: " + ex.Message);
+                return null;
             }
         }
 

@@ -193,6 +193,40 @@ namespace SilentNotes.Platforms.Services
                 AnoteFileLog.Append("ytdlp", "URL rewritten: " + originalUrl + " → " + downloadUrl);
             }
 
+            // Progressive CDN URLs: download with Java HttpURLConnection. yt-dlp's Python
+            // resolver often fails DNS on okcdn / some CDNs even when Java/curl succeed.
+            if (directMedia
+                && !string.IsNullOrEmpty(shortOutputStem)
+                && LooksLikeProgressiveMediaUrl(downloadUrl))
+            {
+                progress?.Report(new YtDlpDownloadProgress
+                {
+                    Percent = 0,
+                    StatusText = "Downloading media…",
+                });
+                string saved = await Task.Run(
+                    () => DownloadDirectViaJava(
+                        downloadUrl,
+                        outDir,
+                        shortOutputStem,
+                        referer ?? "https://vkvideo.ru/",
+                        progress,
+                        cancellationToken),
+                    cancellationToken).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(saved) && File.Exists(saved))
+                {
+                    progress?.Report(new YtDlpDownloadProgress { Percent = 100, StatusText = "Done" });
+                    return new YtDlpDownloadResult
+                    {
+                        Success = true,
+                        OutputPath = saved,
+                        Message = "Saved: " + Path.GetFileName(saved),
+                    };
+                }
+
+                AnoteFileLog.Append("ytdlp", "Java direct download failed; falling back to yt-dlp for " + Truncate(downloadUrl, 120));
+            }
+
             var args = new List<string>(choice.BuildArguments(outDir, ffmpeg));
             if (directMedia && !string.IsNullOrEmpty(shortOutputStem))
             {
@@ -260,6 +294,135 @@ namespace SilentNotes.Platforms.Services
                 AnoteFileLog.Append("ytdlp", "Download exception for " + url + ": " + ex);
                 return Fail(ex.Message);
             }
+        }
+
+        private static bool LooksLikeProgressiveMediaUrl(string url)
+        {
+            if (string.IsNullOrEmpty(url) || !Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
+                return false;
+            string path = uri.AbsolutePath ?? string.Empty;
+            if (path.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".mpd", StringComparison.OrdinalIgnoreCase))
+                return false;
+            string host = uri.Host ?? string.Empty;
+            return host.IndexOf("okcdn.ru", StringComparison.OrdinalIgnoreCase) >= 0
+                || host.IndexOf("vkvd", StringComparison.OrdinalIgnoreCase) >= 0
+                || host.IndexOf("v.redd.it", StringComparison.OrdinalIgnoreCase) >= 0
+                || host.IndexOf("packaged-media.redd.it", StringComparison.OrdinalIgnoreCase) >= 0
+                || path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".webm", StringComparison.OrdinalIgnoreCase)
+                || url.IndexOf("type=1", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string DownloadDirectViaJava(
+            string mediaUrl,
+            string outDir,
+            string stem,
+            string referer,
+            IProgress<YtDlpDownloadProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            HttpURLConnection conn = null;
+            string partPath = null;
+            try
+            {
+                var endpoint = new URL(mediaUrl);
+                conn = (HttpURLConnection)endpoint.OpenConnection();
+                conn.RequestMethod = "GET";
+                conn.ConnectTimeout = 20000;
+                conn.ReadTimeout = 120000;
+                conn.InstanceFollowRedirects = true;
+                conn.SetRequestProperty("User-Agent", YtDlpUrlHelper.BrowserUserAgent);
+                if (!string.IsNullOrEmpty(referer))
+                    conn.SetRequestProperty("Referer", referer);
+                conn.SetRequestProperty("Accept", "*/*");
+                conn.SetRequestProperty("Accept-Language", "en-US,en;q=0.9,ru;q=0.8");
+
+                int code = (int)conn.ResponseCode;
+                if (code < 200 || code >= 300)
+                {
+                    AnoteFileLog.Append("ytdlp", "Java direct HTTP " + code + " for " + Truncate(mediaUrl, 120));
+                    return null;
+                }
+
+                string ext = GuessMediaExtension(conn.ContentType, mediaUrl);
+                string finalPath = Path.Combine(outDir, stem + ext);
+                partPath = finalPath + ".part";
+                long total = -1;
+                try { total = conn.ContentLengthLong; } catch (Exception) { try { total = conn.ContentLength; } catch (Exception) { } }
+
+                using (Stream input = conn.InputStream)
+                using (FileStream output = File.Create(partPath))
+                {
+                    byte[] buf = new byte[64 * 1024];
+                    long written = 0;
+                    int n;
+                    int lastPct = -1;
+                    while ((n = input.Read(buf, 0, buf.Length)) > 0)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        output.Write(buf, 0, n);
+                        written += n;
+                        if (total > 0)
+                        {
+                            int pct = (int)Math.Min(99, (written * 100) / total);
+                            if (pct != lastPct && pct % 5 == 0)
+                            {
+                                lastPct = pct;
+                                progress?.Report(new YtDlpDownloadProgress
+                                {
+                                    Percent = pct,
+                                    StatusText = "Downloading… " + pct + "%",
+                                });
+                            }
+                        }
+                    }
+                }
+
+                if (File.Exists(finalPath))
+                    File.Delete(finalPath);
+                File.Move(partPath, finalPath);
+                AnoteFileLog.Append("ytdlp", "Java direct saved " + finalPath + " (" + new FileInfo(finalPath).Length + " bytes)");
+                return finalPath;
+            }
+            catch (OperationCanceledException)
+            {
+                TryDelete(partPath);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                TryDelete(partPath);
+                AnoteFileLog.Append("ytdlp", "Java direct download error: " + ex.Message);
+                return null;
+            }
+            finally
+            {
+                try { conn?.Disconnect(); } catch (Exception) { }
+            }
+        }
+
+        private static string GuessMediaExtension(string contentType, string url)
+        {
+            if (!string.IsNullOrEmpty(contentType))
+            {
+                string ct = contentType.ToLowerInvariant();
+                if (ct.Contains("webm"))
+                    return ".webm";
+                if (ct.Contains("mp4") || ct.Contains("m4v"))
+                    return ".mp4";
+            }
+
+            if (Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
+            {
+                string path = uri.AbsolutePath ?? string.Empty;
+                if (path.EndsWith(".webm", StringComparison.OrdinalIgnoreCase))
+                    return ".webm";
+                if (path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+                    return ".mp4";
+            }
+
+            return ".mp4";
         }
 
         /// <summary>
@@ -462,7 +625,8 @@ namespace SilentNotes.Platforms.Services
 
         /// <summary>
         /// Resolve a direct v.redd.it / HLS URL inside Chromium WebView (TLS fingerprint works;
-        /// plain HttpClient / yt-dlp Python TLS gets 403).
+        /// plain HttpClient / yt-dlp Python TLS gets 403). Loads the post page (not .json —
+        /// old.reddit .json redirects to login) and intercepts media requests.
         /// </summary>
         private async Task<string> ResolveRedditDirectViaWebViewAsync(string url, CancellationToken cancellationToken)
         {
@@ -473,7 +637,7 @@ namespace SilentNotes.Platforms.Services
                 return null;
             }
 
-            string jsonUrl = BuildRedditJsonUrl(url);
+            string pageUrl = BuildRedditPageUrl(url);
             var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             AWebView webView = null;
             ViewGroup host = null;
@@ -486,6 +650,7 @@ namespace SilentNotes.Platforms.Services
                     webView = new AWebView(activity);
                     webView.Settings.JavaScriptEnabled = true;
                     webView.Settings.DomStorageEnabled = true;
+                    webView.Settings.MediaPlaybackRequiresUserGesture = false;
                     webView.Settings.UserAgentString = YtDlpUrlHelper.BrowserUserAgent;
                     ACookieManager.Instance?.SetAcceptThirdPartyCookies(webView, true);
 
@@ -493,14 +658,15 @@ namespace SilentNotes.Platforms.Services
                     host = activity.FindViewById(global::Android.Resource.Id.Content) as ViewGroup;
                     if (host != null)
                     {
-                        var lp = new FrameLayout.LayoutParams(1, 1);
-                        webView.Visibility = ViewStates.Gone;
+                        // Keep a tiny real size so media elements initialize.
+                        var lp = new FrameLayout.LayoutParams(2, 2);
+                        webView.Visibility = ViewStates.Invisible;
                         host.AddView(webView, lp);
                     }
 
-                    webView.SetWebViewClient(new RedditResolveWebViewClient(tcs, jsonUrl));
-                    // Prefer old.reddit JSON — less Cloudflare, body is raw JSON text.
-                    webView.LoadUrl(jsonUrl);
+                    webView.SetWebViewClient(new RedditResolveWebViewClient(tcs));
+                    AnoteFileLog.Append("ytdlp", "Reddit WebView loading " + pageUrl);
+                    webView.LoadUrl(pageUrl);
                 }
                 catch (Exception ex)
                 {
@@ -516,7 +682,7 @@ namespace SilentNotes.Platforms.Services
 
             try
             {
-                Task finished = await Task.WhenAny(tcs.Task, Task.Delay(20000, cancellationToken))
+                Task finished = await Task.WhenAny(tcs.Task, Task.Delay(28000, cancellationToken))
                     .ConfigureAwait(false);
                 if (finished != tcs.Task)
                 {
@@ -553,59 +719,89 @@ namespace SilentNotes.Platforms.Services
             }
         }
 
-        private static string BuildRedditJsonUrl(string url)
+        private static string BuildRedditPageUrl(string url)
         {
             if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
                 return url;
 
             string path = uri.AbsolutePath ?? string.Empty;
-            if (!path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
-            {
-                if (!path.EndsWith("/", StringComparison.Ordinal))
-                    path += "/";
-                path += ".json";
-            }
+            if (path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                path = path.Substring(0, path.Length - 5);
 
-            // old.reddit serves JSON without the shreddit SPA shell.
-            return "https://old.reddit.com" + path + uri.Query;
+            // www shreddit page — WebView TLS passes where curl/Python get 403.
+            return "https://www.reddit.com" + path + uri.Query;
         }
 
         private sealed class RedditResolveWebViewClient : WebViewClient
         {
             private readonly TaskCompletionSource<string> _tcs;
-            private readonly string _jsonUrl;
             private bool _done;
+            private int _extractAttempts;
 
-            // Pull fallback_url / hls_url from reddit listing JSON or from a video element.
+            // Prefer progressive DASH fallback; also catch HLS and packaged-media.
             private const string ExtractJs =
                 "(function(){"
                 + "try{"
-                + "var t=document.body&& (document.body.innerText||document.body.textContent)||'';"
-                + "if(t && t.charAt(0)==='['){"
+                + "function pick(rv){if(!rv)return'';return rv.fallback_url||rv.dash_url||rv.hls_url||'';}"
+                + "var html=document.documentElement?document.documentElement.innerHTML:'';"
+                + "var m=html.match(/https:\\/\\/v\\.redd\\.it\\/[A-Za-z0-9]+\\/DASH_\\d+\\.mp4[^\\\"'\\s]*/);"
+                + "if(m) return m[0].replace(/&amp;/g,'&');"
+                + "m=html.match(/https:\\/\\/v\\.redd\\.it\\/[A-Za-z0-9]+\\/DASHPlaylist\\.mpd[^\\\"'\\s]*/);"
+                + "if(m) return m[0].replace(/&amp;/g,'&');"
+                + "m=html.match(/https:\\/\\/v\\.redd\\.it\\/[A-Za-z0-9]+\\/HLSPlaylist\\.m3u8[^\\\"'\\s]*/);"
+                + "if(m) return m[0].replace(/&amp;/g,'&');"
+                + "m=html.match(/\"fallback_url\"\\s*:\\s*\"(https:[^\"]+)\"/);"
+                + "if(m) return m[1].replace(/\\\\u0026/g,'&').replace(/\\\\\\//g,'/');"
+                + "var scripts=document.querySelectorAll('script');"
+                + "for(var i=0;i<scripts.length;i++){"
+                + "var t=scripts[i].textContent||'';"
+                + "if(t.indexOf('reddit_video')<0 && t.indexOf('v.redd.it')<0) continue;"
+                + "try{"
                 + "var j=JSON.parse(t);"
-                + "var d=j[0].data.children[0].data;"
-                + "var rv=(d.secure_media&&d.secure_media.reddit_video)||(d.media&&d.media.reddit_video);"
-                + "if(!rv && d.crosspost_parent_list && d.crosspost_parent_list[0]){"
-                + "var c=d.crosspost_parent_list[0];"
-                + "rv=(c.secure_media&&c.secure_media.reddit_video)||(c.media&&c.media.reddit_video);"
+                + "var stack=[j];"
+                + "while(stack.length){"
+                + "var n=stack.pop();"
+                + "if(!n||typeof n!=='object') continue;"
+                + "if(n.fallback_url&&String(n.fallback_url).indexOf('v.redd.it')>=0) return n.fallback_url;"
+                + "if(n.reddit_video){var p=pick(n.reddit_video); if(p) return p;}"
+                + "if(Array.isArray(n)){for(var k=0;k<n.length;k++) stack.push(n[k]);}"
+                + "else {for(var key in n){if(Object.prototype.hasOwnProperty.call(n,key)) stack.push(n[key]);}}"
                 + "}"
-                + "if(rv) return rv.fallback_url||rv.hls_url||'';"
+                + "}catch(e){}"
+                + "m=t.match(/https:\\\\u002F\\\\u002Fv\\\\u002Eredd\\\\u002Eit\\\\u002F[A-Za-z0-9]+[^\\\"\\s]*/);"
+                + "if(m) return m[0].replace(/\\\\u002F/g,'/').replace(/\\\\u002E/g,'.');"
                 + "}"
                 + "var v=document.querySelector('video');"
-                + "if(v && v.currentSrc) return v.currentSrc;"
-                + "if(v && v.src) return v.src;"
+                + "if(v && v.currentSrc && v.currentSrc.indexOf('redd.it')>=0) return v.currentSrc;"
+                + "if(v && v.src && v.src.indexOf('redd.it')>=0) return v.src;"
                 + "var s=document.querySelector('video source');"
-                + "if(s && s.src) return s.src;"
-                + "var m=t.match(/https:\\/\\/v\\.redd\\.it\\/[A-Za-z0-9]+[^\\\"\\s]*/);"
-                + "if(m) return m[0];"
+                + "if(s && s.src && s.src.indexOf('redd.it')>=0) return s.src;"
                 + "}catch(e){return '';}"
                 + "return '';"
                 + "})()";
 
-            public RedditResolveWebViewClient(TaskCompletionSource<string> tcs, string jsonUrl)
+            public RedditResolveWebViewClient(TaskCompletionSource<string> tcs)
             {
                 _tcs = tcs;
-                _jsonUrl = jsonUrl;
+            }
+
+            public override WebResourceResponse ShouldInterceptRequest(AWebView view, IWebResourceRequest request)
+            {
+                try
+                {
+                    string reqUrl = request?.Url?.ToString();
+                    if (!_done && IsRedditMediaUrl(reqUrl))
+                    {
+                        string prefer = PreferProgressiveRedditUrl(reqUrl);
+                        AnoteFileLog.Append("ytdlp", "Reddit intercepted media: " + Truncate(prefer, 160));
+                        Complete(prefer);
+                    }
+                }
+                catch (Exception)
+                {
+                }
+
+                return base.ShouldInterceptRequest(view, request);
             }
 
             public override void OnPageFinished(AWebView view, string url)
@@ -614,10 +810,18 @@ namespace SilentNotes.Platforms.Services
                 if (_done)
                     return;
 
+                ScheduleExtract(view, 900);
+                ScheduleExtract(view, 2200);
+                ScheduleExtract(view, 4500);
+            }
+
+            private void ScheduleExtract(AWebView view, int delayMs)
+            {
                 new Handler(Looper.MainLooper).PostDelayed(() =>
                 {
                     if (_done || view == null)
                         return;
+                    _extractAttempts++;
                     try
                     {
                         view.EvaluateJavascript(ExtractJs, new RedditJsCallback(result =>
@@ -628,35 +832,22 @@ namespace SilentNotes.Platforms.Services
                             if (!string.IsNullOrWhiteSpace(media)
                                 && media.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                             {
-                                _done = true;
-                                try { ACookieManager.Instance?.Flush(); } catch (Exception) { }
-                                _tcs.TrySetResult(media.Trim());
+                                AnoteFileLog.Append("ytdlp", "Reddit JS media: " + Truncate(media, 160));
+                                Complete(PreferProgressiveRedditUrl(media.Trim()));
                                 return;
                             }
 
-                            // First load may be a challenge page — retry once on www if old failed.
-                            string current = url ?? string.Empty;
-                            if (current.IndexOf("old.reddit.com", StringComparison.OrdinalIgnoreCase) >= 0
-                                && _jsonUrl.IndexOf("old.reddit.com", StringComparison.OrdinalIgnoreCase) >= 0)
-                            {
-                                string www = _jsonUrl.Replace("https://old.reddit.com", "https://www.reddit.com", StringComparison.OrdinalIgnoreCase);
-                                AnoteFileLog.Append("ytdlp", "Reddit old.reddit JSON empty; retrying www");
-                                view.LoadUrl(www);
-                                return;
-                            }
-
-                            _done = true;
-                            try { ACookieManager.Instance?.Flush(); } catch (Exception) { }
-                            _tcs.TrySetResult(null);
+                            // Leave _done false so ShouldInterceptRequest can still win;
+                            // the outer timeout returns null if nothing is found.
+                            if (_extractAttempts >= 3)
+                                AnoteFileLog.Append("ytdlp", "Reddit JS extract empty after retries");
                         }));
                     }
                     catch (Exception ex)
                     {
                         AnoteFileLog.Append("ytdlp", "Reddit JS extract failed: " + ex.Message);
-                        _done = true;
-                        _tcs.TrySetResult(null);
                     }
-                }, 1200);
+                }, delayMs);
             }
 
             public override void OnReceivedError(
@@ -668,9 +859,46 @@ namespace SilentNotes.Platforms.Services
                 if (request?.IsForMainFrame == true && !_done)
                 {
                     AnoteFileLog.Append("ytdlp", "Reddit WebView main-frame error: " + error?.Description);
-                    _done = true;
-                    _tcs.TrySetResult(null);
+                    Complete(null);
                 }
+            }
+
+            private void Complete(string media)
+            {
+                if (_done)
+                    return;
+                _done = true;
+                try { ACookieManager.Instance?.Flush(); } catch (Exception) { }
+                _tcs.TrySetResult(media);
+            }
+
+            private static bool IsRedditMediaUrl(string url)
+            {
+                if (string.IsNullOrEmpty(url))
+                    return false;
+                return url.IndexOf("v.redd.it", StringComparison.OrdinalIgnoreCase) >= 0
+                    || url.IndexOf("packaged-media.redd.it", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+
+            private static string PreferProgressiveRedditUrl(string url)
+            {
+                if (string.IsNullOrEmpty(url))
+                    return url;
+
+                // Map playlist URLs to a progressive DASH mp4 so Java HTTP can fetch without yt-dlp.
+                if (url.IndexOf("v.redd.it/", StringComparison.OrdinalIgnoreCase) >= 0
+                    && (url.IndexOf("DASHPlaylist.mpd", StringComparison.OrdinalIgnoreCase) >= 0
+                        || url.IndexOf("HLSPlaylist.m3u8", StringComparison.OrdinalIgnoreCase) >= 0
+                        || url.IndexOf("/DASHPlaylist", StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    int idx = url.IndexOf("v.redd.it/", StringComparison.OrdinalIgnoreCase);
+                    string rest = url.Substring(idx + "v.redd.it/".Length);
+                    string id = rest.Split('/', StringSplitOptions.RemoveEmptyEntries)[0];
+                    if (!string.IsNullOrEmpty(id))
+                        return "https://v.redd.it/" + id + "/DASH_720.mp4?source=fallback";
+                }
+
+                return url;
             }
 
             private static string UnwrapJsString(string result)

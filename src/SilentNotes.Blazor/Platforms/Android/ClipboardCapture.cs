@@ -96,18 +96,10 @@ namespace SilentNotes.Platforms
                 }
 
                 msg ??= "Pasted from your clipboard";
-                try
-                {
-                    var feedback = _serviceProvider?.GetService<IFeedbackService>();
-                    if (feedback != null)
-                        feedback.ShowToast(msg, FeedbackSeverity.Unknown);
-                    else
-                        AnoteToast.Show(_context, msg, FeedbackSeverity.Unknown);
-                }
-                catch (Exception)
-                {
-                    AnoteToast.Show(_context, msg, FeedbackSeverity.Unknown);
-                }
+                // Prefer native top overlay (a11y WindowManager). MudBlazor snackbars stay inside
+                // the Blazor webview and are easy to miss when the keyboard / other apps are up;
+                // the OS also shows a bottom "aNote pasted…" system toast we cannot reposition.
+                AnoteToast.Show(_context, msg, FeedbackSeverity.Unknown);
             }
             catch (Exception ex)
             {
