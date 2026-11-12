@@ -1548,7 +1548,7 @@ namespace SilentNotes.Platforms
                 _videoOverlayPlayer = new MediaPlayer();
                 _videoOverlayPlayer.SetDataSource(path);
                 _videoOverlayPlayer.SetSurface(new Surface(surface));
-                _videoOverlayPlayer.SetAudioStreamType(Android.Media.Stream.Music);
+                _videoOverlayPlayer.SetAudioStreamType(global::Android.Media.Stream.Music);
                 _videoOverlayPlayer.Looping = false;
                 _videoOverlayPlayer.Prepared += (s, e) =>
                 {

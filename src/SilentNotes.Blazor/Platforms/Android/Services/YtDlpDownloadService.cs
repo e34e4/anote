@@ -784,7 +784,7 @@ namespace SilentNotes.Platforms.Services
                 _onMedia = onMedia;
             }
 
-            [Android.Webkit.JavascriptInterface]
+            [global::Android.Webkit.JavascriptInterface]
             [Java.Interop.Export("onMedia")]
             public void OnMedia(string url)
             {
