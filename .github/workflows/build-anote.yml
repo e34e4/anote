@@ -74,6 +74,15 @@ jobs:
     if: ${{ inputs.build-android }}
   
     runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - rid: android-arm64
+            abi: arm64-v8a
+          - rid: android-arm
+            abi: armeabi-v7a
+          - rid: android-x64
+            abi: x86_64
 
     env:
       Keystore_Path: src\SilentNotes.Blazor\silentnotes.keystore # Same directory as csproj
@@ -110,7 +119,7 @@ jobs:
 
     - name: Fetch ffmpeg and yt-dlp binaries for APK assets
       shell: pwsh
-      run: pwsh -File tools/fetch-mediatools.ps1
+      run: pwsh -File tools/fetch-mediatools.ps1 -TargetAbi ${{ matrix.abi }}
 
     # Prefetch youtubedl-android AARs (ffmpeg is ~133MB). AndroidMavenLibrary alone
     # intermittently 404s on GitHub-hosted runners (XA4236) even when Central has the files.
@@ -149,12 +158,12 @@ jobs:
         }
 
     - name: Restore NuGet packages
-      run: dotnet restore
+      run: dotnet restore "${{ env.Project_Path }}" -r ${{ matrix.rid }}
 
     # Build application
     # The keystore location seems to be relative to the csproj file, so we placed it in the same directory and pass only the filename
     - name: Build application
-      run: dotnet publish "${{ env.Project_Path }}" -c Release -f ${{ env.Target_Framework_Android }} -o ".\bin" -p:AndroidPackageFormats=apk -p:AndroidKeyStore=True -p:AndroidSigningKeyStore=silentnotes.keystore -p:AndroidSigningKeyAlias=androidmartinstoeckli -p:AndroidSigningKeyPass=${{ env.KeystorePassword }} -p:AndroidSigningStorePass=${{ env.KeystorePassword }} -p:YoutubeDlAndroidLocal="${{ github.workspace }}\src\SilentNotes.Blazor\libs\youtubedl-android"
+      run: dotnet publish "${{ env.Project_Path }}" -c Release -f ${{ env.Target_Framework_Android }} -r ${{ matrix.rid }} -p:RuntimeIdentifiers=${{ matrix.rid }} -o ".\bin" -p:AndroidPackageFormats=apk -p:AndroidKeyStore=True -p:AndroidSigningKeyStore=silentnotes.keystore -p:AndroidSigningKeyAlias=androidmartinstoeckli -p:AndroidSigningKeyPass=${{ env.KeystorePassword }} -p:AndroidSigningStorePass=${{ env.KeystorePassword }} -p:YoutubeDlAndroidLocal="${{ github.workspace }}\src\SilentNotes.Blazor\libs\youtubedl-android"
       env:
         KeystorePassword: ${{ secrets.SILENTNOTESANDROIDKEYSTOREPASSWORD }}
         
@@ -167,13 +176,13 @@ jobs:
       run: |
         $apks = Get-ChildItem -Path .\bin\* -Filter *Signed.apk -Recurse -File
         New-Item -Path ".\artifacts" -ItemType "directory"
-        Move-Item -Path $apks[0].FullName -Destination ".\artifacts\anote.apk"
+        Move-Item -Path $apks[0].FullName -Destination ".\artifacts\anote-${{ matrix.abi }}.apk"
 
     # Upload artifacts
     - name: Upload build artifacts
       uses: actions/upload-artifact@v6
       with:
-        name: anote_android
+        name: anote_android_${{ matrix.abi }}
         path: .\artifacts
 
   ##############################################################################

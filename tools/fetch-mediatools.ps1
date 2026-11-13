@@ -1,6 +1,10 @@
 # Downloads Android ffmpeg + yt-dlp binaries into Maui Raw assets for APK shipping.
-# Usage: pwsh tools/fetch-mediatools.ps1
+# Usage: pwsh tools/fetch-mediatools.ps1 [-TargetAbi <arm64-v8a|armeabi-v7a|x86_64>]
 # CI runs this before `dotnet publish` for Android.
+
+param(
+    [string]$TargetAbi = ""
+)
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
@@ -63,12 +67,20 @@ function Save-YtDlpAsset([string]$AssetName, [string]$DestPath, [string]$WorkDir
 }
 
 try {
-    # Ship only arm64 in the APK to keep size down. Other ABIs can still be
-    # fetched at runtime via Settings → Update ffmpeg / yt-dlp.
-    $map = @(
+    $all = @(
         # Ship the universal Python yt-dlp zipapp (NOT linux ELF). Android runs it via bundled Python.
-        @{ Abi = "arm64-v8a"; FfmpegArch = "arm64"; YtDlpCandidates = @("yt-dlp") }
+        @{ Abi = "arm64-v8a"; FfmpegArch = "arm64"; YtDlpCandidates = @("yt-dlp") },
+        @{ Abi = "armeabi-v7a"; FfmpegArch = "arm"; YtDlpCandidates = @("yt-dlp") },
+        @{ Abi = "x86_64"; FfmpegArch = "x64"; YtDlpCandidates = @("yt-dlp") }
     )
+
+    $map = if ($TargetAbi) {
+        $found = $all | Where-Object { $_.Abi -ieq $TargetAbi }
+        if (-not $found) { throw "Unknown TargetAbi '$TargetAbi'. Expected one of: $($all.Abi -join ', ')" }
+        @($found)
+    } else {
+        $all
+    }
 
     foreach ($item in $map) {
         $zip = Join-Path $Temp ("ffmpeg-" + $item.FfmpegArch + ".zip")
