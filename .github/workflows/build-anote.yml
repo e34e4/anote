@@ -75,6 +75,7 @@ jobs:
   
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - rid: android-arm64
@@ -122,7 +123,7 @@ jobs:
     # Prefetch youtubedl-android AARs (ffmpeg is ~133MB). AndroidMavenLibrary alone
     # intermittently 404s on GitHub-hosted runners (XA4236) even when Central has the files.
     - name: Cache youtubedl-android AARs
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: src/SilentNotes.Blazor/libs/youtubedl-android
         key: youtubedl-android-0.18.1
