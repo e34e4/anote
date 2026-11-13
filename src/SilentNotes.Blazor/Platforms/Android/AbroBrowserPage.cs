@@ -378,7 +378,7 @@ namespace SilentNotes.Platforms
 
             try
             {
-                AbroBrowserSettingsModel settings = Ioc.Instance.GetService<IAbroBrowserSettingsService>()?.LoadOrDefault();
+                SettingsModel settings = LoadAnoteSocksSettings(migrateFromAbro: true);
                 if (settings != null)
                     ApplySocks5Proxy(settings, notifyUnsupported: false);
             }
@@ -1378,10 +1378,10 @@ namespace SilentNotes.Platforms
 
         private async Task ShowProxyMenuAsync()
         {
-            AbroBrowserSettingsModel settings = null;
+            SettingsModel settings = null;
             try
             {
-                settings = Ioc.Instance.GetService<IAbroBrowserSettingsService>()?.LoadOrDefault();
+                settings = LoadAnoteSocksSettings(migrateFromAbro: true);
             }
             catch
             {
@@ -1390,14 +1390,14 @@ namespace SilentNotes.Platforms
             bool enabled = settings?.Socks5Enabled == true && settings.HasSocks5Config;
             string status = settings == null || !settings.HasSocks5Config
                 ? "Not configured"
-                : (settings.Socks5Host + ":" + settings.Socks5Port);
+                : ((enabled ? "On · " : "Off · ") + settings.Socks5Host + ":" + settings.Socks5Port);
 
             const string edit = "Add / edit SOCKS5…";
             const string remove = "Remove proxy";
             string toggle = enabled ? "Disable proxy" : "Enable proxy";
 
             string choice = await DisplayActionSheetAsync(
-                "Proxy · " + status,
+                "Proxy (aNote) · " + status,
                 "Cancel",
                 null,
                 edit,
@@ -1418,21 +1418,71 @@ namespace SilentNotes.Platforms
             }
         }
 
+        /// <summary>
+        /// Loads SOCKS from aNote settings. Optionally copies a legacy Abro-only proxy once
+        /// when aNote has none configured.
+        /// </summary>
+        private static SettingsModel LoadAnoteSocksSettings(bool migrateFromAbro)
+        {
+            ISettingsService anote = Ioc.Instance.GetService<ISettingsService>();
+            SettingsModel settings = anote?.LoadSettingsOrDefault();
+            if (settings == null)
+                return null;
+
+            if (!migrateFromAbro || settings.HasSocks5Config)
+                return settings;
+
+            try
+            {
+                AbroBrowserSettingsModel abro = Ioc.Instance.GetService<IAbroBrowserSettingsService>()?.LoadOrDefault();
+                if (abro == null || !abro.HasSocks5Config)
+                    return settings;
+
+                settings.Socks5Host = abro.Socks5Host?.Trim() ?? string.Empty;
+                settings.Socks5Port = abro.Socks5Port;
+                settings.Socks5Username = abro.Socks5Username ?? string.Empty;
+                settings.Socks5Password = abro.Socks5Password ?? string.Empty;
+                settings.Socks5Enabled = abro.Socks5Enabled && settings.HasSocks5Config;
+                anote.TrySaveSettingsToLocalDevice(settings);
+
+                // Clear duplicate Abro copy so enable/host stay owned by aNote settings.
+                abro.Socks5Enabled = false;
+                abro.Socks5Host = string.Empty;
+                abro.Socks5Port = 1080;
+                abro.Socks5Username = string.Empty;
+                abro.Socks5Password = string.Empty;
+                abro.Touch();
+                Ioc.Instance.GetService<IAbroBrowserSettingsService>()?.TrySave(abro);
+
+                AnoteFileLog.Append(
+                    "ytdlp",
+                    "Migrated Abro SOCKS5 → aNote settings "
+                    + settings.Socks5Host + ":" + settings.Socks5Port
+                    + (settings.Socks5Enabled ? " (enabled)" : " (disabled)"));
+            }
+            catch (Exception ex)
+            {
+                AnoteFileLog.Append("ytdlp", "Abro→aNote SOCKS migrate failed: " + ex.Message);
+            }
+
+            return settings;
+        }
+
         private async Task EditSocks5ProxyAsync()
         {
             try
             {
-                IAbroBrowserSettingsService service = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+                ISettingsService service = Ioc.Instance.GetService<ISettingsService>();
                 if (service == null)
                 {
                     ShowToast("Settings unavailable");
                     return;
                 }
 
-                AbroBrowserSettingsModel settings = service.LoadOrDefault();
+                SettingsModel settings = LoadAnoteSocksSettings(migrateFromAbro: true) ?? service.LoadSettingsOrDefault();
                 string host = await DisplayPromptAsync(
                     "SOCKS5 host",
-                    "Hostname or IP",
+                    "Saved in aNote Settings",
                     "Next",
                     "Cancel",
                     "127.0.0.1",
@@ -1490,8 +1540,7 @@ namespace SilentNotes.Platforms
                 settings.Socks5Username = user.Trim();
                 settings.Socks5Password = pass;
                 settings.Socks5Enabled = settings.HasSocks5Config;
-                settings.Touch();
-                if (!service.TrySave(settings))
+                if (!service.TrySaveSettingsToLocalDevice(settings))
                 {
                     ShowToast("Could not save proxy");
                     return;
@@ -1512,14 +1561,14 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                IAbroBrowserSettingsService service = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+                ISettingsService service = Ioc.Instance.GetService<ISettingsService>();
                 if (service == null)
                 {
                     ShowToast("Settings unavailable");
                     return;
                 }
 
-                AbroBrowserSettingsModel settings = service.LoadOrDefault();
+                SettingsModel settings = LoadAnoteSocksSettings(migrateFromAbro: true) ?? service.LoadSettingsOrDefault();
                 if (!settings.HasSocks5Config)
                 {
                     await EditSocks5ProxyAsync().ConfigureAwait(true);
@@ -1527,8 +1576,7 @@ namespace SilentNotes.Platforms
                 }
 
                 settings.Socks5Enabled = !settings.Socks5Enabled;
-                settings.Touch();
-                if (!service.TrySave(settings))
+                if (!service.TrySaveSettingsToLocalDevice(settings))
                 {
                     ShowToast("Could not save proxy");
                     return;
@@ -1547,21 +1595,20 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                IAbroBrowserSettingsService service = Ioc.Instance.GetService<IAbroBrowserSettingsService>();
+                ISettingsService service = Ioc.Instance.GetService<ISettingsService>();
                 if (service == null)
                 {
                     ShowToast("Settings unavailable");
                     return;
                 }
 
-                AbroBrowserSettingsModel settings = service.LoadOrDefault();
+                SettingsModel settings = service.LoadSettingsOrDefault();
                 settings.Socks5Enabled = false;
                 settings.Socks5Host = string.Empty;
                 settings.Socks5Port = 1080;
                 settings.Socks5Username = string.Empty;
                 settings.Socks5Password = string.Empty;
-                settings.Touch();
-                if (!service.TrySave(settings))
+                if (!service.TrySaveSettingsToLocalDevice(settings))
                 {
                     ShowToast("Could not remove proxy");
                     return;
@@ -1578,7 +1625,7 @@ namespace SilentNotes.Platforms
             await Task.CompletedTask;
         }
 
-        private void ApplySocks5Proxy(AbroBrowserSettingsModel settings, bool notifyUnsupported = true)
+        private void ApplySocks5Proxy(SettingsModel settings, bool notifyUnsupported = true)
         {
             try
             {
@@ -1589,16 +1636,7 @@ namespace SilentNotes.Platforms
                     return;
                 }
 
-                // Reuse shared helper: ProxyConfig rejects userinfo; auth goes through local forwarder.
-                var mapped = new SettingsModel
-                {
-                    Socks5Enabled = settings?.Socks5Enabled == true,
-                    Socks5Host = settings?.Socks5Host,
-                    Socks5Port = settings?.Socks5Port ?? 0,
-                    Socks5Username = settings?.Socks5Username,
-                    Socks5Password = settings?.Socks5Password,
-                };
-                _ = WebViewSocksProxy.ApplyAsync(mapped);
+                _ = WebViewSocksProxy.ApplyAsync(settings);
             }
             catch (Exception ex)
             {

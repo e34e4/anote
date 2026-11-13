@@ -42,9 +42,19 @@ namespace SilentNotes.Workers
             @"<source\s+[^>]*type\s*=\s*""(?<type>[^""]+)""[^>]*src\s*=\s*""(?<url>[^""]+)""",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+        private static readonly Regex RedditCommentsIdRegex = new Regex(
+            @"/(?:r|user)/[^/]+/comments/(?<id>[a-z0-9]+)|/comments/(?<id>[a-z0-9]+)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        private static readonly Regex RedditSharePathRegex = new Regex(
+            @"^/(?:r|user)/[^/]+/s/[A-Za-z0-9]+/?$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
         /// <summary>
         /// Light synchronous rewrites (Vimeo → embed player). VK stays on vkvideo.ru —
         /// vk.com is often DNS-sinkholed to 0.0.0.0 (errno 111).
+        /// Reddit <c>/s/</c> share links stay as-is here — they must be resolved via WebView
+        /// (curl/HttpClient get HTTP 403).
         /// </summary>
         public static string NormalizeDownloadUrl(string url)
         {
@@ -58,6 +68,15 @@ namespace SilentNotes.Workers
             string host = uri.Host ?? string.Empty;
             if (host.EndsWith("vimeo.com", StringComparison.OrdinalIgnoreCase))
                 return RewriteVimeoToPlayer(url, uri);
+
+            // redd.it/<id> → comments permalink (yt-dlp Reddit extractor accepts this).
+            if (host.Equals("redd.it", StringComparison.OrdinalIgnoreCase)
+                || host.Equals("www.redd.it", StringComparison.OrdinalIgnoreCase))
+            {
+                string id = (uri.AbsolutePath ?? string.Empty).Trim('/');
+                if (id.Length > 0 && id.IndexOf('/') < 0)
+                    return "https://www.reddit.com/comments/" + id + "/";
+            }
 
             return url;
         }
@@ -144,6 +163,47 @@ namespace SilentNotes.Workers
                 || host.EndsWith(".redd.it", StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// True for Reddit Share sheet links (<c>/r/sub/s/CODE</c>). yt-dlp has no extractor for
+        /// these and falls back to <c>[generic]</c> → HTTP 403; resolve to a comments permalink first.
+        /// </summary>
+        public static bool IsRedditShareUrl(string url)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
+                return false;
+            string host = uri.Host ?? string.Empty;
+            if (!host.EndsWith("reddit.com", StringComparison.OrdinalIgnoreCase))
+                return false;
+            return RedditSharePathRegex.IsMatch(uri.AbsolutePath ?? string.Empty);
+        }
+
+        /// <summary>True when the URL is a post comments permalink yt-dlp's Reddit extractor accepts.</summary>
+        public static bool IsRedditCommentsUrl(string url)
+        {
+            return TryExtractRedditPostId(url, out _);
+        }
+
+        /// <summary>Extracts the post id from a comments permalink (not from <c>/s/</c> share codes).</summary>
+        public static bool TryExtractRedditPostId(string url, out string postId)
+        {
+            postId = null;
+            if (string.IsNullOrWhiteSpace(url))
+                return false;
+            Match m = RedditCommentsIdRegex.Match(url);
+            if (!m.Success)
+                return false;
+            postId = m.Groups["id"].Value;
+            return !string.IsNullOrEmpty(postId);
+        }
+
+        /// <summary>Builds a canonical comments URL for yt-dlp when only a post id is known.</summary>
+        public static string BuildRedditCommentsUrl(string postId)
+        {
+            if (string.IsNullOrWhiteSpace(postId))
+                return null;
+            return "https://www.reddit.com/comments/" + postId.Trim() + "/";
+        }
+
         /// <summary>True when the URL looks like Vimeo.</summary>
         public static bool IsVimeoUrl(string url)
         {
@@ -164,7 +224,9 @@ namespace SilentNotes.Workers
             if (string.IsNullOrWhiteSpace(host) || port <= 0 || port > 65535)
                 return null;
 
-            var builder = new StringBuilder("socks5://");
+            // Prefer socks5h so DNS is resolved by the proxy (important when local DNS sinkholes sites).
+            // yt-dlp treats socks5 as socks5h anyway; curl and other tools do not.
+            var builder = new StringBuilder("socks5h://");
             if (!string.IsNullOrEmpty(username))
             {
                 builder.Append(Uri.EscapeDataString(username));
@@ -177,6 +239,27 @@ namespace SilentNotes.Workers
             builder.Append(':');
             builder.Append(port.ToString(System.Globalization.CultureInfo.InvariantCulture));
             return builder.ToString();
+        }
+
+        /// <summary>
+        /// Quick TCP reachability check for a SOCKS5 host:port (does not validate credentials).
+        /// </summary>
+        public static bool TryProbeSocks5Tcp(string host, int port, int timeoutMs = 3000)
+        {
+            if (string.IsNullOrWhiteSpace(host) || port <= 0 || port > 65535)
+                return false;
+            try
+            {
+                using var client = new System.Net.Sockets.TcpClient();
+                var connect = client.ConnectAsync(host.Trim(), port);
+                if (!connect.Wait(timeoutMs))
+                    return false;
+                return client.Connected;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         /// <summary>

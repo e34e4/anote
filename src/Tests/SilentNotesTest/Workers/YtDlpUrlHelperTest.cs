@@ -31,6 +31,34 @@ namespace SilentNotesTest.Workers
         }
 
         [Test]
+        public void NormalizeDownloadUrl_RewritesReddItShortLink()
+        {
+            string result = YtDlpUrlHelper.NormalizeDownloadUrl("https://redd.it/1xduced");
+            Assert.AreEqual("https://www.reddit.com/comments/1xduced/", result);
+        }
+
+        [Test]
+        public void IsRedditShareUrl_DetectsShareSheetLink()
+        {
+            Assert.IsTrue(YtDlpUrlHelper.IsRedditShareUrl(
+                "https://www.reddit.com/r/interestingasfuck/s/S2aiM4wWTv"));
+            Assert.IsFalse(YtDlpUrlHelper.IsRedditShareUrl(
+                "https://www.reddit.com/r/natureismetal/comments/1xduced/killer_whales/"));
+        }
+
+        [Test]
+        public void TryExtractRedditPostId_FromCommentsPermalink()
+        {
+            Assert.IsTrue(YtDlpUrlHelper.TryExtractRedditPostId(
+                "https://www.reddit.com/r/natureismetal/comments/1xduced/killer_whales/",
+                out string id));
+            Assert.AreEqual("1xduced", id);
+            Assert.IsFalse(YtDlpUrlHelper.TryExtractRedditPostId(
+                "https://www.reddit.com/r/interestingasfuck/s/S2aiM4wWTv",
+                out _));
+        }
+
+        [Test]
         public void TryParseVkVideoId_FromMobileVkvideo()
         {
             Assert.IsTrue(YtDlpUrlHelper.TryParseVkVideoId(
@@ -53,7 +81,7 @@ namespace SilentNotesTest.Workers
         public void BuildSocks5ProxyArgument_IncludesAuth()
         {
             string proxy = YtDlpUrlHelper.BuildSocks5ProxyArgument("127.0.0.1", 1080, "u", "p");
-            Assert.AreEqual("socks5://u:p@127.0.0.1:1080", proxy);
+            Assert.AreEqual("socks5h://u:p@127.0.0.1:1080", proxy);
         }
 
         [Test]

@@ -73,6 +73,19 @@ namespace SilentNotes.Platforms
                     string ruleHost = settings.Socks5Host.Trim();
                     int rulePort = settings.Socks5Port;
 
+                    if (!YtDlpUrlHelper.TryProbeSocks5Tcp(ruleHost, rulePort))
+                    {
+                        AnoteFileLog.Append(
+                            "ytdlp",
+                            "WebView SOCKS: upstream "
+                            + ruleHost + ":" + rulePort
+                            + " unreachable (connection refused) — not applying proxy override");
+                        LocalSocks5Forwarder.Stop();
+                        AndroidX.WebKit.ProxyController.Instance.ClearProxyOverride(executor, listener);
+                        tcs.TrySetResult(false);
+                        return tcs.Task;
+                    }
+
                     if (!string.IsNullOrWhiteSpace(settings.Socks5Username))
                     {
                         int localPort = LocalSocks5Forwarder.EnsureRunning(
