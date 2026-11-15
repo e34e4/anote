@@ -199,35 +199,13 @@
 
 	private string DiffResultText()
 	{
-		if (!DateTime.TryParseExact(_fromDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime from)
-			|| !DateTime.TryParseExact(_toDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime to))
+		if (!SilentNotes.Workers.DateIntervalEngine.TryParseDate(_fromDate, out DateTime from)
+			|| !SilentNotes.Workers.DateIntervalEngine.TryParseDate(_toDate, out DateTime to))
 		{
 			return "—";
 		}
 
-		if (to < from)
-		{
-			DateTime tmp = from;
-			from = to;
-			to = tmp;
-		}
-
-		int totalDays = (to - from).Days;
-		double weeks = totalDays / 7.0;
-		int months = ((to.Year - from.Year) * 12) + (to.Month - from.Month);
-		if (to.Day < from.Day)
-			months--;
-		if (months < 0)
-			months = 0;
-		double years = months / 12.0;
-
-		return string.Join("\n", new[]
-		{
-			LanguageService["cal_date_days"] + ": " + totalDays.ToString(CultureInfo.InvariantCulture),
-			LanguageService["cal_date_weeks"] + ": " + weeks.ToString("0.##", CultureInfo.InvariantCulture),
-			LanguageService["cal_date_months"] + ": " + months.ToString(CultureInfo.InvariantCulture),
-			LanguageService["cal_date_years"] + ": " + years.ToString("0.##", CultureInfo.InvariantCulture),
-		});
+		return SilentNotes.Workers.DateIntervalEngine.Describe(from, to);
 	}
 
 	private void OnSecondsInput(ChangeEventArgs e)

@@ -74,6 +74,9 @@ namespace SilentNotes.Platforms
             // Check whether the app was started to open a document in the Reader tab.
             ConsumeDocumentIntent(activity.Intent);
 
+            // Check whether a file was handed over by the share target for the Reader tab.
+            ConsumeSharedDocumentPath(activity.Intent);
+
             // Check whether the app was started by a Telegram deep link (t.me / tg://).
             ConsumeTelegramLinkIntent(activity.Intent);
 
@@ -99,7 +102,33 @@ namespace SilentNotes.Platforms
             ConsumeRouteIntent(intent);
             ConsumeMediaIntent(intent);
             ConsumeDocumentIntent(intent);
+            ConsumeSharedDocumentPath(intent);
             ConsumeTelegramLinkIntent(intent);
+        }
+
+        /// <summary>
+        /// Opens a file which the share target copied into the anote share folder.
+        /// </summary>
+        private void ConsumeSharedDocumentPath(Intent intent)
+        {
+            if (intent == null)
+                return;
+
+            string path = intent.GetStringExtra(ShareTargetActions.ExtraOpenDocumentPath);
+            if (string.IsNullOrWhiteSpace(path))
+                return;
+
+            string mimeType = intent.GetStringExtra(ShareTargetActions.ExtraOpenDocumentMime);
+            intent.RemoveExtra(ShareTargetActions.ExtraOpenDocumentPath);
+            intent.RemoveExtra(ShareTargetActions.ExtraOpenDocumentMime);
+
+            DocumentIntentRequest.Pending = new DocumentIntentRequest
+            {
+                UriOrPath = path,
+                MimeType = mimeType,
+                DisplayName = System.IO.Path.GetFileName(path),
+            };
+            Ioc.Instance.GetService<IMessengerService>()?.Send(new DocumentIntentMessage());
         }
 
         /// <summary>

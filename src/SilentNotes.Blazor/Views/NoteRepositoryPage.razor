@@ -59,6 +59,7 @@
 @inject ITelegramService TelegramService
 @inject IWebdavQuickSaveService WebdavQuickSaveService
 @inject IRssArticleCacheService RssArticleCacheService
+@inject IOcrService OcrService
 @inject IAbroBrowserService AbroBrowserService
 @inject IAssistantService AssistantService
 
@@ -764,7 +765,8 @@
 			EnvironmentService,
 			BookySyncService,
 			FeedbackService,
-			AbroBrowserService);
+			AbroBrowserService,
+			RssArticleCacheService);
 
 		_contactsViewModel = new ContactsViewModel(
 			noteRepositoryModel,
@@ -836,7 +838,11 @@
 			FilePickerService,
 			LanguageService,
 			FeedbackService,
-			ImageEditorService);
+			ImageEditorService,
+			OcrService,
+			ClipboardService,
+			RepositoryStorageService,
+			MessengerService);
 		_mailViewModel = new MailViewModel(
 			MailService,
 			FilePickerService,
@@ -991,6 +997,8 @@
 			this, (recipient, message) => OnScreenRecordIntent());
 		MessengerService.Register<VoiceNoteChangedMessage>(
 			this, (recipient, message) => OnVoiceNoteChanged());
+		MessengerService.Register<NotesChangedMessage>(
+			this, (recipient, message) => OnNotesChanged());
 
 		if (loadResult == RepositoryStorageLoadResult.InvalidRepository)
 			throw new Exception("Invalid repository");
@@ -1056,6 +1064,7 @@
 		MessengerService.Unregister<TelegramLinkMessage>(this);
 		MessengerService.Unregister<ScreenRecordIntentMessage>(this);
 		MessengerService.Unregister<VoiceNoteChangedMessage>(this);
+		MessengerService.Unregister<NotesChangedMessage>(this);
 	}
 
 	/// <summary>
@@ -1119,6 +1128,19 @@
 	private void OnVoiceNoteChanged()
 	{
 		_voiceViewModel?.Refresh();
+		if (ViewModel != null)
+		{
+			RepositoryStorageService.LoadRepositoryOrDefault(out NoteRepositoryModel repo);
+			ViewModel.Model = repo;
+		}
+		InvokeAsync(StateHasChanged);
+	}
+
+	/// <summary>
+	/// Reloads the notes after another component added or changed notes.
+	/// </summary>
+	private void OnNotesChanged()
+	{
 		if (ViewModel != null)
 		{
 			RepositoryStorageService.LoadRepositoryOrDefault(out NoteRepositoryModel repo);

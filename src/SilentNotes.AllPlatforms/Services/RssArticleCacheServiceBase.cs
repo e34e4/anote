@@ -56,7 +56,7 @@ namespace SilentNotes.Services
                     using (var command = connection.CreateCommand())
                     {
                         command.CommandText =
-                            "SELECT feed_id, item_key, title, link, summary, content_html, published_at, cached_at, byte_size " +
+                            "SELECT feed_id, item_key, title, link, summary, content_html, published_at, cached_at, byte_size, offline_html, is_offline " +
                             "FROM rss_articles WHERE feed_id IN (" + placeholders + ") " +
                             "ORDER BY COALESCE(published_at, cached_at) DESC, cached_at DESC;";
                         for (int i = 0; i < ids.Count; i++)
@@ -166,6 +166,97 @@ namespace SilentNotes.Services
             }
         }
 
+        /// <inheritdoc/>
+        public bool SaveOfflineArticle(Guid ownerId, string itemKey, string title, string link, string offlineHtml)
+        {
+            if (string.IsNullOrWhiteSpace(itemKey) || string.IsNullOrWhiteSpace(offlineHtml))
+                return false;
+
+            lock (SyncRoot)
+            {
+                EnsureDatabase();
+                using (SqliteConnection connection = OpenConnection())
+                {
+                    RssCachedArticleModel existing = FindExisting(connection, ownerId, itemKey);
+                    if (existing == null)
+                    {
+                        var article = new RssCachedArticleModel
+                        {
+                            FeedId = ownerId,
+                            ItemKey = itemKey,
+                            Title = title,
+                            Link = link,
+                            Summary = null,
+                            ContentHtml = string.Empty,
+                            PublishedAt = null,
+                            CachedAt = DateTime.UtcNow,
+                            OfflineHtml = offlineHtml,
+                            IsOffline = true,
+                        };
+                        article.ByteSize = EstimateByteSize(article);
+                        Insert(connection, article);
+                    }
+                    else
+                    {
+                        using (var command = connection.CreateCommand())
+                        {
+                            command.CommandText =
+                                "UPDATE rss_articles SET offline_html = @offline_html, is_offline = 1, " +
+                                "title = COALESCE(NULLIF(title, ''), @title), link = COALESCE(NULLIF(link, ''), @link), " +
+                                "byte_size = @byte_size " +
+                                "WHERE feed_id = @feed_id AND item_key = @item_key;";
+                            command.Parameters.AddWithValue("@offline_html", offlineHtml);
+                            command.Parameters.AddWithValue("@title", (object)title ?? DBNull.Value);
+                            command.Parameters.AddWithValue("@link", (object)link ?? DBNull.Value);
+                            command.Parameters.AddWithValue("@byte_size", EstimateByteSize(existing) + Encoding.UTF8.GetByteCount(offlineHtml));
+                            command.Parameters.AddWithValue("@feed_id", ownerId.ToString("N"));
+                            command.Parameters.AddWithValue("@item_key", itemKey);
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                }
+
+                EnforceSizeLimitUnlocked(IRssArticleCacheService.DefaultMaxCacheBytes);
+                return true;
+            }
+        }
+
+        /// <inheritdoc/>
+        public RssCachedArticleModel LoadArticle(Guid ownerId, string itemKey)
+        {
+            if (string.IsNullOrWhiteSpace(itemKey))
+                return null;
+
+            lock (SyncRoot)
+            {
+                EnsureDatabase();
+                using (SqliteConnection connection = OpenConnection())
+                    return FindExisting(connection, ownerId, itemKey);
+            }
+        }
+
+        /// <inheritdoc/>
+        public void RemoveOfflineArticle(Guid ownerId, string itemKey)
+        {
+            if (string.IsNullOrWhiteSpace(itemKey))
+                return;
+
+            lock (SyncRoot)
+            {
+                EnsureDatabase();
+                using (SqliteConnection connection = OpenConnection())
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText =
+                        "UPDATE rss_articles SET offline_html = NULL, is_offline = 0 " +
+                        "WHERE feed_id = @feed_id AND item_key = @item_key;";
+                    command.Parameters.AddWithValue("@feed_id", ownerId.ToString("N"));
+                    command.Parameters.AddWithValue("@item_key", itemKey);
+                    command.ExecuteNonQuery();
+                }
+            }
+        }
+
         private void EnforceSizeLimitUnlocked(long maxCacheBytes)
         {
             if (maxCacheBytes <= 0)
@@ -264,7 +355,7 @@ namespace SilentNotes.Services
             using (var command = connection.CreateCommand())
             {
                 command.CommandText =
-                    "SELECT feed_id, item_key, title, link, summary, content_html, published_at, cached_at, byte_size " +
+                    "SELECT feed_id, item_key, title, link, summary, content_html, published_at, cached_at, byte_size, offline_html, is_offline " +
                     "FROM rss_articles WHERE feed_id = @feed_id AND item_key = @item_key LIMIT 1;";
                 command.Parameters.AddWithValue("@feed_id", feedId.ToString("N"));
                 command.Parameters.AddWithValue("@item_key", itemKey);
@@ -282,8 +373,8 @@ namespace SilentNotes.Services
             using (var command = connection.CreateCommand())
             {
                 command.CommandText =
-                    "INSERT INTO rss_articles (feed_id, item_key, title, link, summary, content_html, published_at, cached_at, byte_size) " +
-                    "VALUES (@feed_id, @item_key, @title, @link, @summary, @content_html, @published_at, @cached_at, @byte_size);";
+                    "INSERT INTO rss_articles (feed_id, item_key, title, link, summary, content_html, published_at, cached_at, byte_size, offline_html, is_offline) " +
+                    "VALUES (@feed_id, @item_key, @title, @link, @summary, @content_html, @published_at, @cached_at, @byte_size, @offline_html, @is_offline);";
                 BindArticle(command, article);
                 command.ExecuteNonQuery();
             }
@@ -295,7 +386,10 @@ namespace SilentNotes.Services
             {
                 command.CommandText =
                     "UPDATE rss_articles SET title = @title, link = @link, summary = @summary, content_html = @content_html, " +
-                    "published_at = @published_at, cached_at = @cached_at, byte_size = @byte_size " +
+                    "published_at = @published_at, cached_at = @cached_at, " +
+                    "byte_size = @byte_size + COALESCE(length(offline_html), 0), " +
+                    "offline_html = COALESCE(@offline_html, offline_html), " +
+                    "is_offline = CASE WHEN @is_offline = 1 THEN 1 ELSE is_offline END " +
                     "WHERE feed_id = @feed_id AND item_key = @item_key;";
                 BindArticle(command, article);
                 command.ExecuteNonQuery();
@@ -317,6 +411,8 @@ namespace SilentNotes.Services
             command.Parameters.AddWithValue("@cached_at",
                 article.CachedAt.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture));
             command.Parameters.AddWithValue("@byte_size", article.ByteSize);
+            command.Parameters.AddWithValue("@offline_html", (object)article.OfflineHtml ?? DBNull.Value);
+            command.Parameters.AddWithValue("@is_offline", article.IsOffline ? 1 : 0);
         }
 
         private static RssCachedArticleModel ReadArticle(SqliteDataReader reader)
@@ -332,6 +428,8 @@ namespace SilentNotes.Services
                 PublishedAt = ParseDate(reader.IsDBNull(6) ? null : reader.GetString(6)),
                 CachedAt = ParseDate(reader.IsDBNull(7) ? null : reader.GetString(7)) ?? DateTime.MinValue,
                 ByteSize = reader.IsDBNull(8) ? 0 : reader.GetInt64(8),
+                OfflineHtml = reader.FieldCount > 9 && !reader.IsDBNull(9) ? reader.GetString(9) : null,
+                IsOffline = reader.FieldCount > 10 && !reader.IsDBNull(10) && reader.GetInt64(10) != 0,
             };
         }
 
@@ -365,6 +463,7 @@ namespace SilentNotes.Services
             size += Encoding.UTF8.GetByteCount(article.Link ?? string.Empty);
             size += Encoding.UTF8.GetByteCount(article.Summary ?? string.Empty);
             size += Encoding.UTF8.GetByteCount(article.ContentHtml ?? string.Empty);
+            size += Encoding.UTF8.GetByteCount(article.OfflineHtml ?? string.Empty);
             return size;
         }
 
@@ -388,12 +487,32 @@ namespace SilentNotes.Services
                     "published_at TEXT, " +
                     "cached_at TEXT NOT NULL, " +
                     "byte_size INTEGER NOT NULL DEFAULT 0, " +
+                    "offline_html TEXT, " +
+                    "is_offline INTEGER NOT NULL DEFAULT 0, " +
                     "PRIMARY KEY (feed_id, item_key)" +
                     ");" +
                     "CREATE INDEX IF NOT EXISTS ix_rss_articles_published ON rss_articles (published_at, cached_at);";
                 command.ExecuteNonQuery();
+
+                TryAddColumn(connection, "offline_html", "TEXT");
+                TryAddColumn(connection, "is_offline", "INTEGER NOT NULL DEFAULT 0");
             }
             _schemaReady = true;
+        }
+
+        private static void TryAddColumn(SqliteConnection connection, string name, string definition)
+        {
+            try
+            {
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = "ALTER TABLE rss_articles ADD COLUMN " + name + " " + definition + ";";
+                    command.ExecuteNonQuery();
+                }
+            }
+            catch (Exception)
+            {
+            }
         }
 
         private SqliteConnection OpenConnection()

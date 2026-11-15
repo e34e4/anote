@@ -63,7 +63,7 @@
            manually (sideloaded) instead of relying on fast deployment over adb. -->
       <EmbedAssembliesIntoApk>True</EmbedAssembliesIntoApk>
       <!-- ML Kit barcode registrars are discovered via reflection; do not link them away. -->
-      <AndroidLinkSkip>Xamarin.Google.MLKit.BarcodeScanning;Xamarin.GooglePlayServices.MLKit.BarcodeScanning;Xamarin.Google.MLKit.BarcodeScanning.Common;Xamarin.Google.MLKit.Common;Xamarin.Google.MLKit.Vision.Common;BarcodeScanning.Native.Maui</AndroidLinkSkip>
+      <AndroidLinkSkip>Xamarin.Google.MLKit.BarcodeScanning;Xamarin.GooglePlayServices.MLKit.BarcodeScanning;Xamarin.GooglePlayServices.MLKit.Text.Recognition.Common;Xamarin.GooglePlayServices.MLKit.Text.Recognition;Xamarin.Google.MLKit.TextRecognition;Xamarin.Google.MLKit.TextRecognition.Bundled.Common;Xamarin.Google.MLKit.BarcodeScanning.Common;Xamarin.Google.MLKit.Common;Xamarin.Google.MLKit.Vision.Common;BarcodeScanning.Native.Maui</AndroidLinkSkip>
     </PropertyGroup>
 
     <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
@@ -125,6 +125,11 @@
     </ItemGroup>
 
     <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+      <PackageReference Include="Xamarin.Google.MLKit.TextRecognition" Version="116.0.1.9" />
+      <PackageReference Include="Xamarin.GooglePlayServices.MLKit.Text.Recognition.Common" Version="119.1.0.9" />
+      <!-- Align fragment-ktx with the Fragment 1.9.0 pulled in by ML Kit, otherwise both AARs
+           contain androidx.fragment.app.FragmentKt and R8 fails with duplicate classes. -->
+      <PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" Version="1.9.0" />
       <PackageReference Include="Xamarin.AndroidX.DocumentFile">
         <Version>1.1.0.1</Version>
       </PackageReference>

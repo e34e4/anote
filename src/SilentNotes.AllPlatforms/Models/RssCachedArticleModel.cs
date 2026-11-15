@@ -57,5 +57,15 @@ namespace SilentNotes.Models
         /// Gets or sets the approximate UTF-8 byte size of the stored fields, used for size capping.
         /// </summary>
         public long ByteSize { get; set; }
+
+        /// <summary>
+        /// Gets or sets the readability-cleaned HTML of an explicitly saved offline copy.
+        /// </summary>
+        public string OfflineHtml { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether a full offline copy is stored.
+        /// </summary>
+        public bool IsOffline { get; set; }
     }
 }

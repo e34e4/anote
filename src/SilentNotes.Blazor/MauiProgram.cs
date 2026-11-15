@@ -218,6 +218,7 @@ public static class MauiProgram
         services.AddSingleton<IClipboardHistoryService>((serviceProvider) => _clipboardHistory ??= new ClipboardHistoryService(
             serviceProvider.GetService<IXmlFileService>()));
         services.AddSingleton<IRssArticleCacheService>((serviceProvider) => new RssArticleCacheService());
+        services.AddSingleton<IOcrService>((serviceProvider) => new NullOcrService());
         services.AddSingleton<IRepositoryStorageService>((serviceProvider) => new RepositoryStorageService(
             serviceProvider.GetService<IXmlFileService>(),
             serviceProvider.GetService<ILanguageService>()));
@@ -284,6 +285,8 @@ public static class MauiProgram
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IXmlFileService>()));
         services.AddSingleton<IRssArticleCacheService>((serviceProvider) => new RssArticleCacheService(
+            serviceProvider.GetService<IAppContextService>()));
+        services.AddSingleton<IOcrService>((serviceProvider) => new OcrService(
             serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<IRepositoryStorageService>((serviceProvider) => new RepositoryStorageService(
             serviceProvider.GetService<IAppContextService>(),

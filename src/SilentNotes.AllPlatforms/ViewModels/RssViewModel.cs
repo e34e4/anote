@@ -31,6 +31,7 @@ namespace SilentNotes.ViewModels
         private readonly ILanguageService _languageService;
         private readonly IRepositoryStorageService _repositoryService;
         private readonly IRssArticleCacheService _articleCache;
+        private readonly ArticleOfflineService _offlineService;
         private readonly IFilePickerService _filePickerService;
         private readonly IFeedbackService _feedbackService;
         private readonly IWebdavQuickSaveService _webdavQuickSave;
@@ -71,6 +72,7 @@ namespace SilentNotes.ViewModels
             _languageService = languageService;
             _repositoryService = repositoryService;
             _articleCache = articleCache;
+            _offlineService = new ArticleOfflineService(articleCache);
             _filePickerService = filePickerService;
             _feedbackService = feedbackService;
             _webdavQuickSave = webdavQuickSave;
@@ -95,6 +97,7 @@ namespace SilentNotes.ViewModels
             SaveArticleToWebdavCommand = new AsyncRelayCommand(SaveOpenedArticleToWebdavAsync);
             SaveArticleItemToWebdavCommand = new AsyncRelayCommand<RssArticleViewModel>(SaveArticleToWebdavAsync);
             DeleteSelectedArticlesCommand = new AsyncRelayCommand(DeleteSelectedArticlesAsync);
+            SaveOfflineCommand = new AsyncRelayCommand<RssArticleViewModel>(SaveOfflineAsync);
         }
 
         /// <summary>Raised when the UI should re-render after async work.</summary>
@@ -118,6 +121,7 @@ namespace SilentNotes.ViewModels
         public ICommand SaveArticleToWebdavCommand { get; }
         public ICommand SaveArticleItemToWebdavCommand { get; }
         public ICommand DeleteSelectedArticlesCommand { get; }
+        public ICommand SaveOfflineCommand { get; }
 
         public bool HasArticleSelection => _selectedArticleKeys.Count > 0;
 
@@ -500,6 +504,54 @@ namespace SilentNotes.ViewModels
             NotifyListChanged();
             RaiseStateChanged();
             _feedbackService?.ShowToast(_languageService.LoadTextFmt("rss_articles_removed", targets.Count));
+        }
+
+        private async Task SaveOfflineAsync(RssArticleViewModel article)
+        {
+            if (article == null || string.IsNullOrWhiteSpace(article.ItemKey))
+                return;
+
+            try
+            {
+                IsBusy = true;
+                if (article.IsOffline)
+                {
+                    _articleCache.RemoveOfflineArticle(article.FeedId, article.ItemKey);
+                    RssCachedArticleModel cached = _articleCache.LoadArticle(article.FeedId, article.ItemKey);
+                    article.ClearOffline(cached?.ContentHtml);
+                    _feedbackService.ShowToast(_languageService["rss_offline_removed"], FeedbackSeverity.Info);
+                }
+                else
+                {
+                    if (string.IsNullOrWhiteSpace(article.Link))
+                    {
+                        _feedbackService.ShowToast(_languageService["rss_offline_no_link"], FeedbackSeverity.Warning);
+                        return;
+                    }
+
+                    bool saved = await _offlineService.SaveAsync(
+                        article.FeedId, article.ItemKey, article.Link, article.Title);
+                    if (saved)
+                    {
+                        RssCachedArticleModel cached = _articleCache.LoadArticle(article.FeedId, article.ItemKey);
+                        article.SetOffline(cached?.OfflineHtml);
+                        _feedbackService.ShowToast(_languageService["rss_offline_saved"], FeedbackSeverity.Info);
+                    }
+                    else
+                    {
+                        _feedbackService.ShowToast(_languageService["rss_offline_failed"], FeedbackSeverity.Warning);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                _feedbackService.ShowToast(_languageService["rss_offline_failed"], FeedbackSeverity.Warning);
+            }
+            finally
+            {
+                IsBusy = false;
+                RaiseStateChanged();
+            }
         }
 
         private void DeleteFeed(RssFeedItemViewModel feed)
@@ -997,6 +1049,9 @@ namespace SilentNotes.ViewModels
     public class RssArticleViewModel : ViewModelBase
     {
         private bool _isRead;
+        private bool _isOffline;
+        private string _contentHtml;
+        private string _contentPlain;
 
         public RssArticleViewModel(Guid feedId, string feedTitle, RssFeedParser.ParsedItem item, bool isRead)
         {
@@ -1006,8 +1061,8 @@ namespace SilentNotes.ViewModels
             Title = item.Title;
             Link = item.Link;
             Summary = item.Summary;
-            ContentHtml = RssFeedParser.SanitizeHtml(item.ContentHtml);
-            ContentPlain = RssFeedParser.StripHtml(item.ContentHtml);
+            _contentHtml = RssFeedParser.SanitizeHtml(item.ContentHtml);
+            _contentPlain = RssFeedParser.StripHtml(item.ContentHtml);
             PublishedAt = item.PublishedAt;
             _isRead = isRead;
         }
@@ -1020,8 +1075,10 @@ namespace SilentNotes.ViewModels
             Title = cached.Title;
             Link = cached.Link;
             Summary = cached.Summary;
-            ContentHtml = RssFeedParser.SanitizeHtml(cached.ContentHtml);
-            ContentPlain = RssFeedParser.StripHtml(cached.ContentHtml);
+            _isOffline = cached.IsOffline && !string.IsNullOrWhiteSpace(cached.OfflineHtml);
+            string html = _isOffline ? cached.OfflineHtml : cached.ContentHtml;
+            _contentHtml = RssFeedParser.SanitizeHtml(html);
+            _contentPlain = RssFeedParser.StripHtml(html);
             PublishedAt = cached.PublishedAt;
             _isRead = isRead;
         }
@@ -1032,9 +1089,44 @@ namespace SilentNotes.ViewModels
         public string Title { get; }
         public string Link { get; }
         public string Summary { get; }
-        public string ContentHtml { get; }
-        public string ContentPlain { get; }
+        public string ContentHtml { get { return _contentHtml; } }
+        public string ContentPlain { get { return _contentPlain; } }
         public DateTime? PublishedAt { get; }
+
+        /// <summary>Gets a value indicating whether a full offline copy is stored.</summary>
+        public bool IsOffline
+        {
+            get { return _isOffline; }
+            private set
+            {
+                if (SetProperty(ref _isOffline, value))
+                    OnPropertyChanged(nameof(OfflineBadge));
+            }
+        }
+
+        /// <summary>Gets a short badge for the article list.</summary>
+        public string OfflineBadge
+        {
+            get { return _isOffline ? "★" : string.Empty; }
+        }
+
+        /// <summary>Replaces the article body with a stored offline copy.</summary>
+        public void SetOffline(string html)
+        {
+            _contentHtml = RssFeedParser.SanitizeHtml(html);
+            _contentPlain = RssFeedParser.StripHtml(html);
+            IsOffline = true;
+            OnPropertyChanged(nameof(ContentHtml), nameof(ContentPlain));
+        }
+
+        /// <summary>Removes the offline copy and falls back to the feed body.</summary>
+        public void ClearOffline(string feedHtml)
+        {
+            _contentHtml = RssFeedParser.SanitizeHtml(feedHtml);
+            _contentPlain = RssFeedParser.StripHtml(feedHtml);
+            IsOffline = false;
+            OnPropertyChanged(nameof(ContentHtml), nameof(ContentPlain));
+        }
 
         public bool IsRead
         {

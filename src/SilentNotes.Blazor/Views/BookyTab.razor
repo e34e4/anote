@@ -24,6 +24,26 @@
 	.booky-draft-overlay {
 		z-index: 1300;
 	}
+	.booky-offline-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 1400;
+		background: var(--mud-palette-background);
+		display: flex;
+		flex-direction: column;
+		padding: 8px;
+	}
+	.booky-offline-sheet {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 auto;
+		overflow: hidden;
+	}
+	.booky-offline-body {
+		overflow-y: auto;
+		flex: 1 1 auto;
+		padding-bottom: 24px;
+	}
 	.theme-dark .booky-card {
 		background-color: #000000;
 	}
@@ -83,6 +103,28 @@
 	</div>
 }
 
+@if (ViewModel.IsOfflineVisible)
+{
+	<div class="booky-offline-overlay">
+		<div class="booky-offline-sheet">
+			<div class="d-flex align-center mb-2">
+				<MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => ViewModel.CloseOfflineCommand.Execute(null))" />
+				<MudText Typo="Typo.subtitle1" Class="flex-grow-1">@ViewModel.OfflineTitle</MudText>
+			</div>
+			<div class="booky-offline-body">
+				@if (!string.IsNullOrWhiteSpace(ViewModel.OfflineHtml))
+				{
+					<div class="rss-article-content">@((MarkupString)ViewModel.OfflineHtml)</div>
+				}
+				else
+				{
+					<MudText>@ViewModel.OfflinePlain</MudText>
+				}
+			</div>
+		</div>
+	</div>
+}
+
 @code {
 	/// <summary>
 	/// Gets or sets the view model of the booky tab.
@@ -94,7 +136,7 @@
 	{
 		return @<MudPaper Elevation="1" Class="pa-2 my-2 booky-card d-flex align-start">
 			<div class="flex-grow-1 overflow-hidden" style="cursor:pointer" @onclick="() => ViewModel.OpenCommand.Execute(bookmark)">
-				<MudText Class="booky-title">@bookmark.Title</MudText>
+				<MudText Class="booky-title">@bookmark.Title @bookmark.OfflineBadge</MudText>
 				@if (!string.IsNullOrWhiteSpace(bookmark.Quote))
 				{
 					<MudText Class="booky-quote mud-text-secondary mt-1">@bookmark.Quote</MudText>
@@ -102,6 +144,13 @@
 				<MudText Typo="Typo.caption" Class="booky-host mud-text-secondary mt-1">@bookmark.Url</MudText>
 			</div>
 			<MudStack Row="true" Spacing="0" Class="flex-shrink-0">
+				@if (bookmark.IsOffline)
+				{
+					<MudIconButton Icon="@Icons.Material.Filled.MenuBook" Size="Size.Small" OnClick="@(() => ViewModel.ReadOfflineCommand.Execute(bookmark))" title="@LanguageService["booky_read_offline"]" />
+				}
+				<MudIconButton Icon="@(bookmark.IsOffline ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)" Size="Size.Small"
+					Color="@(bookmark.IsOffline ? Color.Warning : Color.Inherit)"
+					OnClick="@(() => ViewModel.SaveOfflineCommand.Execute(bookmark))" title="@LanguageService["rss_offline"]" />
 				<AskAiButton Subject="@bookmark.Title" ContextText="@($"{bookmark.Title}\n{bookmark.Url}\n{bookmark.Quote}")" />
 				<MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" OnClick="@(() => ViewModel.OpenCommand.Execute(bookmark))" title="@LanguageService["booky_open"]" />
 				<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ViewModel.DeleteCommand.Execute(bookmark))" title="@LanguageService["booky_delete"]" />

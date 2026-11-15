@@ -350,6 +350,14 @@ namespace SilentNotes
     }
 
     /// <summary>
+    /// Message to inform the notes list that notes were added or changed outside the main view
+    /// (for example by an OCR capture or a share target).
+    /// </summary>
+    public class NotesChangedMessage
+    {
+    }
+
+    /// <summary>
     /// Enumeration of possible sources of a sent message.
     /// </summary>
     public enum MessageSender

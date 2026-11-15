@@ -96,6 +96,7 @@ namespace SilentNotes.Models
             CameraPhotoFormat = "jpg";
             CameraPhotoQuality = 25;
             CalculatorHistory = new List<CalculatorHistoryEntryModel>();
+            CalculatorVariables = new List<CalculatorVariableEntryModel>();
             CameraUseFrontLens = false;
             CameraFlashMode = "auto";
             CameraAutoSaveToGallery = true;
@@ -648,6 +649,13 @@ namespace SilentNotes.Models
         public List<CalculatorHistoryEntryModel> CalculatorHistory { get; set; }
 
         /// <summary>
+        /// Gets or sets the persistent named variables of the programmer calculator.
+        /// </summary>
+        [XmlArray("calc_variables")]
+        [XmlArrayItem("variable")]
+        public List<CalculatorVariableEntryModel> CalculatorVariables { get; set; }
+
+        /// <summary>
         /// Gets or sets the photo file format for the Camera tab ("jpg", "png", or "webp").
         /// </summary>
         [XmlElement("camera_photo_format")]
@@ -1016,5 +1024,19 @@ namespace SilentNotes.Models
         /// <summary>Gets or sets the formatted result.</summary>
         [XmlElement("result")]
         public string Result { get; set; }
+    }
+
+    /// <summary>
+    /// A persistent named variable of the programmer calculator.
+    /// </summary>
+    public class CalculatorVariableEntryModel
+    {
+        /// <summary>Gets or sets the lower case variable name.</summary>
+        [XmlAttribute("name")]
+        public string Name { get; set; }
+
+        /// <summary>Gets or sets the numeric value.</summary>
+        [XmlAttribute("value")]
+        public double Value { get; set; }
     }
 }

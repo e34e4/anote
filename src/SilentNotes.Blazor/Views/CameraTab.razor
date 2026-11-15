@@ -202,6 +202,34 @@
 		color: #38bdf8;
 		margin-right: 4px;
 	}
+	.cam-ocr-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 1450;
+		background: rgba(0, 0, 0, 0.75);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 12px;
+	}
+	.cam-ocr-sheet {
+		background: var(--mud-palette-surface);
+		color: var(--mud-palette-text-primary);
+		border-radius: 14px;
+		padding: 14px;
+		width: 100%;
+		max-width: 560px;
+		max-height: 80vh;
+		display: flex;
+		flex-direction: column;
+	}
+	.cam-ocr-text {
+		overflow-y: auto;
+		white-space: pre-wrap;
+		word-break: break-word;
+		font-size: 0.95rem;
+		line-height: 1.45;
+	}
 </style>
 
 <div class="cam-root">
@@ -349,6 +377,7 @@
 								<MudIconButton Icon="@Icons.Material.Filled.Crop" Size="Size.Small" OnClick="() => CropPhotoAsync(item)" title="@LanguageService["file_crop"]" />
 							}
 							<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => ViewModel.StartRenameCommand.Execute(item)" title="@LanguageService["camera_rename"]" />
+							<MudIconButton Icon="@Icons.Material.Filled.TextFields" Size="Size.Small" OnClick="() => ViewModel.OcrPhotoCommand.Execute(item)" title="@LanguageService["camera_ocr"]" />
 							<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="() => SaveToGalleryAsync(item)" title="@LanguageService["camera_save_gallery"]" />
 							<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small" OnClick="() => SaveToWebdavAsync(item)" title="@LanguageService["webdav_quick_save"]" />
 							<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" OnClick="() => SharePhotoAsync(item)" title="@LanguageService["share"]" />
@@ -360,6 +389,27 @@
 		}
 	}
 </div>
+
+@if (ViewModel.IsOcrVisible)
+{
+	<div class="cam-ocr-overlay">
+		<div class="cam-ocr-sheet">
+			<div class="d-flex align-center mb-2">
+				<MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="() => ViewModel.CloseOcrCommand.Execute(null)" />
+				<MudText Typo="Typo.subtitle1" Class="flex-grow-1">@LanguageService["camera_ocr"]</MudText>
+				@if (ViewModel.IsOcrBusy)
+				{
+					<MudProgressCircular Indeterminate="true" Size="Size.Small" />
+				}
+			</div>
+			<div class="cam-ocr-text">@ViewModel.OcrText</div>
+			<div class="d-flex gap-2 mt-3">
+				<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => ViewModel.CopyOcrCommand.Execute(null)">@LanguageService["camera_ocr_copy"]</MudButton>
+				<MudButton Variant="Variant.Outlined" OnClick="() => ViewModel.SaveOcrNoteCommand.Execute(null)">@LanguageService["camera_ocr_to_note"]</MudButton>
+			</div>
+		</div>
+	</div>
+}
 
 @code {
 	[Parameter]

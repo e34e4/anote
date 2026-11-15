@@ -66,6 +66,12 @@ namespace SilentNotes.Models
         public string SiteUrl { get; set; }
 
         /// <summary>
+        /// Gets or sets an optional OPML folder / category name.
+        /// </summary>
+        [XmlElement("category")]
+        public string Category { get; set; }
+
+        /// <summary>
         /// Sets the <see cref="ModifiedAt"/> property to the current UTC time.
         /// </summary>
         public void RefreshModifiedAt()
@@ -89,6 +95,7 @@ namespace SilentNotes.Models
             target.Title = this.Title;
             target.Url = this.Url;
             target.SiteUrl = this.SiteUrl;
+            target.Category = this.Category;
         }
 
         /// <summary>

@@ -218,6 +218,9 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\RssReadItemListModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\RssCachedArticleModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IRssArticleCacheService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\ArticleOfflineService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IOcrService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\NullOcrService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\RssArticleCacheServiceBase.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\RssViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\RssFeedParser.cs" />
@@ -226,6 +229,9 @@
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\CalendarViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\ContactsImporter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\CalculatorEngine.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\DateIntervalEngine.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\ReadabilityParser.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\CaptureNoteHelper.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\DeviceCalendarModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\DeviceEventModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\CalendarIntentRequest.cs" />

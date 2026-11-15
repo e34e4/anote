@@ -13,6 +13,7 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.ViewModels
 {
@@ -28,6 +29,10 @@ namespace SilentNotes.ViewModels
         private readonly IFilePickerService _filePickerService;
         private readonly ILanguageService _languageService;
         private readonly IFeedbackService _feedbackService;
+        private readonly IOcrService _ocrService;
+        private readonly IClipboardService _clipboardService;
+        private readonly IRepositoryStorageService _repositoryService;
+        private readonly IMessengerService _messengerService;
 
         private SettingsModel _settings;
         private List<CameraPhotoItemViewModel> _photos = new List<CameraPhotoItemViewModel>();
@@ -35,6 +40,9 @@ namespace SilentNotes.ViewModels
         private string _renamingFileName;
         private string _draftNewName;
         private bool _isBusy;
+        private bool _isOcrVisible;
+        private bool _isOcrBusy;
+        private string _ocrText;
 
         public CameraViewModel(
             ICameraService cameraService,
@@ -42,7 +50,11 @@ namespace SilentNotes.ViewModels
             IFilePickerService filePickerService,
             ILanguageService languageService,
             IFeedbackService feedbackService,
-            IImageEditorService imageEditorService = null)
+            IImageEditorService imageEditorService = null,
+            IOcrService ocrService = null,
+            IClipboardService clipboardService = null,
+            IRepositoryStorageService repositoryService = null,
+            IMessengerService messengerService = null)
         {
             _cameraService = cameraService;
             _settingsService = settingsService;
@@ -50,6 +62,10 @@ namespace SilentNotes.ViewModels
             _languageService = languageService;
             _feedbackService = feedbackService;
             _imageEditorService = imageEditorService;
+            _ocrService = ocrService;
+            _clipboardService = clipboardService;
+            _repositoryService = repositoryService;
+            _messengerService = messengerService;
 
             _settings = _settingsService.LoadSettingsOrDefault();
 
@@ -71,6 +87,10 @@ namespace SilentNotes.ViewModels
             SaveRenameCommand = new RelayCommand(SaveRename);
             CancelRenameCommand = new RelayCommand(CancelRename);
             DeletePhotoCommand = new AsyncRelayCommand<CameraPhotoItemViewModel>(DeletePhotoAsync);
+            OcrPhotoCommand = new AsyncRelayCommand<CameraPhotoItemViewModel>(OcrPhotoAsync);
+            CopyOcrCommand = new AsyncRelayCommand(CopyOcrAsync);
+            SaveOcrNoteCommand = new AsyncRelayCommand(SaveOcrNoteAsync);
+            CloseOcrCommand = new RelayCommand(CloseOcr);
 
             Reload();
         }
@@ -96,6 +116,31 @@ namespace SilentNotes.ViewModels
         public ICommand SaveRenameCommand { get; }
         public ICommand CancelRenameCommand { get; }
         public ICommand DeletePhotoCommand { get; }
+        public ICommand OcrPhotoCommand { get; }
+        public ICommand CopyOcrCommand { get; }
+        public ICommand SaveOcrNoteCommand { get; }
+        public ICommand CloseOcrCommand { get; }
+
+        /// <summary>Gets a value indicating whether the OCR result overlay is open.</summary>
+        public bool IsOcrVisible
+        {
+            get => _isOcrVisible;
+            private set => SetProperty(ref _isOcrVisible, value);
+        }
+
+        /// <summary>Gets a value indicating whether text recognition is running.</summary>
+        public bool IsOcrBusy
+        {
+            get => _isOcrBusy;
+            private set => SetProperty(ref _isOcrBusy, value);
+        }
+
+        /// <summary>Gets the recognized text of the OCR result overlay.</summary>
+        public string OcrText
+        {
+            get => _ocrText;
+            private set => SetProperty(ref _ocrText, value);
+        }
 
         /// <summary>Gets a value indicating whether camera capture is supported on this platform.</summary>
         public bool IsSupported => _cameraService.IsSupported;
@@ -658,6 +703,82 @@ namespace SilentNotes.ViewModels
 
             _cameraService.DeletePhoto(item.FileName);
             Reload();
+        }
+
+        public async Task OcrPhotoAsync(CameraPhotoItemViewModel item)
+        {
+            if (item == null)
+                return;
+            if (_ocrService == null || !_ocrService.IsSupported)
+            {
+                _feedbackService?.ShowToast(_languageService["camera_ocr_unsupported"], FeedbackSeverity.Warning);
+                return;
+            }
+
+            try
+            {
+                IsOcrBusy = true;
+                string path = _cameraService.GetPhotoFilePath(item.FileName);
+                if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                {
+                    _feedbackService?.ShowToast(_languageService["camera_ocr_failed"], FeedbackSeverity.Warning);
+                    return;
+                }
+
+                byte[] bytes = await File.ReadAllBytesAsync(path);
+                string text = await _ocrService.RecognizeTextAsync(bytes);
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    _feedbackService?.ShowToast(_languageService["camera_ocr_empty"], FeedbackSeverity.Warning);
+                    return;
+                }
+
+                OcrText = text;
+                IsOcrVisible = true;
+            }
+            catch (Exception)
+            {
+                _feedbackService?.ShowToast(_languageService["camera_ocr_failed"], FeedbackSeverity.Warning);
+            }
+            finally
+            {
+                IsOcrBusy = false;
+            }
+        }
+
+        private async Task CopyOcrAsync()
+        {
+            if (string.IsNullOrWhiteSpace(OcrText) || _clipboardService == null)
+                return;
+            await _clipboardService.SetTextAsync(OcrText);
+            _feedbackService?.ShowToast(_languageService["camera_ocr_copied"], FeedbackSeverity.Info);
+        }
+
+        private async Task SaveOcrNoteAsync()
+        {
+            if (string.IsNullOrWhiteSpace(OcrText) || _repositoryService == null)
+                return;
+
+            try
+            {
+                _repositoryService.LoadRepositoryOrDefault(out NoteRepositoryModel repository);
+                CaptureNoteHelper.CreateTextNote(repository, _languageService["camera_ocr_note_title"], OcrText);
+                _repositoryService.TrySaveRepository(repository);
+                _messengerService?.Send(new NotesChangedMessage());
+                _feedbackService?.ShowToast(_languageService["camera_ocr_note_saved"], FeedbackSeverity.Info);
+                CloseOcr();
+            }
+            catch (Exception)
+            {
+                _feedbackService?.ShowToast(_languageService["camera_ocr_failed"], FeedbackSeverity.Warning);
+            }
+            await Task.CompletedTask;
+        }
+
+        private void CloseOcr()
+        {
+            IsOcrVisible = false;
+            OcrText = null;
         }
 
         private void SaveSettings()

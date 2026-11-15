@@ -46,12 +46,16 @@ If you want to help, please read the [contribution guidelines](CONTRIBUTING.md).
 * ✔ Collect bookmarks, synchronized with the Booky browser extension.
 * ✔ Keep a small phone book inside the encrypted repository.
 * ✔ A calculator with a scientific mode.
+* ✔ A programmer mode with persistent named variables (e.g. `tax = 0.21`), hex/bin/oct literals and bitwise
+  operators, data-size conversion and date-interval math shared with the calendar date tools.
 * ✔ Show the calendars of the device with their events and reminders, plus date tools.
 * ✔ Alarms, a world clock, a timer, a stopwatch and a compass.
 * ✔ Read and write SMS, and act as the default SMS app.
 * ✔ Read, search and send emails across multiple IMAP/SMTP accounts in the Mail tab.
 * ✔ Use Telegram from inside aNote, with multiple accounts and an optional MTProto proxy.
-* ✔ Follow RSS and Atom feeds, with OPML import/export.
+* ✔ Follow RSS and Atom feeds, with standard OPML import/export.
+* ✔ Save a clutter-free offline copy of starred RSS articles and bookmarks, extracted with a built-in
+  readability parser and cached in SQLite.
 * ✔ Keep logins with usernames, passwords, TOTP codes and URIs in an encrypted password vault, import from Bitwarden and use it as the Android Autofill service.
 * ✔ Scan and create QR codes, decode them from image files and keep a scan history.
 * ✔ Record sound, record the screen, take screenshots, play recordings back and save them to the device.
@@ -64,6 +68,10 @@ If you want to help, please read the [contribution guidelines](CONTRIBUTING.md).
 * ✔ Ask AI about notes, RSS articles and files, using OpenAI-compatible providers.
 * ✔ Act as the default system browser (URLCheck mode) to inspect, clean and route links to any installed browser.
 * ✔ Act as the default assistant, so the assist gesture can dictate a note and attach a screenshot.
+* ✔ A Quick Settings tile for instant scratchpad capture over any app.
+* ✔ Share text or links from other apps straight into a note, a bookmark, an RSS subscription or the
+  clipboard, and share images or files into the clipboard, Camera tab, Reader or a note attachment.
+* ✔ Capture text from camera photos and screenshots with ML Kit OCR, then copy it or save it as a note.
 * ✔ Floating button quick menu (draggable & resizable floating window) for all tabs, system keyboard switching, and customizable directional swipe / long-press / double-click app launcher gestures.
 * ✔ A system page with battery, hardware, storage, processes, memory, network tools and logcat, plus an in-app log viewer.
 * ✔ Reorder the tabs on the main screen.

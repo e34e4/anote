@@ -108,6 +108,83 @@
 		font-family: ui-monospace, "Cascadia Code", monospace;
 		min-height: 48px;
 	}
+	.calc-mode-bar {
+		display: flex;
+		gap: 6px;
+		margin-bottom: 6px;
+	}
+	.calc-mode-bar .calc-conv-cat {
+		flex: 1 1 0;
+	}
+	.calc-base-out {
+		margin: 8px 0;
+		padding: 8px 10px;
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		background: #0d0d0d;
+		color: #c8e6c9;
+		font-family: ui-monospace, "Cascadia Code", monospace;
+		font-size: 0.82rem;
+		line-height: 1.25;
+		white-space: pre;
+		overflow-x: auto;
+	}
+	.calc-var-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin-bottom: 6px;
+	}
+	.calc-var-chip {
+		display: flex;
+		align-items: center;
+		border: 1px solid #2b2b2b;
+		border-radius: 10px;
+		overflow: hidden;
+	}
+	.calc-var-name {
+		background: #0c0c0c;
+		color: #ffffff;
+		border: 0;
+		padding: 6px 8px;
+		font-size: 0.8rem;
+	}
+	.calc-var-del {
+		background: #1a1a1a;
+		color: #ef9a9a;
+		border: 0;
+		padding: 6px 8px;
+		font-size: 0.9rem;
+	}
+	.calc-var-form {
+		display: flex;
+		gap: 6px;
+		margin-bottom: 8px;
+	}
+	.calc-date-panel {
+		margin-top: 8px;
+	}
+	.calc-date-field {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-bottom: 8px;
+	}
+	.calc-date-field label {
+		min-width: 44px;
+		color: #9e9e9e;
+		font-size: 0.85rem;
+	}
+	.calc-date-input {
+		flex: 1;
+		min-width: 0;
+		background: #0d0d0d;
+		color: #ffffff;
+		border: 1px solid #2b2b2b;
+		border-radius: 8px;
+		padding: 8px;
+		font-size: 0.95rem;
+	}
 </style>
 
 <div class="calc-root">
@@ -119,7 +196,6 @@
 			<button class="calc-conv-cat @(ViewModel.IsNetworkingConverter ? "active" : null)" @onclick="() => ViewModel.SetConverterCategoryCommand.Execute(UnitConverterEngine.ConverterCategory.Networking)">Net</button>
 			<button class="calc-conv-cat @(ViewModel.IsCurrencyConverter ? "active" : null)" @onclick="() => ViewModel.SetConverterCategoryCommand.Execute(UnitConverterEngine.ConverterCategory.Currency)">Currency</button>
 		</div>
-
 		@if (ViewModel.IsPhysicsConverter)
 		{
 			<MudSelect T="string" Value="ViewModel.PhysicsGroupId" ValueChanged="OnPhysicsGroup" Label="Quantity" Variant="Variant.Outlined" Dense="true" Class="mb-2">
@@ -204,74 +280,146 @@
 	}
 	else
 	{
-		<div class="calc-display">
-			<div class="calc-expression">@(string.IsNullOrEmpty(ViewModel.Expression) ? "0" : ViewModel.Expression)</div>
-			<div class="calc-result">@ViewModel.Result</div>
+		<div class="calc-mode-bar">
+			<button class="calc-conv-cat @(ViewModel.IsProgrammer ? "active" : null)" @onclick="() => ViewModel.ToggleProgrammerCommand.Execute(null)">Programmer</button>
+			<button class="calc-conv-cat @(ViewModel.IsDateMode ? "active" : null)" @onclick="() => ViewModel.ToggleDateModeCommand.Execute(null)">Date interval</button>
 		</div>
 
-		@if (ViewModel.IsScientific)
+		@if (ViewModel.IsDateMode)
 		{
-			<div class="calc-grid">
-				<button class="calc-btn fn" @onclick='() => Press("sin")'>sin</button>
-				<button class="calc-btn fn" @onclick='() => Press("cos")'>cos</button>
-				<button class="calc-btn fn" @onclick='() => Press("tan")'>tan</button>
-				<button class="calc-btn fn" @onclick='() => Press("ln")'>ln</button>
-
-				<button class="calc-btn fn" @onclick='() => Press("asin")'>sin⁻¹</button>
-				<button class="calc-btn fn" @onclick='() => Press("acos")'>cos⁻¹</button>
-				<button class="calc-btn fn" @onclick='() => Press("atan")'>tan⁻¹</button>
-				<button class="calc-btn fn" @onclick='() => Press("log")'>log</button>
-
-				<button class="calc-btn fn" @onclick='() => Press("√")'>√</button>
-				<button class="calc-btn fn" @onclick='() => Press("^")'>xʸ</button>
-				<button class="calc-btn fn" @onclick='() => Press("π")'>π</button>
-				<button class="calc-btn fn" @onclick='() => Press("e")'>e</button>
-
-				<button class="calc-btn fn" @onclick="() => ViewModel.BracketsCommand.Execute(null)">( )</button>
-				<button class="calc-btn fn" @onclick='() => Press("!")'>n!</button>
-				<button class="calc-btn fn" @onclick='() => Press("exp")'>exp</button>
-				<button class="calc-btn fn" @onclick='() => Press("cot")'>cot</button>
+			<div class="calc-date-panel">
+				<div class="calc-date-field">
+					<label>From</label>
+					<input class="calc-date-input" type="datetime-local" value="@ViewModel.DateFrom" @onchange="OnDateFromChanged" />
+				</div>
+				<div class="calc-date-field">
+					<label>To</label>
+					<input class="calc-date-input" type="datetime-local" value="@ViewModel.DateTo" @onchange="OnDateToChanged" />
+				</div>
+				<div class="calc-date-field">
+					<label>Shift</label>
+					<input class="calc-date-input" type="number" step="any" value="@ViewModel.DateAmount" @oninput="OnDateAmountChanged" />
+					<MudSelect T="string" Value="ViewModel.DateUnit" ValueChanged="OnDateUnitChanged" Dense="true" Variant="Variant.Outlined" Style="min-width:110px;">
+						@foreach (var unit in ViewModel.DateUnits)
+						{
+							<MudSelectItem T="string" Value="@unit.Id">@unit.Label</MudSelectItem>
+						}
+					</MudSelect>
+					<button class="calc-btn fn" style="width:64px;height:40px;" @onclick="() => ViewModel.ShiftDateCommand.Execute(null)">Add</button>
+				</div>
+				<div class="calc-conv-out">@(string.IsNullOrEmpty(ViewModel.DateResult) ? "—" : ViewModel.DateResult)</div>
 			</div>
 		}
-
-		<div class="calc-grid">
-			<button class="calc-btn op" @onclick="() => ViewModel.ClearCommand.Execute(null)">AC</button>
-			<button class="calc-btn op" @onclick="() => ViewModel.DeleteCommand.Execute(null)">⌫</button>
-			<button class="calc-btn op" @onclick='() => Press("%")'>%</button>
-			<button class="calc-btn op" @onclick='() => Press("÷")'>÷</button>
-
-			<button class="calc-btn" @onclick='() => Press("7")'>7</button>
-			<button class="calc-btn" @onclick='() => Press("8")'>8</button>
-			<button class="calc-btn" @onclick='() => Press("9")'>9</button>
-			<button class="calc-btn op" @onclick='() => Press("×")'>×</button>
-
-			<button class="calc-btn" @onclick='() => Press("4")'>4</button>
-			<button class="calc-btn" @onclick='() => Press("5")'>5</button>
-			<button class="calc-btn" @onclick='() => Press("6")'>6</button>
-			<button class="calc-btn op" @onclick='() => Press("-")'>−</button>
-
-			<button class="calc-btn" @onclick='() => Press("1")'>1</button>
-			<button class="calc-btn" @onclick='() => Press("2")'>2</button>
-			<button class="calc-btn" @onclick='() => Press("3")'>3</button>
-			<button class="calc-btn op" @onclick='() => Press("+")'>+</button>
-
-			<button class="calc-btn" @onclick="() => ViewModel.SignCommand.Execute(null)">±</button>
-			<button class="calc-btn" @onclick='() => Press("0")'>0</button>
-			<button class="calc-btn" @onclick='() => Press(".")'>.</button>
-			<button class="calc-btn eq" @onclick="() => ViewModel.CalculateCommand.Execute(null)">=</button>
-		</div>
-
-		@if (ViewModel.HasHistory)
+		else
 		{
-			<div class="calc-history">
-				@foreach (var item in ViewModel.History)
-				{
-					<div class="calc-history-item" @onclick="() => ViewModel.UseHistoryCommand.Execute(item)">
-						<div class="calc-history-expr">@item.Expression</div>
-						<div class="calc-history-res">@item.Result</div>
-					</div>
-				}
+			<div class="calc-display">
+				<div class="calc-expression">@(string.IsNullOrEmpty(ViewModel.Expression) ? "0" : ViewModel.Expression)</div>
+				<div class="calc-result">@ViewModel.Result</div>
 			</div>
+
+			@if (ViewModel.IsProgrammer)
+			{
+				<div class="calc-base-out">@ViewModel.BaseOutput</div>
+
+				<div class="calc-var-list">
+					@foreach (var variable in ViewModel.Variables)
+					{
+						<div class="calc-var-chip">
+							<button class="calc-var-name" @onclick="() => ViewModel.UseVariableCommand.Execute(variable)">@variable.DisplayText</button>
+							<button class="calc-var-del" @onclick="() => ViewModel.DeleteVariableCommand.Execute(variable)">×</button>
+						</div>
+					}
+				</div>
+				<div class="calc-var-form">
+					<input class="calc-date-input" placeholder="name" value="@ViewModel.VariableName" @oninput="OnVariableNameChanged" />
+					<input class="calc-date-input" placeholder="value" value="@ViewModel.VariableValue" @oninput="OnVariableValueChanged" />
+					<button class="calc-btn fn" style="width:64px;height:40px;" @onclick="() => ViewModel.SaveVariableCommand.Execute(null)">Set</button>
+				</div>
+
+				<div class="calc-grid">
+					<button class="calc-btn fn" @onclick='() => Press("&")'>AND</button>
+					<button class="calc-btn fn" @onclick='() => Press("|")'>OR</button>
+					<button class="calc-btn fn" @onclick='() => Press("xor")'>XOR</button>
+					<button class="calc-btn fn" @onclick='() => Press("~")'>NOT</button>
+					<button class="calc-btn" @onclick='() => Press("A")'>A</button>
+					<button class="calc-btn" @onclick='() => Press("B")'>B</button>
+					<button class="calc-btn" @onclick='() => Press("C")'>C</button>
+					<button class="calc-btn" @onclick='() => Press("D")'>D</button>
+					<button class="calc-btn" @onclick='() => Press("E")'>E</button>
+					<button class="calc-btn" @onclick='() => Press("F")'>F</button>
+					<button class="calc-btn fn" @onclick='() => Press("<<")'>&lt;&lt;</button>
+					<button class="calc-btn fn" @onclick='() => Press(">>")'>&gt;&gt;</button>
+					<button class="calc-btn fn" @onclick='() => Press("mod")'>MOD</button>
+					<button class="calc-btn fn" @onclick='() => Press("0x")'>0x</button>
+					<button class="calc-btn fn" @onclick='() => Press("0b")'>0b</button>
+					<button class="calc-btn fn" @onclick='() => Press("0o")'>0o</button>
+				</div>
+			}
+
+			@if (ViewModel.IsScientific)
+			{
+				<div class="calc-grid">
+					<button class="calc-btn fn" @onclick='() => Press("sin")'>sin</button>
+					<button class="calc-btn fn" @onclick='() => Press("cos")'>cos</button>
+					<button class="calc-btn fn" @onclick='() => Press("tan")'>tan</button>
+					<button class="calc-btn fn" @onclick='() => Press("ln")'>ln</button>
+
+					<button class="calc-btn fn" @onclick='() => Press("asin")'>sin⁻¹</button>
+					<button class="calc-btn fn" @onclick='() => Press("acos")'>cos⁻¹</button>
+					<button class="calc-btn fn" @onclick='() => Press("atan")'>tan⁻¹</button>
+					<button class="calc-btn fn" @onclick='() => Press("log")'>log</button>
+
+					<button class="calc-btn fn" @onclick='() => Press("√")'>√</button>
+					<button class="calc-btn fn" @onclick='() => Press("^")'>xʸ</button>
+					<button class="calc-btn fn" @onclick='() => Press("π")'>π</button>
+					<button class="calc-btn fn" @onclick='() => Press("e")'>e</button>
+
+					<button class="calc-btn fn" @onclick="() => ViewModel.BracketsCommand.Execute(null)">( )</button>
+					<button class="calc-btn fn" @onclick='() => Press("!")'>n!</button>
+					<button class="calc-btn fn" @onclick='() => Press("exp")'>exp</button>
+					<button class="calc-btn fn" @onclick='() => Press("cot")'>cot</button>
+				</div>
+			}
+
+			<div class="calc-grid">
+				<button class="calc-btn op" @onclick="() => ViewModel.ClearCommand.Execute(null)">AC</button>
+				<button class="calc-btn op" @onclick="() => ViewModel.DeleteCommand.Execute(null)">⌫</button>
+				<button class="calc-btn op" @onclick='() => Press("%")'>%</button>
+				<button class="calc-btn op" @onclick='() => Press("÷")'>÷</button>
+
+				<button class="calc-btn" @onclick='() => Press("7")'>7</button>
+				<button class="calc-btn" @onclick='() => Press("8")'>8</button>
+				<button class="calc-btn" @onclick='() => Press("9")'>9</button>
+				<button class="calc-btn op" @onclick='() => Press("×")'>×</button>
+
+				<button class="calc-btn" @onclick='() => Press("4")'>4</button>
+				<button class="calc-btn" @onclick='() => Press("5")'>5</button>
+				<button class="calc-btn" @onclick='() => Press("6")'>6</button>
+				<button class="calc-btn op" @onclick='() => Press("-")'>−</button>
+
+				<button class="calc-btn" @onclick='() => Press("1")'>1</button>
+				<button class="calc-btn" @onclick='() => Press("2")'>2</button>
+				<button class="calc-btn" @onclick='() => Press("3")'>3</button>
+				<button class="calc-btn op" @onclick='() => Press("+")'>+</button>
+
+				<button class="calc-btn" @onclick="() => ViewModel.SignCommand.Execute(null)">±</button>
+				<button class="calc-btn" @onclick='() => Press("0")'>0</button>
+				<button class="calc-btn" @onclick='() => Press(".")'>.</button>
+				<button class="calc-btn eq" @onclick="() => ViewModel.CalculateCommand.Execute(null)">=</button>
+			</div>
+
+			@if (ViewModel.HasHistory)
+			{
+				<div class="calc-history">
+					@foreach (var item in ViewModel.History)
+					{
+						<div class="calc-history-item" @onclick="() => ViewModel.UseHistoryCommand.Execute(item)">
+							<div class="calc-history-expr">@item.Expression</div>
+							<div class="calc-history-res">@item.Result</div>
+						</div>
+					}
+				</div>
+			}
 		}
 	}
 </div>
@@ -301,4 +449,10 @@
 	private void OnToBase(int value) => ViewModel.NumberToBase = value;
 	private void OnHexAscii(string value) => ViewModel.HexAsciiInput = value;
 	private void OnNetworkInput(string value) => ViewModel.NetworkInput = value;
+	private void OnVariableNameChanged(ChangeEventArgs e) => ViewModel.VariableName = e?.Value?.ToString() ?? string.Empty;
+	private void OnVariableValueChanged(ChangeEventArgs e) => ViewModel.VariableValue = e?.Value?.ToString() ?? string.Empty;
+	private void OnDateFromChanged(ChangeEventArgs e) => ViewModel.DateFrom = e?.Value?.ToString() ?? string.Empty;
+	private void OnDateToChanged(ChangeEventArgs e) => ViewModel.DateTo = e?.Value?.ToString() ?? string.Empty;
+	private void OnDateAmountChanged(ChangeEventArgs e) => ViewModel.DateAmount = e?.Value?.ToString() ?? string.Empty;
+	private void OnDateUnitChanged(string value) => ViewModel.DateUnit = value;
 }

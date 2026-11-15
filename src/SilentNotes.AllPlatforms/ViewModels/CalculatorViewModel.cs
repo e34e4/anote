@@ -47,6 +47,18 @@ namespace SilentNotes.ViewModels
         private string _networkInput = "192.168.1.0/24";
         private string _csTool = "base";
         private string _hexAsciiInput = string.Empty;
+        private bool _isProgrammer;
+        private bool _isDateMode;
+        private string _baseOutput = string.Empty;
+        private string _variableName = string.Empty;
+        private string _variableValue = string.Empty;
+        private string _dateFrom = string.Empty;
+        private string _dateTo = string.Empty;
+        private string _dateAmount = "1";
+        private string _dateUnit = "d";
+        private string _dateResult = string.Empty;
+        private readonly Dictionary<string, double> _variables = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        private readonly List<CalculatorVariableItem> _variableList = new List<CalculatorVariableItem>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="CalculatorViewModel"/> class.
@@ -70,9 +82,17 @@ namespace SilentNotes.ViewModels
             UseHistoryCommand = new RelayCommand<CalculatorHistoryItem>(UseHistory);
             ClearHistoryCommand = new RelayCommand(ClearHistory);
             SetConverterCategoryCommand = new RelayCommand<UnitConverterEngine.ConverterCategory>(SetConverterCategory);
+            ToggleProgrammerCommand = new RelayCommand(() => IsProgrammer = !IsProgrammer);
+            ToggleDateModeCommand = new RelayCommand(() => IsDateMode = !IsDateMode);
+            SaveVariableCommand = new RelayCommand(SaveVariable);
+            DeleteVariableCommand = new RelayCommand<CalculatorVariableItem>(DeleteVariable);
+            UseVariableCommand = new RelayCommand<CalculatorVariableItem>(UseVariable);
+            ShiftDateCommand = new RelayCommand(ShiftDate);
 
             LoadHistory();
+            LoadVariables();
             RecalculateConverter();
+            ResetDateTools();
         }
 
         /// <summary>Gets the command which appends a token to the expression.</summary>
@@ -110,6 +130,24 @@ namespace SilentNotes.ViewModels
 
         /// <summary>Gets the command which clears the history.</summary>
         public ICommand ClearHistoryCommand { get; }
+
+        /// <summary>Gets the command which toggles the programmer keypad.</summary>
+        public ICommand ToggleProgrammerCommand { get; }
+
+        /// <summary>Gets the command which toggles the date interval mode.</summary>
+        public ICommand ToggleDateModeCommand { get; }
+
+        /// <summary>Gets the command which stores the entered named variable.</summary>
+        public ICommand SaveVariableCommand { get; }
+
+        /// <summary>Gets the command which removes a named variable.</summary>
+        public ICommand DeleteVariableCommand { get; }
+
+        /// <summary>Gets the command which inserts a variable name into the expression.</summary>
+        public ICommand UseVariableCommand { get; }
+
+        /// <summary>Gets the command which shifts the start date by the entered interval.</summary>
+        public ICommand ShiftDateCommand { get; }
 
         /// <summary>Gets the entered expression.</summary>
         public string Expression
@@ -157,6 +195,115 @@ namespace SilentNotes.ViewModels
         public bool IsCsConverter => _converterCategory == UnitConverterEngine.ConverterCategory.ComputerScience;
         public bool IsNetworkingConverter => _converterCategory == UnitConverterEngine.ConverterCategory.Networking;
         public bool IsCurrencyConverter => _converterCategory == UnitConverterEngine.ConverterCategory.Currency;
+
+        /// <summary>Gets or sets a value indicating whether the programmer keypad is shown.</summary>
+        public bool IsProgrammer
+        {
+            get { return _isProgrammer; }
+            set
+            {
+                if (SetProperty(ref _isProgrammer, value))
+                {
+                    if (value)
+                    {
+                        IsDateMode = false;
+                        IsConverterMode = false;
+                    }
+                    RefreshBaseOutput();
+                }
+            }
+        }
+
+        /// <summary>Gets or sets a value indicating whether the date interval mode is shown.</summary>
+        public bool IsDateMode
+        {
+            get { return _isDateMode; }
+            set
+            {
+                if (SetProperty(ref _isDateMode, value))
+                {
+                    if (value)
+                    {
+                        IsProgrammer = false;
+                        IsConverterMode = false;
+                        ResetDateTools();
+                    }
+                }
+            }
+        }
+
+        /// <summary>Gets the representation of the current value in hex, dec, oct and bin.</summary>
+        public string BaseOutput
+        {
+            get { return _baseOutput; }
+            private set { SetProperty(ref _baseOutput, value); }
+        }
+
+        /// <summary>Gets the persistent named variables.</summary>
+        public IReadOnlyList<CalculatorVariableItem> Variables
+        {
+            get { return _variableList; }
+        }
+
+        /// <summary>Gets a value indicating whether any named variables are defined.</summary>
+        public bool HasVariables
+        {
+            get { return _variableList.Count > 0; }
+        }
+
+        public string VariableName
+        {
+            get { return _variableName; }
+            set { SetProperty(ref _variableName, value); }
+        }
+
+        public string VariableValue
+        {
+            get { return _variableValue; }
+            set { SetProperty(ref _variableValue, value); }
+        }
+
+        public string DateFrom
+        {
+            get { return _dateFrom; }
+            set { if (SetProperty(ref _dateFrom, value)) UpdateDateResult(); }
+        }
+
+        public string DateTo
+        {
+            get { return _dateTo; }
+            set { if (SetProperty(ref _dateTo, value)) UpdateDateResult(); }
+        }
+
+        public string DateAmount
+        {
+            get { return _dateAmount; }
+            set { SetProperty(ref _dateAmount, value); }
+        }
+
+        public string DateUnit
+        {
+            get { return _dateUnit; }
+            set { SetProperty(ref _dateUnit, value); }
+        }
+
+        public string DateResult
+        {
+            get { return _dateResult; }
+            private set { SetProperty(ref _dateResult, value); }
+        }
+
+        /// <summary>Gets the units which can be used to shift a date.</summary>
+        public IReadOnlyList<CalculatorDateUnit> DateUnits { get; } = new[]
+        {
+            new CalculatorDateUnit("d", "Days"),
+            new CalculatorDateUnit("w", "Weeks"),
+            new CalculatorDateUnit("mo", "Months"),
+            new CalculatorDateUnit("y", "Years"),
+            new CalculatorDateUnit("h", "Hours"),
+            new CalculatorDateUnit("min", "Minutes"),
+            new CalculatorDateUnit("s", "Seconds"),
+        };
 
         public IReadOnlyList<UnitConverterEngine.UnitGroup> PhysicsGroups => UnitConverterEngine.PhysicsGroups;
         public IReadOnlyList<UnitConverterEngine.UnitOption> PhysicsUnits =>
@@ -409,11 +556,35 @@ namespace SilentNotes.ViewModels
             if (string.IsNullOrWhiteSpace(expression) || IsPlainNumber(expression))
             {
                 Result = string.Empty;
+                RefreshBaseOutput();
                 return;
             }
 
-            string value = CalculatorEngine.Evaluate(Complete(expression), UseDegrees);
+            string value = CalculatorEngine.Evaluate(Complete(expression), UseDegrees, _variables);
             Result = value ?? string.Empty;
+            RefreshBaseOutput();
+        }
+
+        private void RefreshBaseOutput()
+        {
+            string expression = _expression ?? string.Empty;
+            double numericValue;
+            if (IsPlainNumber(expression) &&
+                double.TryParse(expression, NumberStyles.Float, CultureInfo.InvariantCulture, out numericValue))
+            {
+                BaseOutput = CalculatorEngine.FormatAllBases(numericValue);
+                return;
+            }
+
+            string evaluated = CalculatorEngine.Evaluate(Complete(expression), UseDegrees, _variables);
+            if (!string.IsNullOrWhiteSpace(evaluated) &&
+                double.TryParse(evaluated, NumberStyles.Float, CultureInfo.InvariantCulture, out numericValue))
+            {
+                BaseOutput = CalculatorEngine.FormatAllBases(numericValue);
+                return;
+            }
+
+            BaseOutput = string.Empty;
         }
 
         private void Input(string append)
@@ -591,8 +762,20 @@ namespace SilentNotes.ViewModels
             if (string.IsNullOrWhiteSpace(expression) || IsPlainNumber(expression))
                 return;
 
+            if (CalculatorEngine.TryEvaluateAssignment(expression, UseDegrees, _variables, out _, out string assignedValue))
+            {
+                AddHistory(expression, assignedValue);
+                Expression = assignedValue;
+                Result = string.Empty;
+                _justEvaluated = true;
+                PersistVariables();
+                NotifyVariablesChanged();
+                RefreshBaseOutput();
+                return;
+            }
+
             string completed = Complete(expression);
-            string value = CalculatorEngine.Evaluate(completed, UseDegrees);
+            string value = CalculatorEngine.Evaluate(completed, UseDegrees, _variables);
             if (value == null)
             {
                 Result = _languageService["calc_error"];
@@ -603,6 +786,146 @@ namespace SilentNotes.ViewModels
             Expression = value;
             Result = string.Empty;
             _justEvaluated = true;
+            RefreshBaseOutput();
+        }
+
+        private void LoadVariables()
+        {
+            _variables.Clear();
+            _variableList.Clear();
+            if (_settingsService == null)
+                return;
+
+            try
+            {
+                SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+                if (settings.CalculatorVariables == null)
+                    return;
+
+                foreach (CalculatorVariableEntryModel entry in settings.CalculatorVariables)
+                {
+                    if (entry == null || string.IsNullOrWhiteSpace(entry.Name))
+                        continue;
+                    string name = entry.Name.Trim().ToLowerInvariant();
+                    _variables[name] = entry.Value;
+                    _variableList.Add(new CalculatorVariableItem(name, entry.Value));
+                }
+                _variableList.Sort((left, right) => string.CompareOrdinal(left.Name, right.Name));
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private void PersistVariables()
+        {
+            if (_settingsService == null)
+                return;
+
+            try
+            {
+                SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+                settings.CalculatorVariables = _variableList
+                    .Select(item => new CalculatorVariableEntryModel { Name = item.Name, Value = item.Value })
+                    .ToList();
+                _settingsService.TrySaveSettingsToLocalDevice(settings);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private void NotifyVariablesChanged()
+        {
+            OnPropertyChanged(nameof(Variables), nameof(HasVariables));
+        }
+
+        private void SaveVariable()
+        {
+            string name = VariableName?.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(name) || !char.IsLetter(name[0]) ||
+                !name.All(c => char.IsLetterOrDigit(c) || c == '_'))
+            {
+                return;
+            }
+
+            string value = CalculatorEngine.Evaluate(VariableValue ?? string.Empty, UseDegrees, _variables);
+            if (value == null || !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double numeric))
+                return;
+
+            _variables[name] = numeric;
+            int index = _variableList.FindIndex(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0)
+                _variableList[index] = new CalculatorVariableItem(name, numeric);
+            else
+                _variableList.Add(new CalculatorVariableItem(name, numeric));
+            _variableList.Sort((left, right) => string.CompareOrdinal(left.Name, right.Name));
+
+            VariableName = string.Empty;
+            VariableValue = string.Empty;
+            PersistVariables();
+            NotifyVariablesChanged();
+            RefreshBaseOutput();
+        }
+
+        private void DeleteVariable(CalculatorVariableItem item)
+        {
+            if (item == null)
+                return;
+            _variables.Remove(item.Name);
+            _variableList.RemoveAll(entry => string.Equals(entry.Name, item.Name, StringComparison.OrdinalIgnoreCase));
+            PersistVariables();
+            NotifyVariablesChanged();
+        }
+
+        private void UseVariable(CalculatorVariableItem item)
+        {
+            if (item == null)
+                return;
+            Input(item.Name);
+        }
+
+        private void ResetDateTools()
+        {
+            if (string.IsNullOrEmpty(_dateFrom))
+                _dateFrom = DateIntervalEngine.ToInputValue(DateTime.Now);
+            if (string.IsNullOrEmpty(_dateTo))
+                _dateTo = DateIntervalEngine.ToInputValue(DateTime.Now.AddDays(1));
+            OnPropertyChanged(nameof(DateFrom), nameof(DateTo), nameof(DateAmount), nameof(DateUnit), nameof(DateUnits));
+            UpdateDateResult();
+        }
+
+        private void UpdateDateResult()
+        {
+            if (!DateIntervalEngine.TryParseDate(_dateFrom, out DateTime from) ||
+                !DateIntervalEngine.TryParseDate(_dateTo, out DateTime to))
+            {
+                DateResult = string.Empty;
+                return;
+            }
+
+            DateResult = DateIntervalEngine.Describe(from, to);
+        }
+
+        private void ShiftDate()
+        {
+            if (!DateIntervalEngine.TryParseDate(_dateFrom, out DateTime from) ||
+                !double.TryParse(_dateAmount, NumberStyles.Float, CultureInfo.InvariantCulture, out double amount))
+            {
+                DateResult = string.Empty;
+                return;
+            }
+
+            DateTime? shifted = DateIntervalEngine.Shift(from, amount, _dateUnit);
+            if (shifted == null)
+            {
+                DateResult = string.Empty;
+                return;
+            }
+
+            _dateTo = DateIntervalEngine.ToInputValue(shifted.Value);
+            OnPropertyChanged(nameof(DateTo));
+            UpdateDateResult();
         }
 
         private void LoadHistory()
@@ -702,5 +1025,42 @@ namespace SilentNotes.ViewModels
 
         /// <summary>Gets the formatted result.</summary>
         public string Result { get; }
+    }
+
+    /// <summary>
+    /// A named variable of the programmer calculator.
+    /// </summary>
+    public class CalculatorVariableItem
+    {
+        public CalculatorVariableItem(string name, double value)
+        {
+            Name = name;
+            Value = value;
+        }
+
+        public string Name { get; }
+
+        public double Value { get; }
+
+        public string DisplayText
+        {
+            get { return Name + " = " + Value.ToString("0.##########", CultureInfo.InvariantCulture); }
+        }
+    }
+
+    /// <summary>
+    /// A unit which can be used to shift a date in the calculator.
+    /// </summary>
+    public class CalculatorDateUnit
+    {
+        public CalculatorDateUnit(string id, string label)
+        {
+            Id = id;
+            Label = label;
+        }
+
+        public string Id { get; }
+
+        public string Label { get; }
     }
 }

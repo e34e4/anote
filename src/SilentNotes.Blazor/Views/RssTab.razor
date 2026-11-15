@@ -202,6 +202,9 @@
 					<MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Color="Color.Inherit"
 						OnClick="@(() => ViewModel.OpenArticleLinkCommand.Execute(null))" title="@LanguageService["rss_open_link"]" />
 				}
+				<MudIconButton Icon="@(article.IsOffline ? Icons.Material.Filled.CloudDone : Icons.Material.Filled.CloudDownload)"
+					Color="@(article.IsOffline ? Color.Success : Color.Inherit)"
+					OnClick="@(() => ViewModel.SaveOfflineCommand.Execute(article))" title="@LanguageService["rss_offline"]" />
 				<MudIconButton Icon="@Icons.Material.Filled.CloudUpload" Color="Color.Inherit"
 					OnClick="@SaveOpenedToWebdavAsync" title="@LanguageService["webdav_quick_save"]" />
 				<AskAiButton Size="Size.Medium" Color="Color.Inherit" Subject="@article.Title"
@@ -291,12 +294,19 @@
 								{
 									<span> · @article.PublishedText</span>
 								}
+								@if (article.IsOffline)
+								{
+									<span> · ★ @LanguageService["rss_offline_badge"]</span>
+								}
 							</div>
 							@if (!string.IsNullOrEmpty(article.Summary))
 							{
 								<div class="rss-summary">@article.Summary</div>
 							}
 						</div>
+						<MudIconButton Icon="@(article.IsOffline ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)"
+							Size="Size.Small" Color="@(article.IsOffline ? Color.Warning : Color.Inherit)"
+							OnClick="@(() => ViewModel.SaveOfflineCommand.Execute(article))" title="@LanguageService["rss_offline"]" />
 						<AskAiButton Subject="@article.Title" ContextText="@($"{article.Title}\n{article.Link}\n{article.Summary}")" />
 					</div>
 				}

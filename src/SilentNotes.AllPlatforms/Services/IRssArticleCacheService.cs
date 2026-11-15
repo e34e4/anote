@@ -52,5 +52,21 @@ namespace SilentNotes.Services
         /// Deletes oldest articles until the approximate stored size is under <paramref name="maxCacheBytes"/>.
         /// </summary>
         void EnforceSizeLimit(long maxCacheBytes = DefaultMaxCacheBytes);
+
+        /// <summary>
+        /// Stores the full readability text of an article, so it can be read without a connection.
+        /// The owner id is the feed id for RSS items, or the bookmark id for saved bookmarks.
+        /// </summary>
+        bool SaveOfflineArticle(Guid ownerId, string itemKey, string title, string link, string offlineHtml);
+
+        /// <summary>
+        /// Loads a single cached article by owner id and item key, or null when it does not exist.
+        /// </summary>
+        RssCachedArticleModel LoadArticle(Guid ownerId, string itemKey);
+
+        /// <summary>
+        /// Removes the stored offline copy of an article but keeps the feed metadata row.
+        /// </summary>
+        void RemoveOfflineArticle(Guid ownerId, string itemKey);
     }
 }

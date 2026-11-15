@@ -24,6 +24,8 @@ namespace SilentNotes.ViewModels
     /// </remarks>
     public class BookyViewModel : ViewModelBase
     {
+        private const string OfflineItemKey = "bookmark";
+
         private readonly NoteRepositoryModel _model;
         private readonly ILanguageService _languageService;
         private readonly IRepositoryStorageService _repositoryService;
@@ -32,12 +34,19 @@ namespace SilentNotes.ViewModels
         private readonly IEnvironmentService _environmentService;
         private readonly IBookySyncService _bookySyncService;
         private readonly IFeedbackService _feedbackService;
+        private readonly ArticleOfflineService _offlineService;
         private string _filter;
         private bool _isDraftVisible;
         private string _draftUrl;
         private string _draftTitle;
         private string _draftQuote;
         private string _draftError;
+        private bool _isOfflineVisible;
+        private bool _isOfflineBusy;
+        private string _offlineTitle;
+        private string _offlineHtml;
+        private string _offlinePlain;
+        private Guid? _offlineBookmarkId;
         private List<BookmarkItemViewModel> _bookmarks = new List<BookmarkItemViewModel>();
 
         /// <summary>
@@ -56,7 +65,8 @@ namespace SilentNotes.ViewModels
             IEnvironmentService environmentService,
             IBookySyncService bookySyncService,
             IFeedbackService feedbackService,
-            IAbroBrowserService abroBrowserService = null)
+            IAbroBrowserService abroBrowserService = null,
+            IRssArticleCacheService articleCache = null)
         {
             _model = model;
             _languageService = languageService;
@@ -66,6 +76,7 @@ namespace SilentNotes.ViewModels
             _environmentService = environmentService;
             _bookySyncService = bookySyncService;
             _feedbackService = feedbackService;
+            _offlineService = new ArticleOfflineService(articleCache);
 
             OpenCommand = new RelayCommand<BookmarkItemViewModel>(Open);
             DeleteCommand = new AsyncRelayCommand<BookmarkItemViewModel>(Delete);
@@ -73,6 +84,9 @@ namespace SilentNotes.ViewModels
             SaveDraftCommand = new RelayCommand(SaveDraft);
             CancelDraftCommand = new RelayCommand(CancelDraft);
             SyncCommand = new AsyncRelayCommand(SyncBookmarks);
+            SaveOfflineCommand = new AsyncRelayCommand<BookmarkItemViewModel>(SaveOfflineAsync);
+            ReadOfflineCommand = new RelayCommand<BookmarkItemViewModel>(ReadOffline);
+            CloseOfflineCommand = new RelayCommand(CloseOffline);
 
             Reload();
         }
@@ -106,6 +120,15 @@ namespace SilentNotes.ViewModels
         /// Gets the command to synchronize the bookmarks with the shared Booky bookmarks file.
         /// </summary>
         public ICommand SyncCommand { get; }
+
+        /// <summary>Gets the command to download and cache a readable offline copy of a bookmark.</summary>
+        public ICommand SaveOfflineCommand { get; }
+
+        /// <summary>Gets the command to open the stored offline copy.</summary>
+        public ICommand ReadOfflineCommand { get; }
+
+        /// <summary>Gets the command to close the offline reader.</summary>
+        public ICommand CloseOfflineCommand { get; }
 
         /// <summary>
         /// Gets or sets the search filter.
@@ -219,6 +242,41 @@ namespace SilentNotes.ViewModels
             private set { SetProperty(ref _draftError, value); }
         }
 
+        /// <summary>Gets or sets a value indicating whether the offline reader overlay is open.</summary>
+        public bool IsOfflineVisible
+        {
+            get { return _isOfflineVisible; }
+            private set { SetProperty(ref _isOfflineVisible, value); }
+        }
+
+        /// <summary>Gets a value indicating whether an offline copy is being downloaded.</summary>
+        public bool IsOfflineBusy
+        {
+            get { return _isOfflineBusy; }
+            private set { SetProperty(ref _isOfflineBusy, value); }
+        }
+
+        /// <summary>Gets the title of the article shown in the offline reader.</summary>
+        public string OfflineTitle
+        {
+            get { return _offlineTitle; }
+            private set { SetProperty(ref _offlineTitle, value); }
+        }
+
+        /// <summary>Gets the HTML body of the article shown in the offline reader.</summary>
+        public string OfflineHtml
+        {
+            get { return _offlineHtml; }
+            private set { SetProperty(ref _offlineHtml, value); }
+        }
+
+        /// <summary>Gets the plain text of the article shown in the offline reader.</summary>
+        public string OfflinePlain
+        {
+            get { return _offlinePlain; }
+            private set { SetProperty(ref _offlinePlain, value); }
+        }
+
         /// <summary>
         /// Reloads the bookmarks from the shared repository model.
         /// </summary>
@@ -226,7 +284,10 @@ namespace SilentNotes.ViewModels
         {
             _model.Bookmarks.SortByCreatedDescending();
             _bookmarks = _model.Bookmarks
-                .Select(bookmark => new BookmarkItemViewModel(bookmark))
+                .Select(bookmark => new BookmarkItemViewModel(bookmark)
+                {
+                    IsOffline = _offlineService.Load(bookmark.Id, OfflineItemKey)?.IsOffline == true,
+                })
                 .ToList();
 
             OnPropertyChanged(nameof(FilteredBookmarks));
@@ -300,6 +361,63 @@ namespace SilentNotes.ViewModels
             }
 
             _browserService.OpenWebsiteInNewTab(target);
+        }
+
+        private async Task SaveOfflineAsync(BookmarkItemViewModel bookmark)
+        {
+            if (bookmark == null)
+                return;
+
+            if (bookmark.IsOffline)
+            {
+                _offlineService.Remove(bookmark.Id, OfflineItemKey);
+                bookmark.IsOffline = false;
+                _feedbackService.ShowToast(_languageService["rss_offline_removed"], FeedbackSeverity.Info);
+                return;
+            }
+
+            try
+            {
+                IsOfflineBusy = true;
+                bool saved = await _offlineService.SaveAsync(
+                    bookmark.Id, OfflineItemKey, bookmark.Url, bookmark.Title);
+                bookmark.IsOffline = saved;
+                _feedbackService.ShowToast(
+                    saved ? _languageService["rss_offline_saved"] : _languageService["rss_offline_failed"],
+                    saved ? FeedbackSeverity.Info : FeedbackSeverity.Warning);
+            }
+            finally
+            {
+                IsOfflineBusy = false;
+            }
+        }
+
+        private void ReadOffline(BookmarkItemViewModel bookmark)
+        {
+            if (bookmark == null)
+                return;
+
+            RssCachedArticleModel cached = _offlineService.Load(bookmark.Id, OfflineItemKey);
+            if (cached == null || !cached.IsOffline || string.IsNullOrWhiteSpace(cached.OfflineHtml))
+            {
+                _feedbackService.ShowToast(_languageService["booky_offline_missing"], FeedbackSeverity.Warning);
+                return;
+            }
+
+            _offlineBookmarkId = bookmark.Id;
+            OfflineTitle = bookmark.Title;
+            OfflineHtml = RssFeedParser.SanitizeHtml(cached.OfflineHtml);
+            OfflinePlain = RssFeedParser.StripHtml(cached.OfflineHtml);
+            IsOfflineVisible = true;
+        }
+
+        private void CloseOffline()
+        {
+            IsOfflineVisible = false;
+            OfflineTitle = null;
+            OfflineHtml = null;
+            OfflinePlain = null;
+            _offlineBookmarkId = null;
         }
 
         private async Task Delete(BookmarkItemViewModel bookmark)
@@ -432,6 +550,25 @@ namespace SilentNotes.ViewModels
         public string Host
         {
             get { return BookyUrlUtils.HostOf(Model.Url); }
+        }
+
+        private bool _isOffline;
+
+        /// <summary>Gets or sets a value indicating whether a readable offline copy is stored.</summary>
+        public bool IsOffline
+        {
+            get { return _isOffline; }
+            set
+            {
+                if (SetProperty(ref _isOffline, value))
+                    OnPropertyChanged(nameof(OfflineBadge));
+            }
+        }
+
+        /// <summary>Gets a short badge shown next to offline bookmarks.</summary>
+        public string OfflineBadge
+        {
+            get { return _isOffline ? "★" : string.Empty; }
         }
 
         /// <summary>
