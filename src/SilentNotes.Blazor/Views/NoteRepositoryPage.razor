@@ -384,8 +384,12 @@
 				<MudMenuItem OnClick="@(() => Navigation.NavigateTo(RouteNames.Export))" Icon="@IconService[IconNames.Export]">@LanguageService["show_export"]</MudMenuItem>
 				<MudDivider />
 				<MudMenuItem OnClick="@(() => ViewModel.CreateBackupCommand.Execute(null))" Icon="@IconService[IconNames.Save]">@LanguageService["backup_create"]</MudMenuItem>
+				<MudMenuItem OnClick="@(() => Navigation.NavigateTo(RouteNames.Backup))" Icon="@Icons.Material.Filled.Save">@LanguageService["backup_manual_title"]</MudMenuItem>
 				<MudMenuItem OnClick="@(() => ViewModel.RestoreBackupCommand.Execute(null))" Icon="@IconService[IconNames.Alert]" IconColor="Color.Error">@LanguageService["backup_restore"]</MudMenuItem>
 			</MudMenu>
+
+			<MudMenuItem OnClick="@(() => Navigation.NavigateTo(RouteNames.TextTransform))" Icon="@Icons.Material.Filled.Transform">@LanguageService["text_tools_title"]</MudMenuItem>
+			<MudMenuItem OnClick="@(() => Navigation.NavigateTo(RouteNames.LanBridge))" Icon="@Icons.Material.Filled.Lan">@LanguageService["gui_lan_bridge"]</MudMenuItem>
 			<MudDivider />
 
 			@if (ViewModel.IsAnySafeOpen)

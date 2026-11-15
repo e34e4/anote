@@ -24,7 +24,7 @@ namespace SilentNotes.Platforms
         private readonly CameraBarcodeReaderView _cameraView;
         private bool _isCompleted;
 
-        public QrScanPageZxing(TaskCompletionSource<string> resultSource)
+        public QrScanPageZxing(TaskCompletionSource<string> resultSource, ZXing.Net.Maui.BarcodeFormats formats = ZXing.Net.Maui.BarcodeFormats.QRCode)
         {
             _resultSource = resultSource;
             BackgroundColor = Colors.Black;
@@ -34,7 +34,7 @@ namespace SilentNotes.Platforms
                 IsDetecting = true,
                 Options = new BarcodeReaderOptions
                 {
-                    Formats = BarcodeFormat.QrCode,
+                    Formats = formats,
                     AutoRotate = true,
                     TryHarder = true,
                 },

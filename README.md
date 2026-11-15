@@ -33,6 +33,16 @@ If you want to help, please read the [contribution guidelines](CONTRIBUTING.md).
 * ✔ The notes never leave the device unencrypted, they are end-to-end encrypted and can only be read on your devices.
 * ✔ Choose the encryption and key derivation algorithm used for the encrypted repository.
 * ✔ Keep a history of copied texts and pictures in the clipboard tab.
+* ✔ Run a local LAN bridge: a small HTTP/WebSocket server (Settings → LAN bridge, and the floating
+  quick menu) that lets any browser in the same Wi-Fi read notes and push clipboard items, without
+  cloud accounts or external servers.
+* ✔ Link notes, contacts and bookmarks inside the editor with `[[Note title]]`, `@Contact` and
+  `[[bookmark:Title]]`, plus a picker that inserts the link for you.
+* ✔ Create a manual local backup of the database, clipboard history and SQLite cache, together with
+  readable Markdown/JSON bundles, into a folder of your choice (default `/sdcard/anote/bak`).
+* ✔ Scan QR codes and other barcodes (EAN, Code128, Data Matrix, PDF417, …) directly into a note.
+* ✔ Apply a batch text-processing pipeline to notes and clips: Base64/URL encoding, JSON/XML
+  pretty-printing and minifying, SHA-256/MD5, line sorting/deduplication and regex extraction.
 * ✔ Collect bookmarks, synchronized with the Booky browser extension.
 * ✔ Keep a small phone book inside the encrypted repository.
 * ✔ A calculator with a scientific mode.
@@ -297,6 +307,28 @@ the settings.
 Ask AI is available from notes and RSS articles (Android, when at least one AI provider is
 configured). It uses OpenAI-compatible endpoints (API base URL, model ID and API key) and can attach
 files to the request.
+
+## LAN bridge, backup and text tools
+
+**LAN bridge** (*Settings → LAN bridge*, or the floating quick menu) starts a small HTTP/WebSocket
+server inside the app. Open one of the displayed addresses in a browser on the same Wi-Fi to read
+notes as text or Markdown, download them, copy clipboard items, or send text into the clipboard
+history. It only runs while aNote is running, can be protected with an access token (created by
+default), and clipboard writes can be disabled. Nothing leaves your local network.
+
+**Manual backup** (*Settings → Manual backup*) writes a timestamped folder with the note repository,
+the clipboard history and pictures, the SQLite article cache, and readable `notes.md`/`notes.json`,
+`clipboard.json`, `contacts.json` and `bookmarks.json` bundles. The default folder is
+`/sdcard/anote/bak`.
+
+**Text tools** (*note overflow menu*, or the transform button of a clipboard item) applies a
+pipeline to selected notes and clips: Base64/URL encode or decode, JSON/XML pretty-print or minify,
+SHA-256/MD5, sort/deduplicate/trim lines, and regex extraction. Results can be copied, added as a
+new clip, or written back to a note.
+
+Notes can link other notes, contacts and bookmarks with `[[Note title]]`, `@Contact` or
+`[[bookmark:Title]]`; the editor expands these into clickable links, and the overflow menu has a
+picker that inserts them.
 
 ## System and log
 

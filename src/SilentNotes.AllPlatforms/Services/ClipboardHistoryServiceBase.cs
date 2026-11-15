@@ -189,6 +189,18 @@ namespace SilentNotes.Services
         }
 
         /// <inheritdoc/>
+        public string GetHistoryFilePath()
+        {
+            return HistoryFilePath;
+        }
+
+        /// <inheritdoc/>
+        public string GetImagesDirectoryPath()
+        {
+            return ImageDirectory;
+        }
+
+        /// <inheritdoc/>
         public string GetFullImagePath(string fileName)
         {
             return string.IsNullOrEmpty(fileName) ? null : Path.Combine(ImageDirectory, fileName);

@@ -367,5 +367,16 @@
     <Compile Include="$(MSBuildThisFileDirectory)Workers\TelegramTextUtils.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\TelegramLinkParser.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\TelegramViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\TextTransformUtils.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteLinkExpander.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteHtmlUtils.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\SimpleHtmlToMarkdown.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\ManualBackupService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\ILanBridgeService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\LanBridgeService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\LanBridgeWebPage.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\BackupViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\LanBridgeViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\TextTransformViewModel.cs" />
   </ItemGroup>
 </Project>

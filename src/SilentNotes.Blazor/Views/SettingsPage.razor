@@ -291,6 +291,26 @@
 					<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["gui_main_tab_order_desc"]</MudText>
 				</div>
 
+				@* Manual backup *@
+				<div><MudIcon Icon="@Icons.Material.Filled.Save" Color="Color.Secondary" /></div>
+				<div>
+					<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Archive"
+						OnClick="@(() => Navigation.NavigateTo(RouteNames.Backup))">
+						@LanguageService["gui_backup_manual"]
+					</MudButton>
+					<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["gui_backup_manual_desc"]</MudText>
+				</div>
+
+				@* LAN bridge *@
+				<div><MudIcon Icon="@Icons.Material.Filled.Lan" Color="Color.Secondary" /></div>
+				<div>
+					<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.WifiTethering"
+						OnClick="@(() => Navigation.NavigateTo(RouteNames.LanBridge))">
+						@LanguageService["gui_lan_bridge"]
+					</MudButton>
+					<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["gui_lan_bridge_desc"]</MudText>
+				</div>
+
 				@* Keep screen on *@
 				@if (ViewModel.CanKeepScreenOn)
 				{

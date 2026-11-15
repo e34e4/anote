@@ -11,6 +11,7 @@
 @inject ISettingsService SettingsService
 @inject IWebdavQuickSaveService WebdavQuickSaveService
 @inject IFeedbackService FeedbackService
+@inject INavigationService Navigation
 
 <style type="text/css">
 	.clipboard-list {
@@ -65,6 +66,7 @@
 								{
 									<OpenLinkButton Text="@item.Model.Text" Title="@LanguageService["note_open_link"]" />
 									<AskAiButton Subject="@LanguageService["tab_clipboard"]" ContextText="@item.Model.Text" />
+									<MudIconButton Icon="@Icons.Material.Filled.Transform" Size="Size.Small" OnClick="@(() => TransformClip(item))" title="@LanguageService["text_tools_title"]" />
 								}
 								<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="@(() => ViewModel.CopyCommand.Execute(item))" title="@LanguageService["clipboard_copy"]" />
 								@if (item.IsImage && ViewModel.CanHandleImages)
@@ -106,6 +108,7 @@
 									{
 										<OpenLinkButton Text="@item.Model.Text" Title="@LanguageService["note_open_link"]" />
 										<AskAiButton Subject="@LanguageService["tab_clipboard"]" ContextText="@item.Model.Text" />
+										<MudIconButton Icon="@Icons.Material.Filled.Transform" Size="Size.Small" OnClick="@(() => TransformClip(item))" title="@LanguageService["text_tools_title"]" />
 									}
 									<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" OnClick="@(() => ViewModel.CopyCommand.Execute(item))" title="@LanguageService["clipboard_copy"]" />
 									@if (item.IsImage && ViewModel.CanHandleImages)
@@ -187,6 +190,13 @@
 	{
 		ViewModel.Reload();
 		StateHasChanged();
+	}
+
+	private void TransformClip(ClipboardItemViewModel item)
+	{
+		if (item == null || item.IsImage)
+			return;
+		Navigation.NavigateTo(RouteNames.Combine(RouteNames.TextTransform, "clip", item.Id));
 	}
 
 	private void EnableMonitoring()

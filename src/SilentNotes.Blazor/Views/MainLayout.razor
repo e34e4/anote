@@ -4,6 +4,7 @@
 @using SilentNotes.Models
 @using SilentNotes.Services
 @using SilentNotes.Workers
+@using SilentNotes.ViewModels
 
 @inject IThemeService ThemeService
 @inject INavigationService NavigationService
@@ -24,6 +25,7 @@
 @inject ISettingsService SettingsService
 @inject IEnvironmentService EnvironmentService
 @inject ILanguageService LanguageService
+@inject ILanBridgeService LanBridgeService
 
 @implements IDisposable
 
@@ -118,6 +120,10 @@
 				TryNavigatePendingRoute();
 			}));
 
+		// Keep browsers connected to the LAN bridge up to date.
+		MessengerService.Register<ClipboardChangedMessage>(
+			this, (recipient, message) => LanBridgeService.NotifyClipboardChanged());
+
 		SettingsModel settings = SettingsService.LoadSettingsOrDefault();
 		if (settings.AlwaysEnglish)
 			(LanguageService as ILanguageTestService)?.SetAlwaysEnglish(true);
@@ -149,6 +155,9 @@
 			}
 
 			await NotificationService.ShowNextNotification();
+
+			// Start the local LAN bridge if the user enabled it (HTTP/WebSocket server).
+			LanBridgeViewModel.StartIfEnabled(LanBridgeService, SettingsService);
 
 			// Pull new bookmarks from the shared Booky file before the repository is synchronized,
 			// so the bookmark sync and the repository sync do not write the repository concurrently.
@@ -221,5 +230,6 @@
 		MessengerService.Unregister<AfterResumeMessage>(this);
 		MessengerService.Unregister<TabIntentMessage>(this);
 		MessengerService.Unregister<RouteIntentMessage>(this);
+		MessengerService.Unregister<ClipboardChangedMessage>(this);
 	}
 }

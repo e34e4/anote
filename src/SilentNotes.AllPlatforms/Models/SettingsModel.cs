@@ -124,6 +124,11 @@ namespace SilentNotes.Models
             Socks5Username = string.Empty;
             Socks5Password = string.Empty;
             AiUseProxy = false;
+            LanBridgeEnabled = false;
+            LanBridgePort = 8787;
+            LanBridgeAccessToken = string.Empty;
+            LanBridgeAllowWrites = true;
+            ManualBackupFolder = string.Empty;
         }
 
         /// <summary>
@@ -842,6 +847,40 @@ namespace SilentNotes.Models
         /// <summary>Gets or sets a value indicating whether Abro AI should use the SOCKS5 proxy.</summary>
         [XmlElement("ai_use_proxy")]
         public bool AiUseProxy { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the local LAN bridge (HTTP/WebSocket server)
+        /// should be started automatically when the app starts.
+        /// </summary>
+        [XmlElement("lan_bridge_enabled")]
+        public bool LanBridgeEnabled { get; set; }
+
+        /// <summary>
+        /// Gets or sets the TCP port of the LAN bridge. A value of 0 selects a free port.
+        /// </summary>
+        [XmlElement("lan_bridge_port")]
+        public int LanBridgePort { get; set; }
+
+        /// <summary>
+        /// Gets or sets the access token which desktop browsers must send to the LAN bridge.
+        /// An empty string disables the token check (everyone in the Wi-Fi can read the notes).
+        /// </summary>
+        [XmlElement("lan_bridge_access_token")]
+        public string LanBridgeAccessToken { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the LAN bridge accepts text from the desktop
+        /// and adds it to the clipboard history.
+        /// </summary>
+        [XmlElement("lan_bridge_allow_writes")]
+        public bool LanBridgeAllowWrites { get; set; }
+
+        /// <summary>
+        /// Gets or sets the folder used by the manual backup, or an empty string for the default
+        /// folder <c>/sdcard/anote/bak</c>.
+        /// </summary>
+        [XmlElement("manual_backup_folder")]
+        public string ManualBackupFolder { get; set; }
 
         /// <inheritdoc/>
         [XmlIgnore]

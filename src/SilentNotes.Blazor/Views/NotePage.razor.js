@@ -13,8 +13,9 @@ export function initialize(dotnetPage, noteId, editorContainer, shoppingModeActi
     _page.editor.on('selectionUpdate', onSelectionUpdate);
     _page.editor.on('update', onUpdate);
 
-    document.addEventListener('custom-link-clicked', function () {
-        _page.invokeMethodAsync('OpenLinkDialog');
+    document.addEventListener('custom-link-clicked', function (event) {
+        var href = event && event.detail ? event.detail : null;
+        _page.invokeMethodAsync('OpenLinkDialog', href);
     });
 }
 
@@ -439,4 +440,30 @@ export function linkDialogOkPressed(oldLinkUrl, newLinkUrl, oldLinkTitle, newLin
         commandChain = commandChain.setLink({ href: newLinkUrl });
     }
     commandChain.run();
+}
+
+// Inserts a link at the current position. When text is selected, the selection becomes the link,
+// otherwise a new link with the given title is inserted.
+export function insertLinkAtSelection(url, title) {
+    if (!IsInitialized() || !url) return;
+
+    var editor = _page.editor;
+    var selection = editor.view.state.selection;
+    if (!selection.empty) {
+        editor.chain().focus().setLink({ href: url }).run();
+        return;
+    }
+
+    editor.chain().focus().insertContent({
+        type: 'text',
+        text: title || url,
+        marks: [{ type: 'link', attrs: { href: url } }]
+    }).run();
+}
+
+// Inserts plain text at the current position, e.g. the result of a barcode scan.
+export function insertTextAtSelection(text) {
+    if (!IsInitialized() || !text) return;
+
+    _page.editor.chain().focus().insertContent({ type: 'text', text: text }).run();
 }

@@ -1,0 +1,83 @@
+@attribute [Route(RouteNames.Backup)]
+@inherits PageBase
+
+@using MudBlazor
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+
+@inject ILanguageService LanguageService
+@inject ISvgIconService IconService
+@inject ISettingsService SettingsService
+@inject IFeedbackService FeedbackService
+@inject IManualBackupService BackupService
+@inject INavigationService Navigation
+
+<MudAppBar Class="flex-none" Fixed="true" Dense="true" WrapContent="false">
+	<MudIconButton OnClick="@(() => Navigation.NavigateTo(BackRoute))" Icon="@IconService[IconNames.ArrowLeft]" Color="Color.Inherit" title="@LanguageService["back"]" Edge="Edge.Start" />
+</MudAppBar>
+
+<MudIcon Class="background-icon" Icon="@Icons.Material.Filled.Save" Style="@($"right:-128px; top:-154px;")" />
+
+<MudMainContent>
+	<MudContainer Class="ms-0" MaxWidth="MaxWidth.Small">
+		<div id="content" class="py-3">
+			<h2 class="h-colored">@LanguageService["backup_manual_title"]</h2>
+			<p class="mud-text-secondary">@LanguageService["backup_manual_desc"]</p>
+
+			<div class="css-grid mt-4">
+				<div><MudIcon Icon="@Icons.Material.Filled.Folder" Color="Color.Secondary" /></div>
+				<div>
+					<label for="BackupFolder">@LanguageService["backup_folder"]</label>
+					<MudTextField id="BackupFolder" @bind-Value="ViewModel.Folder" Variant="Variant.Outlined" Immediate="true" />
+					<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["backup_folder_hint"]</MudText>
+				</div>
+
+				<div></div>
+				<div>
+					<MudStack Row="true" Spacing="2" Class="mt-2">
+						<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+							Disabled="@ViewModel.IsBusy" OnClick="@(() => ViewModel.CreateBackupCommand.Execute(null))">
+							@LanguageService["backup_create_now"]
+						</MudButton>
+						<MudButton Variant="Variant.Text" Color="Color.Default" StartIcon="@Icons.Material.Filled.RestartAlt"
+							OnClick="@(() => ViewModel.ResetFolderCommand.Execute(null))">
+							@LanguageService["backup_folder_default"]
+						</MudButton>
+					</MudStack>
+					@if (ViewModel.IsBusy)
+					{
+						<MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-3" />
+					}
+				</div>
+			</div>
+
+			@if (!string.IsNullOrWhiteSpace(ViewModel.StatusText))
+			{
+				<MudPaper Class="px-3 py-2 mt-4" Elevation="1">
+					<MudText Typo="Typo.body2">@ViewModel.StatusText</MudText>
+				</MudPaper>
+			}
+
+			@if (ViewModel.LastFiles.Count > 0)
+			{
+				<h2 class="h-colored mt-8">@LanguageService["backup_files"]</h2>
+				<MudPaper Class="px-3 py-2" Elevation="1">
+					@foreach (string file in ViewModel.LastFiles)
+					{
+						<MudText Typo="Typo.caption" Class="mud-text-secondary">@file</MudText>
+					}
+				</MudPaper>
+			}
+		</div>
+	</MudContainer>
+</MudMainContent>
+
+@code {
+	protected override void OnInitialized()
+	{
+		BackRoute = RouteNames.Settings;
+		ViewModel = new BackupViewModel(BackupService, SettingsService, FeedbackService, LanguageService);
+	}
+
+	private BackupViewModel ViewModel { get; set; }
+}

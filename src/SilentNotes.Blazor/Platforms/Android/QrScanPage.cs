@@ -28,7 +28,8 @@ namespace SilentNotes.Platforms
         /// Initializes a new instance of the <see cref="QrScanPage"/> class.
         /// </summary>
         /// <param name="resultSource">Receives the decoded text, or null when canceled.</param>
-        public QrScanPage(TaskCompletionSource<string> resultSource)
+        /// <param name="formats">The barcode formats which should be detected.</param>
+        public QrScanPage(TaskCompletionSource<string> resultSource, BarcodeFormats formats = BarcodeFormats.QRCode)
         {
             _resultSource = resultSource;
             BackgroundColor = Colors.Black;
@@ -42,7 +43,7 @@ namespace SilentNotes.Platforms
                 AimMode = false,
                 ViewfinderMode = true,
                 CaptureQuality = CaptureQuality.High,
-                BarcodeSymbologies = BarcodeFormats.QRCode,
+                BarcodeSymbologies = formats,
                 CameraFacing = CameraFacing.Back,
                 HorizontalOptions = LayoutOptions.Fill,
                 VerticalOptions = LayoutOptions.Fill,
@@ -65,7 +66,9 @@ namespace SilentNotes.Platforms
 
             var hint = new Label
             {
-                Text = "Align the QR code inside the square",
+                Text = formats == BarcodeFormats.QRCode
+                    ? "Align the QR code inside the square"
+                    : "Align the barcode inside the square",
                 TextColor = Colors.White,
                 FontSize = 14,
                 HorizontalTextAlignment = TextAlignment.Center,

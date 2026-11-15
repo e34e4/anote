@@ -28,6 +28,7 @@
 @inject ISynchronizationState SynchronizationState
 @inject ISharingService SharingService
 @inject IWebdavQuickSaveService WebdavQuickSaveService
+@inject IQrService QrService
 
 <style type="text/css">
 	.mud-main-content { background-color: @ViewModel.BackgroundColorHex; }
@@ -289,6 +290,18 @@
 				Icon="@IconService.GetSvgLink(IconNames.LinkVariant)"
 				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_link"]</MudMenuItem>
 
+			<MudMenuItem OnClick="@(() => OpenNoteLinkPicker())"
+				Icon="@Icons.Material.Filled.Link"
+				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_insert_link"]</MudMenuItem>
+
+			<MudMenuItem OnClick="@(async () => await ScanCodeIntoNoteAsync())"
+				Icon="@Icons.Material.Filled.QrCodeScanner"
+				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_scan_code"]</MudMenuItem>
+
+			<MudMenuItem OnClick="@(() => OpenTextTools())"
+				Icon="@Icons.Material.Filled.Transform"
+				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_text_tools"]</MudMenuItem>
+
 			<MudMenuItem OnClick="@(() => InsertHorizontalRule())"
 				Icon="@IconService.GetSvgLink(IconNames.Minus)"
 				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_horizontal_rule"]</MudMenuItem>
@@ -491,6 +504,35 @@
 	</MudCard>
 </MudOverlay>
 
+@* Note / contact / bookmark link picker *@
+<MudOverlay @bind-Visible="_linkPickerState.IsOpen" AutoClose="true">
+	<MudCard Class="dialog" Style="width:460px; max-width:92vw;">
+		<MudCardContent>
+			<MudText Typo="Typo.subtitle2" Class="mb-2">@LanguageService["note_link_picker_title"]</MudText>
+			<MudTextField @bind-Value="_linkPickerState.Filter" Immediate="true"
+				Placeholder="@LanguageService["note_link_picker_search"]"
+				Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+			<div style="max-height:320px; overflow-y:auto;" class="mt-2">
+				@if (GetFilteredLinkEntries().Count == 0)
+				{
+					<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["note_link_picker_empty"]</MudText>
+				}
+				@foreach (NoteLinkPickerEntry entry in GetFilteredLinkEntries())
+				{
+					<div class="pa-2" style="cursor:pointer; border-bottom:1px solid #333333;"
+						@onclick="@(async () => await InsertPickedLinkAsync(entry))">
+						<MudText Typo="Typo.body2">@entry.Title</MudText>
+						<MudText Typo="Typo.caption" Class="mud-text-secondary">@entry.Kind · @entry.Detail</MudText>
+					</div>
+				}
+			</div>
+		</MudCardContent>
+		<MudCardActions Class="justify-end">
+			<MudButton OnClick="@(() => _linkPickerState.IsOpen = false)" Variant="Variant.Text" Color="Color.Default">@LanguageService["cancel"]</MudButton>
+		</MudCardActions>
+	</MudCard>
+</MudOverlay>
+
 @* Declare icons which can be reused multiple times, to reduce page size *@
 <div hidden>
 	@IconService.EmbedLinkableSvgs( new [] {
@@ -535,6 +577,8 @@
 	private bool _textColorDialogOpen;
 	private bool _isHighlightColorMode;
 	private LinkState _linkState;
+	private NoteLinkPickerState _linkPickerState;
+	private List<NoteLinkPickerEntry> _linkPickerEntries = new List<NoteLinkPickerEntry>();
 
 	private static readonly string[] TextColorPalette = new[]
 	{
@@ -569,6 +613,7 @@
 	{
 		_formatStates = new FormatToggleStates();
 		_linkState = new LinkState();
+		_linkPickerState = new NoteLinkPickerState();
 		_allowNoteContentChanges = false;
 
 		MessengerService.Register<KeepScreenOnChangedMessage>(
@@ -626,7 +671,8 @@
 				// Prepare prose mirror editor
 				_jsModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./Views/NotePage.razor.js");
 				await _jsModule.InvokeVoidAsync("initialize", DotNetModule, ViewModel.Id.ToString(), _editorContainer, ViewModel.ShoppingModeActive);
-				string content = ViewModel.UnlockedHtmlContent;
+				RepositoryStorageService.LoadRepositoryOrDefault(out NoteRepositoryModel initialRepository);
+				string content = NoteLinkExpander.Expand(ViewModel.UnlockedHtmlContent, initialRepository);
 				await _jsModule.InvokeVoidAsync("setNoteContent", content);
 				await _jsModule.InvokeVoidAsync("sessionLoadScrollTop", ViewModel.Id, _editorContainer);
 				await _jsModule.InvokeVoidAsync("setEditable", !ViewModel.ShoppingModeActive && !SynchronizationState.IsSynchronizationRunning);
@@ -934,10 +980,147 @@
 			FeedbackService.ShowToast(LanguageService["webdav_quick_save_failed"] + " — " + WebdavQuickSaveService.LastError, FeedbackSeverity.Warning);
 	}
 
-	[JSInvokable("OpenLinkDialog")]
-	public async Task OpenLinkDialog()
+	/// <summary>
+	/// Opens the picker which inserts a link to another note, a contact or a bookmark.
+	/// </summary>
+	private void OpenNoteLinkPicker()
 	{
 		if (ViewModel.ShoppingModeActive)
+			return;
+
+		_linkPickerEntries = BuildLinkPickerEntries();
+		_linkPickerState.Filter = string.Empty;
+		_linkPickerState.IsOpen = true;
+		StateHasChanged();
+	}
+
+	private List<NoteLinkPickerEntry> BuildLinkPickerEntries()
+	{
+		var result = new List<NoteLinkPickerEntry>();
+		RepositoryStorageService.LoadRepositoryOrDefault(out NoteRepositoryModel repository);
+
+		foreach (NoteModel note in repository.Notes.Where(note => !note.InRecyclingBin && note.Id != ViewModel.Id))
+		{
+			bool locked = note.SafeId.HasValue && note.SafeId.Value != Guid.Empty;
+			string title = locked ? "Encrypted note" : NoteHtmlUtils.GetTitle(note.HtmlContent);
+			if (string.IsNullOrWhiteSpace(title))
+				title = "Untitled note";
+			result.Add(new NoteLinkPickerEntry
+			{
+				Title = title,
+				Kind = LanguageService["note_link_kind_note"],
+				Url = NoteLinkExpander.BuildNoteLink(note.Id),
+				Detail = note.ModifiedAt.ToString("yyyy-MM-dd HH:mm"),
+				SearchText = title,
+			});
+		}
+
+		foreach (ContactModel contact in repository.Contacts)
+		{
+			if (string.IsNullOrWhiteSpace(contact.Name))
+				continue;
+			string phone = contact.Phones.FirstOrDefault(number => !string.IsNullOrWhiteSpace(number));
+			result.Add(new NoteLinkPickerEntry
+			{
+				Title = contact.Name,
+				Kind = LanguageService["note_link_kind_contact"],
+				Url = NoteLinkExpander.BuildContactLink(contact),
+				Detail = phone ?? "no number",
+				SearchText = contact.Name + " " + (phone ?? string.Empty),
+			});
+		}
+
+		foreach (BookmarkModel bookmark in repository.Bookmarks)
+		{
+			if (string.IsNullOrWhiteSpace(bookmark.Title))
+				continue;
+			result.Add(new NoteLinkPickerEntry
+			{
+				Title = bookmark.Title,
+				Kind = LanguageService["note_link_kind_bookmark"],
+				Url = NoteLinkExpander.BuildBookmarkLink(bookmark.Id),
+				Detail = bookmark.Url,
+				SearchText = bookmark.Title + " " + bookmark.Url,
+			});
+		}
+
+		return result.OrderBy(entry => entry.Title, StringComparer.InvariantCultureIgnoreCase).ToList();
+	}
+
+	private List<NoteLinkPickerEntry> GetFilteredLinkEntries()
+	{
+		string filter = _linkPickerState?.Filter?.Trim();
+		if (string.IsNullOrEmpty(filter))
+			return _linkPickerEntries;
+
+		return _linkPickerEntries
+			.Where(entry => (entry.SearchText ?? string.Empty).Contains(filter, StringComparison.InvariantCultureIgnoreCase))
+			.ToList();
+	}
+
+	private async Task InsertPickedLinkAsync(NoteLinkPickerEntry entry)
+	{
+		_linkPickerState.IsOpen = false;
+		if ((entry == null) || (_jsModule == null))
+			return;
+		await _jsModule.InvokeVoidAsync("insertLinkAtSelection", entry.Url, entry.Title);
+	}
+
+	/// <summary>
+	/// Scans a QR code or any other barcode with the camera and inserts the text into the note.
+	/// </summary>
+	private async Task ScanCodeIntoNoteAsync()
+	{
+		if (ViewModel.ShoppingModeActive)
+			return;
+
+		if (!QrService.IsScanSupported)
+		{
+			FeedbackService.ShowToast(LanguageService["note_scan_failed"], FeedbackSeverity.Warning);
+			return;
+		}
+		if (!await QrService.RequestCameraPermissionAsync())
+		{
+			FeedbackService.ShowToast(LanguageService["note_scan_failed"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		// The scanner switches the window page, the resume event must not reload the note page,
+		// otherwise the current editor content would be lost.
+		string code = null;
+		_isPickingFile = true;
+		try
+		{
+			code = await QrService.ScanBarcodeAsync();
+		}
+		catch (Exception)
+		{
+			code = null;
+		}
+		finally
+		{
+			_isPickingFile = false;
+		}
+
+		if (string.IsNullOrWhiteSpace(code))
+			return;
+
+		if (_jsModule != null)
+			await _jsModule.InvokeVoidAsync("insertTextAtSelection", code);
+	}
+
+	private void OpenTextTools()
+	{
+		Navigation.NavigateTo(RouteNames.Combine(RouteNames.TextTransform, "note", ViewModel.Id));
+	}
+
+	[JSInvokable("OpenLinkDialog")]
+	public async Task OpenLinkDialog(string href = null)
+	{
+		if (ViewModel.ShoppingModeActive)
+			return;
+
+		if (await TryOpenCustomLinkAsync(href))
 			return;
 
 		string[] urls = await _jsModule.InvokeAsync<string[]>("prepareLinkDialog");
@@ -969,6 +1152,64 @@
 	{
 		_linkState.IsDialogOpen = false;
 		ViewModel.OpenLinkCommand.Execute(linkUrl);
+	}
+
+	/// <summary>
+	/// Resolves links which were inserted by the link picker or by the inline link syntax
+	/// ([['Note title']], @Contact, [[bookmark:Title]]).
+	/// </summary>
+	/// <param name="href">The href of the clicked link.</param>
+	/// <returns>True if the link was handled and the normal link dialog should not be opened.</returns>
+	private async Task<bool> TryOpenCustomLinkAsync(string href)
+	{
+		if (string.IsNullOrWhiteSpace(href))
+			return false;
+
+		if (href.StartsWith("tel:", StringComparison.OrdinalIgnoreCase))
+		{
+			NativeBrowserService.OpenWebsite(href);
+			return true;
+		}
+
+		if (!NoteLinkExpander.TryParseCustomUri(href, out string target, out Guid id))
+			return false;
+
+		RepositoryStorageService.LoadRepositoryOrDefault(out NoteRepositoryModel repository);
+		if (target == "note")
+		{
+			NoteModel note = repository.Notes.FindById(id);
+			if ((note == null) || note.InRecyclingBin)
+			{
+				FeedbackService.ShowToast(LanguageService["note_link_picker_empty"], FeedbackSeverity.Warning);
+				return true;
+			}
+			Navigation.NavigateTo(RouteNames.Combine(note.NoteType.GetRouteName(), note.Id));
+			return true;
+		}
+
+		if (target == "bookmark")
+		{
+			BookmarkModel bookmark = repository.Bookmarks.FirstOrDefault(item => item.Id == id);
+			if ((bookmark != null) && WebviewUtils.IsExternalUri(bookmark.Url))
+				NativeBrowserService.OpenWebsite(bookmark.Url);
+			else
+				FeedbackService.ShowToast(LanguageService["note_link_picker_empty"], FeedbackSeverity.Warning);
+			return true;
+		}
+
+		if (target == "contact")
+		{
+			ContactModel contact = repository.Contacts.FirstOrDefault(item => item.Id == id);
+			string phone = contact?.Phones?.FirstOrDefault(number => !string.IsNullOrWhiteSpace(number));
+			if (!string.IsNullOrWhiteSpace(phone))
+				NativeBrowserService.OpenWebsite("tel:" + phone.Trim().Replace(" ", string.Empty));
+			else
+				FeedbackService.ShowToast(contact?.Name ?? LanguageService["note_link_picker_empty"], FeedbackSeverity.Info);
+			return true;
+		}
+
+		await Task.CompletedTask;
+		return false;
 	}
 
 	private void OnKeepScreenOnChanged()

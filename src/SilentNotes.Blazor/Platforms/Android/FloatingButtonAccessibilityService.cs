@@ -2158,6 +2158,46 @@ namespace SilentNotes.Platforms
             }
         }
 
+        /// <summary>
+        /// Starts or stops the local LAN bridge from the quick menu and remembers the setting.
+        /// </summary>
+        private void ToggleLanBridge()
+        {
+            try
+            {
+                ILanBridgeService lanBridge = Ioc.Instance.GetService<ILanBridgeService>();
+                ISettingsService settingsService = Ioc.Instance.GetService<ISettingsService>();
+                if ((lanBridge == null) || (settingsService == null))
+                    return;
+
+                SettingsModel settings = settingsService.LoadSettingsOrDefault();
+                if (lanBridge.IsRunning)
+                {
+                    lanBridge.Stop();
+                    settings.LanBridgeEnabled = false;
+                    settingsService.TrySaveSettingsToLocalDevice(settings);
+                    Toast.MakeText(this, "LAN bridge stopped", ToastLength.Short)?.Show();
+                    return;
+                }
+
+                string token = settings.LanBridgeAccessToken;
+                if (string.IsNullOrEmpty(token))
+                {
+                    token = SilentNotes.ViewModels.LanBridgeViewModel.CreateToken();
+                    settings.LanBridgeAccessToken = token;
+                }
+                settings.LanBridgeEnabled = true;
+                settingsService.TrySaveSettingsToLocalDevice(settings);
+
+                string url = lanBridge.Start(settings.LanBridgePort, token, settings.LanBridgeAllowWrites);
+                string message = string.IsNullOrEmpty(url) ? "LAN bridge could not start" : "LAN bridge: " + url;
+                Toast.MakeText(this, message, ToastLength.Long)?.Show();
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         private void PopulateMainMenuGrid(global::Android.Widget.ScrollView scrollView, ILanguageService language, float density)
         {
             var gridContainer = new LinearLayout(this)
@@ -2232,6 +2272,17 @@ namespace SilentNotes.Platforms
             {
                 HideMenuOverlay();
                 ToggleScreenRecording();
+            }, true, null));
+
+            ILanBridgeService lanBridge = Ioc.Instance.GetService<ILanBridgeService>();
+            bool lanBridgeRunning = lanBridge?.IsRunning == true;
+            string lanBridgeLabel = language?["floating_menu_lan_bridge"];
+            if (string.IsNullOrWhiteSpace(lanBridgeLabel) || lanBridgeLabel == "floating_menu_lan_bridge")
+                lanBridgeLabel = "LAN bridge";
+            allButtons.Add(("🌐", lanBridgeLabel + (lanBridgeRunning ? " ●" : string.Empty), () =>
+            {
+                HideMenuOverlay();
+                ToggleLanBridge();
             }, true, null));
 
             allButtons.Add(("📦", "Apps", () =>

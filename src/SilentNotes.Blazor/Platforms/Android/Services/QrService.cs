@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Android.Content.PM;
 using Android.Graphics;
 using AndroidX.Core.Content;
+using BarcodeScanning;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Devices;
@@ -117,6 +118,17 @@ namespace SilentNotes.Platforms.Services
         /// <inheritdoc/>
         public override async Task<string> ScanQrAsync()
         {
+            return await ScanInternalAsync(BarcodeFormats.QRCode);
+        }
+
+        /// <inheritdoc/>
+        public override async Task<string> ScanBarcodeAsync()
+        {
+            return await ScanInternalAsync(BarcodeFormats.All);
+        }
+
+        private async Task<string> ScanInternalAsync(BarcodeFormats formats)
+        {
             try
             {
                 var resultSource = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -124,7 +136,7 @@ namespace SilentNotes.Platforms.Services
                 {
                     Window window = Application.Current.Windows[0];
                     Page oldPage = window.Page;
-                    window.Page = CreateScanPage(resultSource);
+                    window.Page = CreateScanPage(resultSource, formats);
                     return oldPage;
                 });
 
@@ -143,23 +155,24 @@ namespace SilentNotes.Platforms.Services
             }
         }
 
-        private Page CreateScanPage(TaskCompletionSource<string> resultSource)
+        private Page CreateScanPage(TaskCompletionSource<string> resultSource, BarcodeFormats formats)
         {
             // Prefer native ML Kit when a barcode client can be created; otherwise fall back to ZXing
             // so scanning still works on devices/builds where ML Kit registrars fail.
-            if (CanCreateMlKitBarcodeClient())
-                return new QrScanPage(resultSource);
-            return new QrScanPageZxing(resultSource);
+            if (CanCreateMlKitBarcodeClient(formats))
+                return new QrScanPage(resultSource, formats);
+            return new QrScanPageZxing(resultSource, formats);
         }
 
-        private bool CanCreateMlKitBarcodeClient()
+        private bool CanCreateMlKitBarcodeClient(BarcodeFormats formats)
         {
             try
             {
                 MainApplication.EnsureMlKitInitialized(_appContext.Context);
+                int mlkitFormat = (formats == BarcodeFormats.QRCode) ? Barcode.FormatQrCode : Barcode.FormatAllFormats;
                 using IBarcodeScanner scanner = MlKitBarcodeScanning.GetClient(
                     new BarcodeScannerOptions.Builder()
-                        .SetBarcodeFormats(Barcode.FormatQrCode)
+                        .SetBarcodeFormats(mlkitFormat)
                         .Build());
                 return scanner != null;
             }

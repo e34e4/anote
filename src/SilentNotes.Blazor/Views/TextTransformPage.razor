@@ -1,0 +1,159 @@
+@attribute [Route(RouteNames.TextTransform)]
+@attribute [Route(RouteNames.TextTransform + "/{SourceKind}/{SourceId}")]
+@inherits PageBase
+
+@using MudBlazor
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+@using SilentNotes.Workers
+
+@inject ILanguageService LanguageService
+@inject ISvgIconService IconService
+@inject IRepositoryStorageService RepositoryStorageService
+@inject IClipboardHistoryService ClipboardHistoryService
+@inject IClipboardService ClipboardService
+@inject IFeedbackService FeedbackService
+@inject INavigationService Navigation
+
+<MudAppBar Class="flex-none" Fixed="true" Dense="true" WrapContent="false">
+	<MudIconButton OnClick="@(() => Navigation.NavigateTo(BackRoute))" Icon="@IconService[IconNames.ArrowLeft]" Color="Color.Inherit" title="@LanguageService["back"]" Edge="Edge.Start" />
+</MudAppBar>
+
+<MudIcon Class="background-icon" Icon="@Icons.Material.Filled.Transform" Style="@($"right:-128px; top:-154px;")" />
+
+<MudMainContent>
+	<MudContainer Class="ms-0" MaxWidth="MaxWidth.Medium">
+		<div id="content" class="py-3">
+			<h2 class="h-colored">@LanguageService["text_tools_title"]</h2>
+			<p class="mud-text-secondary">@LanguageService["text_tools_desc"]</p>
+
+			<div class="d-flex flex-wrap gap-4 mt-4">
+				<div style="flex:1 1 260px; min-width:240px;">
+					<MudText Typo="Typo.subtitle1" Class="mb-2">@LanguageService["text_tools_notes"]</MudText>
+					<div style="max-height:220px; overflow-y:auto;">
+						@if (ViewModel.Notes.Count == 0)
+						{
+							<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["text_tools_no_notes"]</MudText>
+						}
+						@foreach (TextTransformSourceItem item in ViewModel.Notes)
+						{
+							<div class="d-flex align-center">
+								<MudCheckBox @bind-Value="item.IsSelected" Color="Color.Primary" Dense="true" />
+								<div class="flex-1" style="min-width:0;">
+									<MudText Typo="Typo.body2" Style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">@item.Title</MudText>
+									<MudText Typo="Typo.caption" Class="mud-text-secondary">@item.SubTitle</MudText>
+								</div>
+							</div>
+						}
+					</div>
+				</div>
+
+				<div style="flex:1 1 260px; min-width:240px;">
+					<MudText Typo="Typo.subtitle1" Class="mb-2">@LanguageService["text_tools_clips"]</MudText>
+					<div style="max-height:220px; overflow-y:auto;">
+						@if (ViewModel.Clips.Count == 0)
+						{
+							<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["text_tools_no_clips"]</MudText>
+						}
+						@foreach (TextTransformSourceItem item in ViewModel.Clips)
+						{
+							<div class="d-flex align-center">
+								<MudCheckBox @bind-Value="item.IsSelected" Color="Color.Primary" Dense="true" />
+								<div class="flex-1" style="min-width:0;">
+									<MudText Typo="Typo.body2" Style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">@item.Title</MudText>
+									<MudText Typo="Typo.caption" Class="mud-text-secondary">@item.SubTitle</MudText>
+								</div>
+							</div>
+						}
+					</div>
+				</div>
+			</div>
+
+			<MudStack Row="true" Spacing="2" Class="mt-2">
+				<MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ViewModel.SelectAllCommand.Execute(null))">@LanguageService["text_tools_select_all"]</MudButton>
+				<MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ViewModel.ClearSelectionCommand.Execute(null))">@LanguageService["text_tools_select_none"]</MudButton>
+			</MudStack>
+
+			<h2 class="h-colored mt-8">@LanguageService["text_tools_pipeline"]</h2>
+			<div class="d-flex flex-wrap gap-2">
+				@foreach (TextTransformStepItem step in ViewModel.Steps)
+				{
+					<div class="d-flex align-center" style="min-width:190px;">
+						<MudCheckBox @bind-Value="step.IsSelected" Color="Color.Primary" Dense="true" />
+						<MudText Typo="Typo.body2">@step.DisplayName</MudText>
+					</div>
+				}
+			</div>
+
+			@foreach (TextTransformStepItem step in ViewModel.Steps.Where(s => s.RequiresParameter).ToList())
+			{
+				if (step.IsSelected)
+				{
+					<MudTextField @bind-Value="step.Parameter" Label="@LanguageService["text_tools_regex"]"
+						Variant="Variant.Outlined" Immediate="true" Class="mt-3" Placeholder="(\\d+)" />
+				}
+			}
+
+			<MudStack Row="true" Spacing="2" Class="mt-4" AlignItems="AlignItems.Center">
+				<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow"
+					OnClick="@(() => ViewModel.RunCommand.Execute(null))">@LanguageService["text_tools_run"]</MudButton>
+				<MudButton Variant="Variant.Text" OnClick="@(() => ViewModel.CopyAllCommand.Execute(null))">@LanguageService["text_tools_copy_all"]</MudButton>
+				<MudText Typo="Typo.body2" Class="mud-text-secondary">@ViewModel.StatusText</MudText>
+			</MudStack>
+
+			@if (ViewModel.Results.Count > 0)
+			{
+				<h2 class="h-colored mt-8">@LanguageService["text_tools_results"]</h2>
+				@foreach (TextTransformResultItem result in ViewModel.Results.ToList())
+				{
+					<MudPaper Class="px-3 py-3 mb-3" Elevation="1">
+						<MudText Typo="Typo.subtitle2">@result.Title</MudText>
+						@if (!result.Success)
+						{
+							<MudText Typo="Typo.caption" Color="Color.Error">@result.Error</MudText>
+						}
+						else
+						{
+							<pre style="white-space:pre-wrap; word-break:break-word; max-height:220px; overflow:auto; margin:8px 0 0; font-size:13px;">@result.Output</pre>
+							<MudStack Row="true" Spacing="1" Class="mt-2">
+								<MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ContentCopy"
+									OnClick="@(() => ViewModel.CopyResultCommand.Execute(result))">@LanguageService["clipboard_copy"]</MudButton>
+								@if (result.Source.Kind == TextTransformSourceKind.Note)
+								{
+									<MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Save"
+										OnClick="@(() => ViewModel.SaveToNoteCommand.Execute(result))">@LanguageService["text_tools_replace_note"]</MudButton>
+								}
+								<MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add"
+									OnClick="@(() => ViewModel.AddToClipboardCommand.Execute(result))">@LanguageService["text_tools_add_clip"]</MudButton>
+							</MudStack>
+						}
+					</MudPaper>
+				}
+			}
+		</div>
+	</MudContainer>
+</MudMainContent>
+
+@code {
+	[Parameter] public string SourceKind { get; set; }
+	[Parameter] public string SourceId { get; set; }
+
+	protected override void OnInitialized()
+	{
+		BackRoute = RouteNames.NoteRepository;
+		ViewModel = new TextTransformViewModel(RepositoryStorageService, ClipboardHistoryService, ClipboardService, FeedbackService);
+	}
+
+	protected override void OnParametersSet()
+	{
+		if (!Guid.TryParse(SourceId, out Guid id))
+			return;
+
+		if (string.Equals(SourceKind, "note", StringComparison.OrdinalIgnoreCase))
+			ViewModel.SelectSource(id, null);
+		else if (string.Equals(SourceKind, "clip", StringComparison.OrdinalIgnoreCase))
+			ViewModel.SelectSource(null, id);
+	}
+
+	private TextTransformViewModel ViewModel { get; set; }
+}

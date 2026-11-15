@@ -84,6 +84,12 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
+        public override Task<string> ScanBarcodeAsync()
+        {
+            return Task.FromResult<string>(null);
+        }
+
+        /// <inheritdoc/>
         public override void Vibrate()
         {
         }

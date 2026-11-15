@@ -1,0 +1,98 @@
+@attribute [Route(RouteNames.LanBridge)]
+@inherits PageBase
+
+@using MudBlazor
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+
+@inject ILanguageService LanguageService
+@inject ISvgIconService IconService
+@inject ISettingsService SettingsService
+@inject IFeedbackService FeedbackService
+@inject ILanBridgeService LanBridgeService
+@inject INavigationService Navigation
+
+<MudAppBar Class="flex-none" Fixed="true" Dense="true" WrapContent="false">
+	<MudIconButton OnClick="@(() => Navigation.NavigateTo(BackRoute))" Icon="@IconService[IconNames.ArrowLeft]" Color="Color.Inherit" title="@LanguageService["back"]" Edge="Edge.Start" />
+</MudAppBar>
+
+<MudIcon Class="background-icon" Icon="@Icons.Material.Filled.Lan" Style="@($"right:-128px; top:-154px;")" />
+
+<MudMainContent>
+	<MudContainer Class="ms-0" MaxWidth="MaxWidth.Small">
+		<div id="content" class="py-3">
+			<h2 class="h-colored">@LanguageService["lan_bridge_title"]</h2>
+			<p class="mud-text-secondary">@LanguageService["lan_bridge_desc"]</p>
+
+			<MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-2" Dense="true">
+				@LanguageService["lan_bridge_warning"]
+			</MudAlert>
+
+			<div class="css-grid mt-4">
+				<div><MudIcon Icon="@Icons.Material.Filled.Power" Color="Color.Secondary" /></div>
+				<div>
+					<MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+						<MudButton Variant="Variant.Filled" Color="@(ViewModel.IsRunning ? Color.Error : Color.Primary)"
+							StartIcon="@(ViewModel.IsRunning ? Icons.Material.Filled.Stop : Icons.Material.Filled.PlayArrow)"
+							OnClick="@(() => ViewModel.ToggleCommand.Execute(null))">
+							@(ViewModel.IsRunning ? LanguageService["lan_bridge_stop"] : LanguageService["lan_bridge_start"])
+						</MudButton>
+						<MudText Typo="Typo.body2">@(ViewModel.IsRunning ? LanguageService["lan_bridge_running"] : LanguageService["lan_bridge_inactive"])</MudText>
+					</MudStack>
+					<MudSwitch @bind-Value="@ViewModel.AutoStart" Class="mt-2"
+						Label="@LanguageService["lan_bridge_autostart"]" Color="Color.Tertiary" />
+				</div>
+
+				<div><MudIcon Icon="@Icons.Material.Filled.Numbers" Color="Color.Secondary" /></div>
+				<div>
+					<label for="LanBridgePort">@LanguageService["lan_bridge_port"]</label>
+					<MudNumericField id="LanBridgePort" @bind-Value="ViewModel.Port" Variant="Variant.Outlined" Min="0" Max="65535" Immediate="true" />
+					<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["lan_bridge_port_hint"]</MudText>
+				</div>
+
+				<div><MudIcon Icon="@Icons.Material.Filled.Key" Color="Color.Secondary" /></div>
+				<div>
+					<label for="LanBridgeToken">@LanguageService["lan_bridge_token"]</label>
+					<MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+						<MudTextField id="LanBridgeToken" @bind-Value="ViewModel.AccessToken" Variant="Variant.Outlined" Immediate="true" Class="flex-1" />
+						<MudIconButton Icon="@Icons.Material.Filled.Casino" Color="Color.Inherit"
+							OnClick="@(() => ViewModel.NewTokenCommand.Execute(null))" title="@LanguageService["lan_bridge_new_token"]" />
+					</MudStack>
+					<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["lan_bridge_token_hint"]</MudText>
+				</div>
+
+				<div></div>
+				<div>
+					<MudSwitch @bind-Value="@ViewModel.AllowClipboardWrites"
+						Label="@LanguageService["lan_bridge_allow_writes"]" Color="Color.Tertiary" />
+				</div>
+			</div>
+
+			@if (ViewModel.IsRunning)
+			{
+				<h2 class="h-colored mt-8">@LanguageService["lan_bridge_urls"]</h2>
+				@foreach (string url in ViewModel.Urls)
+				{
+					<MudPaper Class="px-3 py-2 mb-2" Elevation="1">
+						<MudText Typo="Typo.body2" Style="word-break:break-all">@url</MudText>
+					</MudPaper>
+				}
+			}
+
+			@if (!string.IsNullOrWhiteSpace(ViewModel.LastError))
+			{
+				<MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-4">@ViewModel.LastError</MudAlert>
+			}
+		</div>
+	</MudContainer>
+</MudMainContent>
+
+@code {
+	protected override void OnInitialized()
+	{
+		BackRoute = RouteNames.Settings;
+		ViewModel = new LanBridgeViewModel(LanBridgeService, SettingsService, FeedbackService, LanguageService);
+	}
+
+	private LanBridgeViewModel ViewModel { get; set; }
+}

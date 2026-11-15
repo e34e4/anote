@@ -33,6 +33,9 @@ namespace SilentNotes
         public const string Settings = "/settings";
         public const string MainTabOrder = "/settings/maintaborder";
         public const string AiProviders = "/settings/aiproviders";
+        public const string Backup = "/settings/backup";
+        public const string LanBridge = "/settings/lanbridge";
+        public const string TextTransform = "/texttransform";
         public const string TransferCodePrompt = "/transfercodeprompt";
         public const string TransferCodeHistory = "/transfercodehistory";
 

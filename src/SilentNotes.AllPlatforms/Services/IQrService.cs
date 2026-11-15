@@ -33,6 +33,14 @@ namespace SilentNotes.Services
         Task<string> ScanQrAsync();
 
         /// <summary>
+        /// Opens the camera and scans for any supported barcode type (QR, EAN, Code128, Data
+        /// Matrix, PDF417, ...). The method returns as soon as a code was found or the user
+        /// canceled the scanning.
+        /// </summary>
+        /// <returns>The decoded text, or null if scanning was canceled or is not supported.</returns>
+        Task<string> ScanBarcodeAsync();
+
+        /// <summary>
         /// Tries to decode a QR code from an encoded image file (PNG, JPEG...).
         /// </summary>
         /// <param name="image">The encoded image file.</param>

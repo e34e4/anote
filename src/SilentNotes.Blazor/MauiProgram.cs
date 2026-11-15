@@ -186,6 +186,14 @@ public static class MauiProgram
             serviceProvider.GetService<ISettingsService>()));
         services.AddSingleton<IMediaToolsService>((serviceProvider) => new SilentNotes.Services.MediaToolsService());
 
+        services.AddSingleton<IManualBackupService>((serviceProvider) => new ManualBackupService(
+            serviceProvider.GetService<IRepositoryStorageService>(),
+            serviceProvider.GetService<IClipboardHistoryService>(),
+            serviceProvider.GetService<IRssArticleCacheService>()));
+        services.AddSingleton<ILanBridgeService>((serviceProvider) => new LanBridgeService(
+            serviceProvider.GetService<IRepositoryStorageService>(),
+            serviceProvider.GetService<IClipboardHistoryService>()));
+
         // Scoped services (some Blazor services like NavigationManager or IJSRuntime are scoped)
         // Workaround: It seems that scoped services are recreated when gotten from Ioc, therefore
         // we have to add them dynamically in MainLayout.razor.

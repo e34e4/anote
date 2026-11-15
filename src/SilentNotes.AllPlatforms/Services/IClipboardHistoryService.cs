@@ -68,6 +68,18 @@ namespace SilentNotes.Services
         void ClearAll();
 
         /// <summary>
+        /// Gets the absolute path of the file which stores the clipboard history.
+        /// </summary>
+        /// <returns>Absolute file path, the file may not exist yet.</returns>
+        string GetHistoryFilePath();
+
+        /// <summary>
+        /// Gets the absolute path of the folder which contains the clipboard images.
+        /// </summary>
+        /// <returns>Absolute directory path, the directory may not exist yet.</returns>
+        string GetImagesDirectoryPath();
+
+        /// <summary>
         /// Gets the absolute path of the full size image of an item.
         /// </summary>
         /// <param name="fileName">The file name stored in <see cref="ClipboardItemModel.ImageFileName"/>.</param>

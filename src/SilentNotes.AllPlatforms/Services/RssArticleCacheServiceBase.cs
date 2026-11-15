@@ -31,6 +31,12 @@ namespace SilentNotes.Services
         protected abstract string GetLocation();
 
         /// <inheritdoc/>
+        public string GetDatabaseFilePath()
+        {
+            return DatabasePath;
+        }
+
+        /// <inheritdoc/>
         public IReadOnlyList<RssCachedArticleModel> LoadArticles(IEnumerable<Guid> feedIds)
         {
             if (feedIds == null)

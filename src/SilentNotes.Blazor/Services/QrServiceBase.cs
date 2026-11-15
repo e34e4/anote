@@ -35,6 +35,9 @@ namespace SilentNotes.Platforms.Services
         public abstract Task<string> ScanQrAsync();
 
         /// <inheritdoc/>
+        public abstract Task<string> ScanBarcodeAsync();
+
+        /// <inheritdoc/>
         public abstract void Vibrate();
 
         /// <inheritdoc/>

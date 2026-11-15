@@ -20,6 +20,12 @@ namespace SilentNotes.Services
         public const long DefaultMaxCacheBytes = 1L * 1024 * 1024 * 1024;
 
         /// <summary>
+        /// Gets the absolute path of the SQLite database file which caches the articles.
+        /// </summary>
+        /// <returns>Absolute file path, the file may not exist yet.</returns>
+        string GetDatabaseFilePath();
+
+        /// <summary>
         /// Loads all cached articles for the given feed ids, newest first.
         /// </summary>
         IReadOnlyList<RssCachedArticleModel> LoadArticles(IEnumerable<Guid> feedIds);

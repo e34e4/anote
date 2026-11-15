@@ -244,6 +244,12 @@ namespace SilentNotes.ViewModels
                     bool repositoryIsNewer = repositoryNote.ModifiedAt > Model.ModifiedAt;
                     if (!repositoryIsNewer)
                     {
+                        // Expand the inline link syntax [[Note title]], @Contact and
+                        // [[bookmark:Title]] into anchors, so links stay clickable.
+                        string contentToStore = NoteLinkExpander.Expand(_unlockedContent, noteRepository);
+                        if (!string.Equals(contentToStore, _unlockedContent, StringComparison.Ordinal))
+                            _unlockedContent = contentToStore;
+
                         Model.RefreshModifiedAt();
                         if (IsUnlocked)
                             Model.HtmlContent = Lock(_unlockedContent);
