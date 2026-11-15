@@ -14,6 +14,63 @@ your devices.
 
 If you want to help, please read the [contribution guidelines](CONTRIBUTING.md).
 
+## What's new
+
+The last three development rounds added sixteen larger features. Numbering follows the three
+implementation rounds (1–5, 6–10 and 11–16):
+
+**Notes, capture and local tools**
+
+1. **LAN Web Drop & Clipboard Bridge** — a start/stop HTTP/WebSocket server (Settings → LAN bridge,
+   plus a floating quick-menu button) that lets any browser in the same Wi-Fi read notes, download
+   them as text/HTML/Markdown, push clipboard items and send text snippets. No cloud account or
+   external server is involved.
+2. **Links between notes, contacts and bookmarks** — `[[Note title]]`, `@Contact` and
+   `[[bookmark:Title]]` are expanded into clickable links in the editor, with a picker that inserts
+   the correct link for you.
+3. **Manual local backup** — writes the SQLite database, clipboard history and SQLite article cache
+   together with readable `notes.md`/`notes.json`, `clipboard.json`, `contacts.json` and
+   `bookmarks.json` bundles into a folder of your choice (default `/sdcard/anote/bak`).
+4. **QR and barcode capture into notes** — scan QR, EAN, Code128, Data Matrix, PDF417 and other
+   codes directly into the note at the cursor, without leaving the editor.
+5. **Text transformation pipeline** — batch-process notes and clipboard items with Base64/URL
+   encoding, JSON/XML pretty-printing and minifying, SHA-256/MD5 hashing, line sorting and
+   deduplication, trimming, and regex extraction.
+6. **Programmer calculator mode** — persistent named variables (`tax = 0.21`), hex/bin/oct literals,
+   bitwise operators, data-size conversions and date-interval math shared with the calendar tools.
+7. **OPML import/export and offline readability** — standard OPML import/export for RSS
+   subscriptions, plus a readability parser that strips clutter and caches full article text in
+   SQLite for starred RSS items and saved bookmarks.
+8. **Quick Settings tile and share targets** — an instant scratchpad tile captures text over any
+   app, and aNote registers as an Android `ACTION_SEND` target that routes shared links or text
+   straight into a note, a bookmark or an RSS feed probe without opening the full UI.
+9. **Share images and files to aNote** — `ActionSendActivity` accepts `image/*` and generic files,
+   and routes them into the clipboard, Camera tab, Reader or a note attachment.
+10. **OCR text capture** — ML Kit text recognition on camera shots and screenshots, with the result
+    sent to a note or the clipboard.
+
+**Search, AI and privacy**
+
+11. **Global search** — one search box across notes, clips, bookmarks, mail, Telegram, RSS articles
+    and password-vault logins, grouped by source. It is reachable from the three-dots overflow menu,
+    the floating quick menu and a configurable gesture; results open the matching note or switch to
+    the owning tab with the query applied.
+12. **Encrypted file attachments in notes** — attach arbitrary files (PDF, audio, archives, …) with
+    open and share actions. Attachment content is encrypted with a per-note key protected by the
+    open safe or the device keystore, and is cleaned up when the note is permanently deleted.
+13. **Player queue and background playback** — queue folders and playlists, auto-advance, a persisted
+    queue, an ongoing media notification with transport controls for background playback, playback
+    speed from 0.75× to 2×, and automatic sidecar subtitles (`.srt`/`.vtt`) for videos.
+14. **Explicit AI actions** — summarize, translate (nine languages) and rewrite selected text or
+    whole notes, emails, RSS articles and Reader documents/PDFs (PDF pages are read with OCR). The
+    result can be copied or inserted back into the editor, in addition to the free-form Ask AI chat.
+15. **Device-to-device sync over LAN** — a `LAN (same Wi-Fi)` storage option that synchronizes two
+    devices through the LAN bridge instead of FTP/WebDAV/Dropbox/Drive/OneDrive, removing the cloud
+    dependency while keeping the existing merge and transfer-code pipeline.
+16. **Abro browser tools** — a distraction-free reader mode with article extraction, AI page
+    translation with a readable result page, and cross-device tab handoff through a WebDAV
+    `abro/tabs.json` file.
+
 ## Features
 
 * ✔ Take your notes wherever you are on your Android and Windows devices.
