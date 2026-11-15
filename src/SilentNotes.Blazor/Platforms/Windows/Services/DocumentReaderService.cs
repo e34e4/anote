@@ -89,6 +89,10 @@ namespace SilentNotes.Platforms.Services
             Task.CompletedTask;
 
         /// <inheritdoc/>
+        public Task<string> ExtractActiveTextAsync(int maxPages = 5) =>
+            Task.FromResult(ActiveDocument?.Text ?? string.Empty);
+
+        /// <inheritdoc/>
         public Task<bool> SaveActiveTextAsync(string text) => Task.FromResult(false);
 
         /// <inheritdoc/>

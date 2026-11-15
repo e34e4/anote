@@ -42,6 +42,13 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
+        public event Action PlaybackCompleted
+        {
+            add { }
+            remove { }
+        }
+
+        /// <inheritdoc/>
         public string ActivePath => null;
 
         /// <inheritdoc/>
@@ -108,6 +115,14 @@ namespace SilentNotes.Platforms.Services
 
         /// <inheritdoc/>
         public void SeekRelative(double relative)
+        {
+        }
+
+        /// <inheritdoc/>
+        public double PlaybackSpeed => 1.0;
+
+        /// <inheritdoc/>
+        public void SetPlaybackSpeed(double speed)
         {
         }
 

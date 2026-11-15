@@ -185,6 +185,14 @@ namespace SilentNotes.ViewModels
 
         public DocumentContentModel ActiveDocument => _readerService.ActiveDocument;
 
+        /// <summary>
+        /// Extracts plain text from the open document (PDF pages via OCR), for AI actions.
+        /// </summary>
+        public Task<string> ExtractActiveTextAsync()
+        {
+            return _readerService.ExtractActiveTextAsync();
+        }
+
         public string ActiveTitle => ActiveDocument?.Title ?? string.Empty;
 
         public bool IsPdfDocument =>

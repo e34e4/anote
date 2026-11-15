@@ -30,6 +30,9 @@ namespace SilentNotes
         /// <summary>Base notification id for Telegram messages (per-chat ids are derived from this).</summary>
         public const int TelegramNotificationId = 7405;
 
+        /// <summary>Notification id of the media player.</summary>
+        public const int MediaNotificationId = 7406;
+
         /// <summary>Stable per-chat notification id so parallel chats do not overwrite each other.</summary>
         public static int TelegramNotificationIdForChat(string chatKey)
         {
@@ -65,6 +68,8 @@ namespace SilentNotes
             // Telegram message notifications (base id or per-chat band 7500–11500) open the TG tab.
             if (requestCode == TelegramNotificationId || (requestCode >= 7500 && requestCode <= 11500))
                 intent.PutExtra(Platforms.FloatingButtonAccessibilityService.ExtraOpenTab, 17);
+            else if (requestCode == MediaNotificationId)
+                intent.PutExtra(Platforms.FloatingButtonAccessibilityService.ExtraOpenTab, 14);
             else
                 intent.PutExtra(AlarmRingingService.ExtraOpenClock, true);
             intent.AddFlags(ActivityFlags.SingleTop);

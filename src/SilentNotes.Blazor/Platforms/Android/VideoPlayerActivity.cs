@@ -44,6 +44,9 @@ namespace SilentNotes
         private VideoView _videoView;
         private bool _floating;
         private string _localPath;
+        private string _subtitlePath;
+        private System.IO.Stream _subtitleStream;
+        private string _subtitleMime;
         private global::Android.Webkit.WebView _webView;
         private FrameLayout _webRoot;
         private global::Android.Views.View _customView;
@@ -194,6 +197,7 @@ namespace SilentNotes
                     Finish();
                     return;
                 }
+                FindSidecarSubtitle();
                 _videoView.Start();
             }
             catch (Exception ex)
@@ -404,8 +408,57 @@ namespace SilentNotes
         public void OnPrepared(MediaPlayer mp)
         {
             mp?.SetVideoScalingMode(VideoScalingMode.ScaleToFit);
+            LoadSidecarSubtitle();
             UpdatePlayPauseIcon();
             Tick();
+        }
+
+        /// <summary>
+        /// Looks for a subtitle file with the same name next to the video (.srt or .vtt).
+        /// </summary>
+        private void FindSidecarSubtitle()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(_localPath))
+                    return;
+
+                string withoutExtension = Path.Combine(
+                    Path.GetDirectoryName(_localPath) ?? string.Empty,
+                    Path.GetFileNameWithoutExtension(_localPath));
+
+                foreach (string candidate in new[] { withoutExtension + ".srt", withoutExtension + ".vtt" })
+                {
+                    if (File.Exists(candidate))
+                    {
+                        _subtitlePath = candidate;
+                        _subtitleMime = Path.GetExtension(candidate).Equals(".vtt", StringComparison.OrdinalIgnoreCase)
+                            ? "text/vtt"
+                            : "application/x-subrip";
+                        return;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private void LoadSidecarSubtitle()
+        {
+            if (string.IsNullOrEmpty(_subtitlePath) || _subtitleStream != null)
+                return;
+
+            try
+            {
+                _subtitleStream = File.OpenRead(_subtitlePath);
+                MediaFormat format = MediaFormat.CreateSubtitleFormat(_subtitleMime, "und");
+                _videoView.AddSubtitleSource(_subtitleStream, format);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("aNote", "Could not load subtitle " + _subtitlePath + ": " + ex.Message);
+            }
         }
 
         public void OnCompletion(MediaPlayer mp)
@@ -518,6 +571,14 @@ namespace SilentNotes
         protected override void OnDestroy()
         {
             _handler.RemoveCallbacksAndMessages(null);
+            try
+            {
+                _subtitleStream?.Dispose();
+                _subtitleStream = null;
+            }
+            catch (Exception)
+            {
+            }
             try
             {
                 _videoView?.StopPlayback();

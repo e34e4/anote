@@ -131,6 +131,7 @@ namespace SilentNotes.ViewModels
                     // Register the note as deleted and remove the note from the list
                     Model.DeletedNotes.AddIdOrRefreshDeletedAt(note.Id);
                     Model.Notes.Remove(note);
+                    TryDeleteAttachments(note.Id);
                 }
             }
             _messengerService.Send(new RedrawCurrentPageMessage());
@@ -168,8 +169,20 @@ namespace SilentNotes.ViewModels
                 Model.DeletedNotes.AddIdOrRefreshDeletedAt(noteId);
                 Model.Notes.Remove(viewModel.Model);
                 RecycledNotes.Remove(viewModel);
+                TryDeleteAttachments(noteId);
             }
             OnPropertyChanged("Notes");
+        }
+
+        private static void TryDeleteAttachments(Guid noteId)
+        {
+            try
+            {
+                Ioc.Instance.GetService<INoteAttachmentService>()?.DeleteAllAttachments(noteId);
+            }
+            catch (Exception)
+            {
+            }
         }
     }
 }

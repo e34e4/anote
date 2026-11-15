@@ -34,6 +34,9 @@ namespace SilentNotes
         /// <summary>Channel for ongoing screen recording.</summary>
         public const string ScreenRecordChannelId = "anote_screen_record";
 
+        /// <summary>Channel for the media player notification.</summary>
+        public const string MediaChannelId = "anote_media";
+
         /// <summary>Creates all notification channels, can be called repeatedly.</summary>
         public static void CreateAll(Context context)
         {
@@ -80,6 +83,13 @@ namespace SilentNotes
             screenRecordChannel.EnableVibration(false);
             screenRecordChannel.SetSound(null, null);
             manager.CreateNotificationChannel(screenRecordChannel);
+
+            var mediaChannel = new NotificationChannel(MediaChannelId, "Media playback", NotificationImportance.Low);
+            mediaChannel.Description = "Audio playback controls";
+            mediaChannel.EnableVibration(false);
+            mediaChannel.SetSound(null, null);
+            mediaChannel.LockscreenVisibility = NotificationVisibility.Public;
+            manager.CreateNotificationChannel(mediaChannel);
         }
 
         /// <summary>Gets audio attributes which play on the alarm stream.</summary>

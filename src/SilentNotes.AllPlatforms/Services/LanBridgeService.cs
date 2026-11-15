@@ -22,13 +22,15 @@ namespace SilentNotes.Services
     /// <summary>
     /// Self contained HTTP/WebSocket server. It is implemented on top of a <see cref="TcpListener"/>
     /// instead of ASP.NET Core, so it works on Android without adding a web host to the app.
-    /// The server only exposes read access to the notes and read/write access to the clipboard
-    /// history; it never deletes or modifies notes.
+    /// The server exposes read access to the notes, read/write access to the clipboard history and
+    /// an encrypted repository container which another aNote device can use for LAN sync. It never
+    /// modifies the notes themselves.
     /// </summary>
     public class LanBridgeService : ILanBridgeService, IDisposable
     {
         private const string WebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-        private const int MaxRequestBytes = 1024 * 1024;
+        private const int MaxRequestBytes = 64 * 1024 * 1024;
+        private const string SyncRepositoryFileName = "lan_sync_repository.bin";
 
         private readonly IRepositoryStorageService _repositoryStorageService;
         private readonly IClipboardHistoryService _clipboardHistoryService;
@@ -371,6 +373,25 @@ namespace SilentNotes.Services
                     await WriteJsonAsync(stream, BuildNoteListJson(), token);
                     return;
                 }
+                if (path == "/api/repository/status")
+                {
+                    string syncFile = GetSyncRepositoryPath();
+                    bool exists = File.Exists(syncFile);
+                    long size = exists ? new FileInfo(syncFile).Length : 0;
+                    await WriteJsonAsync(stream, BuildJson(writer =>
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteBoolean("exists", exists);
+                        writer.WriteNumber("size", size);
+                        writer.WriteEndObject();
+                    }), token);
+                    return;
+                }
+                if (path == "/api/repository")
+                {
+                    await HandleRepositoryRequestAsync(stream, request, token);
+                    return;
+                }
                 if (path.StartsWith("/api/notes/", StringComparison.OrdinalIgnoreCase))
                 {
                     await HandleNoteRequestAsync(stream, request, token);
@@ -386,6 +407,62 @@ namespace SilentNotes.Services
 
             await WriteResponseAsync(stream, 404, "Not Found", "text/plain; charset=utf-8",
                 Encoding.UTF8.GetBytes("Not found."), token);
+        }
+
+        private async Task HandleRepositoryRequestAsync(NetworkStream stream, HttpRequest request, CancellationToken token)
+        {
+            string path = GetSyncRepositoryPath();
+            try
+            {
+                if (request.Method == "PUT" || request.Method == "POST")
+                {
+                    if (request.Body == null || request.Body.Length == 0)
+                    {
+                        await WriteResponseAsync(stream, 400, "Bad Request", "text/plain; charset=utf-8",
+                            Encoding.UTF8.GetBytes("The request does not contain a repository."), token);
+                        return;
+                    }
+
+                    string directory = Path.GetDirectoryName(path);
+                    if (!string.IsNullOrEmpty(directory))
+                        Directory.CreateDirectory(directory);
+
+                    string tempPath = path + ".tmp";
+                    File.WriteAllBytes(tempPath, request.Body);
+                    File.Move(tempPath, path, true);
+
+                    await WriteJsonAsync(stream, Encoding.UTF8.GetBytes("{\"ok\":true}"), token);
+                    return;
+                }
+
+                if (request.Method == "DELETE")
+                {
+                    if (File.Exists(path))
+                        File.Delete(path);
+                    await WriteJsonAsync(stream, Encoding.UTF8.GetBytes("{\"ok\":true}"), token);
+                    return;
+                }
+
+                if (!File.Exists(path))
+                {
+                    await WriteResponseAsync(stream, 404, "Not Found", "text/plain; charset=utf-8",
+                        Encoding.UTF8.GetBytes("No repository has been shared on this device yet."), token);
+                    return;
+                }
+
+                byte[] content = File.ReadAllBytes(path);
+                await WriteResponseAsync(stream, 200, "OK", "application/octet-stream", content, token);
+            }
+            catch (Exception ex)
+            {
+                await WriteResponseAsync(stream, 500, "Internal Server Error", "text/plain; charset=utf-8",
+                    Encoding.UTF8.GetBytes("Error: " + ex.Message), token);
+            }
+        }
+
+        private string GetSyncRepositoryPath()
+        {
+            return Path.Combine(_repositoryStorageService.GetLocation(), SyncRepositoryFileName);
         }
 
         private async Task HandleClipboardPostAsync(NetworkStream stream, HttpRequest request, CancellationToken token)

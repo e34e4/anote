@@ -404,6 +404,22 @@
 
 	public bool CanPreview => _previewKind != ReaderPreviewRenderer.PreviewKind.None;
 
+	/// <summary>Gets the currently selected text of the editor.</summary>
+	public async Task<string> GetSelectedTextAsync()
+	{
+		Sel selection = await GetSelectionAsync();
+		return selection?.Text ?? string.Empty;
+	}
+
+	/// <summary>Replaces the current selection with the given text.</summary>
+	public async Task ReplaceSelectedTextAsync(string text)
+	{
+		if (string.IsNullOrEmpty(text))
+			return;
+		Sel selection = await GetSelectionAsync();
+		await ReplaceRangeAsync(selection.Start, selection.End, text);
+	}
+
 	protected override bool ShouldRender()
 	{
 		if (!_shouldRender)

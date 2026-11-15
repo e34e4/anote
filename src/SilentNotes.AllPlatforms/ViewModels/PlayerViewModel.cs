@@ -37,6 +37,9 @@ namespace SilentNotes.ViewModels
         private int _activePathTabIndex;
         private List<PathTabSessionModel> _pathTabs = new List<PathTabSessionModel>();
         private readonly HashSet<string> _selectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly List<string> _queue = new List<string>();
+        private int _queueIndex = -1;
+        private double _playbackSpeed = 1.0;
 
         public PlayerViewModel(
             IMediaPlayerService mediaService,
@@ -52,6 +55,7 @@ namespace SilentNotes.ViewModels
             _ytDlpPrompt = ytDlpPrompt;
 
             _mediaService.StateChanged += OnMediaStateChanged;
+            _mediaService.PlaybackCompleted += OnPlaybackCompleted;
 
             GrantPermissionCommand = new AsyncRelayCommand(GrantPermissionAsync);
             RefreshCommand = new RelayCommand(Reload);
@@ -70,6 +74,15 @@ namespace SilentNotes.ViewModels
             DeleteSelectedCommand = new AsyncRelayCommand(DeleteSelectedAsync);
             SelectAllVisibleCommand = new RelayCommand(SelectAllVisible);
             ClearSelectionCommand = new RelayCommand(ClearSelection);
+            PlayNextCommand = new RelayCommand(PlayNextTrack);
+            PlayPreviousCommand = new RelayCommand(PlayPreviousTrack);
+            QueueFolderCommand = new RelayCommand(QueueVisibleAudio);
+            ClearQueueCommand = new RelayCommand(ClearQueue);
+            SetSpeedCommand = new RelayCommand<double>(SetSpeed);
+
+            MediaPlaybackCommands.Next = PlayNextTrack;
+            MediaPlaybackCommands.Previous = PlayPreviousTrack;
+            LoadQueueFromStore();
 
             LoadPathTabsFromSettings();
             Reload();
@@ -95,6 +108,26 @@ namespace SilentNotes.ViewModels
         public ICommand DeleteSelectedCommand { get; }
         public ICommand SelectAllVisibleCommand { get; }
         public ICommand ClearSelectionCommand { get; }
+        public ICommand PlayNextCommand { get; }
+        public ICommand PlayPreviousCommand { get; }
+        public ICommand QueueFolderCommand { get; }
+        public ICommand ClearQueueCommand { get; }
+        public ICommand SetSpeedCommand { get; }
+
+        /// <summary>Gets a value indicating whether a queue is active.</summary>
+        public bool HasQueue => _queue.Count > 0;
+
+        /// <summary>Gets the number of items in the queue.</summary>
+        public int QueueCount => _queue.Count;
+
+        /// <summary>Gets the current playback speed.</summary>
+        public double PlaybackSpeed => _playbackSpeed;
+
+        /// <summary>Gets a value indicating whether the given speed is active.</summary>
+        public bool IsSpeed(double speed)
+        {
+            return Math.Abs(_playbackSpeed - speed) < 0.01;
+        }
 
         public bool HasSelection => _selectedPaths.Count > 0;
 
@@ -546,6 +579,7 @@ namespace SilentNotes.ViewModels
                     return;
                 }
 
+                _queueIndex = _queue.FindIndex(path => string.Equals(path, item.Path, StringComparison.OrdinalIgnoreCase));
                 await _mediaService.PlayAsync(item.Model);
             }
             catch (Exception ex)
@@ -581,6 +615,110 @@ namespace SilentNotes.ViewModels
         {
             _mediaService.SeekRelative(relative);
             RaiseStateChanged();
+        }
+
+        /// <summary>Plays the next item of the queue, wrapping around at the end.</summary>
+        public void PlayNextTrack()
+        {
+            if (_queue.Count == 0)
+                return;
+            _queueIndex = (_queueIndex + 1) % _queue.Count;
+            PlayQueueItem();
+        }
+
+        /// <summary>Plays the previous item of the queue, wrapping around at the start.</summary>
+        public void PlayPreviousTrack()
+        {
+            if (_queue.Count == 0)
+                return;
+            _queueIndex = _queueIndex <= 0 ? _queue.Count - 1 : _queueIndex - 1;
+            PlayQueueItem();
+        }
+
+        private async void PlayQueueItem()
+        {
+            if (_queueIndex < 0 || _queueIndex >= _queue.Count)
+                return;
+
+            string path = _queue[_queueIndex];
+            PersistQueue();
+            try
+            {
+                await _mediaService.PlayUriAsync(path, null, Path.GetFileName(path));
+            }
+            catch (Exception ex)
+            {
+                _feedbackService?.ShowToast(_languageService.LoadTextFmt("player_play_failed", ex.Message), FeedbackSeverity.Warning);
+            }
+            OnPropertyChanged(nameof(HasQueue), nameof(QueueCount));
+            RaiseStateChanged();
+        }
+
+        private void QueueVisibleAudio()
+        {
+            List<string> paths = FilteredItems
+                .Where(item => item.Kind == MediaKind.Audio && !string.IsNullOrEmpty(item.Path))
+                .Select(item => item.Path)
+                .ToList();
+
+            if (paths.Count == 0)
+            {
+                _feedbackService?.ShowToast(_languageService["player_queue_empty"], FeedbackSeverity.Info);
+                return;
+            }
+
+            _queue.Clear();
+            _queue.AddRange(paths);
+            _queueIndex = _queue.FindIndex(path => string.Equals(path, _mediaService.ActivePath, StringComparison.OrdinalIgnoreCase));
+
+            bool startPlayback = !HasActiveMedia;
+            PersistQueue();
+            OnPropertyChanged(nameof(HasQueue), nameof(QueueCount));
+            _feedbackService?.ShowToast(_languageService.LoadTextFmt("player_queued", _queue.Count));
+            if (startPlayback)
+                PlayNextTrack();
+            else
+                RaiseStateChanged();
+        }
+
+        private void ClearQueue()
+        {
+            _queue.Clear();
+            _queueIndex = -1;
+            PersistQueue();
+            OnPropertyChanged(nameof(HasQueue), nameof(QueueCount));
+            RaiseStateChanged();
+        }
+
+        private void SetSpeed(double speed)
+        {
+            _playbackSpeed = Math.Clamp(speed, 0.5, 2.0);
+            _mediaService.SetPlaybackSpeed(_playbackSpeed);
+            OnPropertyChanged(nameof(PlaybackSpeed));
+            RaiseStateChanged();
+        }
+
+        private void OnPlaybackCompleted()
+        {
+            if (_queue.Count > 0)
+                PlayNextTrack();
+        }
+
+        private void LoadQueueFromStore()
+        {
+            PlayerQueueState state = PlayerQueueStore.Load();
+            _queue.Clear();
+            _queue.AddRange(state.Items.Where(path => !string.IsNullOrWhiteSpace(path)));
+            _queueIndex = _queue.Count > 0 ? Math.Clamp(state.Index, 0, _queue.Count - 1) : -1;
+        }
+
+        private void PersistQueue()
+        {
+            PlayerQueueStore.Save(new PlayerQueueState
+            {
+                Items = new List<string>(_queue),
+                Index = _queueIndex,
+            });
         }
 
         private void OnMediaStateChanged()

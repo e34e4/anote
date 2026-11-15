@@ -389,6 +389,7 @@
 				<MudMenuItem OnClick="@(() => ViewModel.RestoreBackupCommand.Execute(null))" Icon="@IconService[IconNames.Alert]" IconColor="Color.Error">@LanguageService["backup_restore"]</MudMenuItem>
 			</MudMenu>
 
+			<MudMenuItem OnClick="@(() => Navigation.NavigateTo(RouteNames.GlobalSearch))" Icon="@IconService[IconNames.Magnify]">@LanguageService["global_search_title"]</MudMenuItem>
 			<MudMenuItem OnClick="@(() => Navigation.NavigateTo(RouteNames.TextTransform))" Icon="@Icons.Material.Filled.Transform">@LanguageService["text_tools_title"]</MudMenuItem>
 			<MudMenuItem OnClick="@(() => Navigation.NavigateTo(RouteNames.LanBridge))" Icon="@Icons.Material.Filled.Lan">@LanguageService["gui_lan_bridge"]</MudMenuItem>
 			<MudDivider />
@@ -969,6 +970,15 @@
 			_ = _recViewModel.StartScreenRecordingFromIntentAsync();
 		}
 
+		// A global search result wants to show the matching tab with a filter applied.
+		SearchIntentRequest pendingSearch = SearchIntentRequest.Pending;
+		if (pendingSearch != null)
+		{
+			SearchIntentRequest.Pending = null;
+			ApplySearchFilter(pendingSearch.TabIndex, pendingSearch.Filter);
+			SetActiveTab(Math.Clamp(pendingSearch.TabIndex, 0, MainViewTabCatalog.MaxTabIndex));
+		}
+
 		MessengerService.Register<BringNoteIntoViewMessage>(
 			this, (recipient, message) => _pendingScrollIntoView = message);
 		MessengerService.Register<SynchronizationIsRunningChangedMessage>(
@@ -1280,6 +1290,20 @@
 			}
 		}
 
+		// Prefer applying a pending search result over a reload wipe when returning from the
+		// global search page.
+		SearchIntentRequest pendingSearch = SearchIntentRequest.Pending;
+		if (pendingSearch != null)
+		{
+			SearchIntentRequest.Pending = null;
+			ApplySearchFilter(pendingSearch.TabIndex, pendingSearch.Filter);
+			SetActiveTab(Math.Clamp(pendingSearch.TabIndex, 0, MainViewTabCatalog.MaxTabIndex));
+			_passwordViewModel?.EnsureLoaded();
+			_telegramViewModel?.SyncFromService();
+			InvokeAsync(StateHasChanged);
+			return;
+		}
+
 		// Prefer applying a pending tab intent over a reload wipe when returning from the
 		// floating quick menu / external launcher.
 		TabIntentRequest pendingTab = TabIntentRequest.Pending;
@@ -1542,6 +1566,40 @@
 	protected override void OnRedrawCurrentPage()
 	{
 		ReloadMainTabDisplayOrder();
+	}
+
+	/// <summary>
+	/// Applies the filter text of a global search result to the matching tab view model.
+	/// </summary>
+	private void ApplySearchFilter(int tabIndex, string filter)
+	{
+		filter ??= string.Empty;
+		switch (tabIndex)
+		{
+			case 0:
+				ViewModel.Filter = filter;
+				break;
+			case 1:
+				_clipboardViewModel.Filter = filter;
+				break;
+			case 2:
+				_bookyViewModel.Filter = filter;
+				break;
+			case 13:
+				_mailViewModel.Filter = filter;
+				break;
+			case 16:
+				_passwordViewModel?.EnsureLoaded();
+				if (_passwordViewModel != null)
+					_passwordViewModel.Filter = filter;
+				break;
+			case 17:
+				_telegramViewModel.Filter = filter;
+				break;
+			case 18:
+				_rssViewModel.Filter = filter;
+				break;
+		}
 	}
 
 	/// <summary>

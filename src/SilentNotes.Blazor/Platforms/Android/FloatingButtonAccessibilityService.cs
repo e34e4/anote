@@ -2300,6 +2300,15 @@ namespace SilentNotes.Platforms
                 OpenSystemPage();
             }, true, null));
 
+            string searchLabel = language?["global_search_title"];
+            if (string.IsNullOrWhiteSpace(searchLabel) || searchLabel == "global_search_title")
+                searchLabel = "Search";
+            allButtons.Add(("🔎", searchLabel, () =>
+            {
+                HideMenuOverlay();
+                OpenGlobalSearch();
+            }, true, null));
+
             allButtons.Add(("➕", "+ App", () => ShowAddAppDialog(), true, null));
             allButtons.Add(("➕", "+ Folder", () => ShowAddFolderDialog(), true, null));
 
@@ -2660,6 +2669,11 @@ namespace SilentNotes.Platforms
                 if (string.Equals(trimmed, ":keyboard_switcher", StringComparison.OrdinalIgnoreCase))
                 {
                     ShowKeyboardSwitcher();
+                    return true;
+                }
+                if (string.Equals(trimmed, ":search", StringComparison.OrdinalIgnoreCase))
+                {
+                    OpenGlobalSearch();
                     return true;
                 }
                 if (trimmed.StartsWith(":tab:", StringComparison.OrdinalIgnoreCase))
@@ -3230,6 +3244,17 @@ namespace SilentNotes.Platforms
             // Do not send RouteIntentMessage here — the WebView may still be paused; MainLayout
             // navigates from AfterResume / OnNewIntent instead.
             string route = RouteNames.System;
+            RouteIntentRequest.Pending = new RouteIntentRequest { Route = route };
+
+            Intent intent = new Intent(this, typeof(MainActivity));
+            intent.PutExtra(ExtraOpenRoute, route);
+            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ReorderToFront | ActivityFlags.ClearTop);
+            StartActivity(intent);
+        }
+
+        private void OpenGlobalSearch()
+        {
+            string route = RouteNames.GlobalSearch;
             RouteIntentRequest.Pending = new RouteIntentRequest { Route = route };
 
             Intent intent = new Intent(this, typeof(MainActivity));

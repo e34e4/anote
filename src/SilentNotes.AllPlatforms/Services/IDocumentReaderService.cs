@@ -74,6 +74,12 @@ namespace SilentNotes.Services
         Task OpenExternallyAsync(string uriOrPath = null, string mimeType = null);
 
         /// <summary>
+        /// Extracts plain text from the active document, e.g. for AI actions. PDF pages are
+        /// recognized with OCR, so only the first <paramref name="maxPages"/> pages are read.
+        /// </summary>
+        Task<string> ExtractActiveTextAsync(int maxPages = 5);
+
+        /// <summary>
         /// Saves plain text back to the active document when it is a writable text file.
         /// Updates <see cref="ActiveDocument"/>.Text on success.
         /// </summary>

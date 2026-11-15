@@ -57,6 +57,7 @@ namespace SilentNotes.Platforms.Services
         private bool _isPlaying;
         private bool _isPaused;
         private TimeSpan _duration;
+        private double _playbackSpeed = 1.0;
 
         public MediaPlayerService(
             IAppContextService appContext,
@@ -154,6 +155,9 @@ namespace SilentNotes.Platforms.Services
         public event Action StateChanged;
 
         /// <inheritdoc/>
+        public event Action PlaybackCompleted;
+
+        /// <inheritdoc/>
         public string ActivePath => _activePath;
 
         /// <inheritdoc/>
@@ -187,6 +191,32 @@ namespace SilentNotes.Platforms.Services
 
         /// <inheritdoc/>
         public TimeSpan Duration => _duration;
+
+        /// <inheritdoc/>
+        public double PlaybackSpeed => _playbackSpeed;
+
+        /// <inheritdoc/>
+        public void SetPlaybackSpeed(double speed)
+        {
+            _playbackSpeed = Math.Clamp(speed, 0.5, 2.0);
+            ApplyPlaybackSpeed();
+        }
+
+        private void ApplyPlaybackSpeed()
+        {
+            try
+            {
+                if (_player == null || Build.VERSION.SdkInt < BuildVersionCodes.M)
+                    return;
+                var parameters = new PlaybackParams();
+                parameters.SetSpeed((float)_playbackSpeed);
+                parameters.SetPitch(1.0f);
+                _player.PlaybackParams = parameters;
+            }
+            catch (Exception)
+            {
+            }
+        }
 
         /// <inheritdoc/>
         public IReadOnlyList<(string Key, string Label, string Path)> GetStorageRoots()
@@ -312,6 +342,7 @@ namespace SilentNotes.Platforms.Services
             if (kind == MediaKind.Video)
             {
                 StopAudioPlayer();
+                HideMediaNotification();
                 _activePath = normalized;
                 _activeTitle = title;
                 _activeKind = MediaKind.Video;
@@ -338,6 +369,7 @@ namespace SilentNotes.Platforms.Services
                     _player.Pause();
                     _isPlaying = false;
                     _isPaused = true;
+                    NotifyMediaNotification();
                     RaiseStateChanged();
                 }
             }
@@ -356,6 +388,8 @@ namespace SilentNotes.Platforms.Services
                     _player.Start();
                     _isPlaying = true;
                     _isPaused = false;
+                    ApplyPlaybackSpeed();
+                    NotifyMediaNotification();
                     RaiseStateChanged();
                 }
             }
@@ -368,6 +402,7 @@ namespace SilentNotes.Platforms.Services
         public void Stop()
         {
             StopAudioPlayer();
+            HideMediaNotification();
             RaiseStateChanged();
         }
 
@@ -565,6 +600,7 @@ namespace SilentNotes.Platforms.Services
         public void Dispose()
         {
             StopAudioPlayer();
+            HideMediaNotification();
             _timer.Dispose();
         }
 
@@ -577,6 +613,13 @@ namespace SilentNotes.Platforms.Services
                 _player = new MediaPlayer();
                 _player.Completion += OnPlaybackCompleted;
                 _player.Error += OnPlaybackError;
+                try
+                {
+                    _player.SetWakeMode(_appContext.Context, WakeLockFlags.Partial);
+                }
+                catch (Exception)
+                {
+                }
 
                 if (uriOrPath.StartsWith("content:", StringComparison.OrdinalIgnoreCase) ||
                     uriOrPath.StartsWith("file:", StringComparison.OrdinalIgnoreCase) ||
@@ -593,6 +636,7 @@ namespace SilentNotes.Platforms.Services
                 _player.Prepare();
                 _duration = TimeSpan.FromMilliseconds(_player.Duration);
                 _player.Start();
+                ApplyPlaybackSpeed();
 
                 _activePath = uriOrPath;
                 _activeTitle = title;
@@ -600,6 +644,7 @@ namespace SilentNotes.Platforms.Services
                 _isPlaying = true;
                 _isPaused = false;
                 _timer.Start();
+                NotifyMediaNotification();
                 RaiseStateChanged();
             }
             catch (Exception)
@@ -651,12 +696,37 @@ namespace SilentNotes.Platforms.Services
             _isPaused = false;
             _timer.Stop();
             RaiseStateChanged();
+
+            // Let the Player advance its queue; when nothing starts a new track, hide the
+            // notification again.
+            try
+            {
+                PlaybackCompleted?.Invoke();
+            }
+            catch (Exception)
+            {
+            }
+
+            if (!_isPlaying)
+                HideMediaNotification();
         }
 
         private void OnPlaybackError(object sender, MediaPlayer.ErrorEventArgs e)
         {
             StopAudioPlayer();
+            HideMediaNotification();
             RaiseStateChanged();
+        }
+
+        private void NotifyMediaNotification()
+        {
+            if (!string.IsNullOrEmpty(_activeTitle) && _activeKind == MediaKind.Audio)
+                MediaPlaybackService.NotifyState(_appContext.Context, _activeTitle, _isPlaying, _isPaused);
+        }
+
+        private void HideMediaNotification()
+        {
+            MediaPlaybackService.Hide(_appContext.Context);
         }
 
         private void RaiseStateChanged()

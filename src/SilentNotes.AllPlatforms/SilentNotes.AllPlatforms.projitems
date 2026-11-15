@@ -384,5 +384,20 @@
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\BackupViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\LanBridgeViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\TextTransformViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\SearchIntentRequest.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\NoteAttachmentModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\AbroTabsStateModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\INoteAttachmentService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\NoteAttachmentService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IAttachmentFileService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IAiActionService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\AiActionService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroTabsSyncService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\AbroTabsSyncService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ViewModels\GlobalSearchViewModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteAttachmentLink.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\AbroTabsFormat.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\MediaPlaybackCommands.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\PlayerQueueStore.cs" />
   </ItemGroup>
 </Project>

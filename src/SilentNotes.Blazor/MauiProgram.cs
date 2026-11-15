@@ -163,6 +163,18 @@ public static class MauiProgram
             serviceProvider.GetService<ISettingsService>(),
             serviceProvider.GetService<IAbroHistoryStoreService>(),
             serviceProvider.GetService<ICloudStorageClientFactory>()));
+        services.AddSingleton<IAbroTabsSyncService>((serviceProvider) => new AbroTabsSyncService(
+            serviceProvider.GetService<ISettingsService>(),
+            serviceProvider.GetService<ICloudStorageClientFactory>()));
+        services.AddSingleton<IAiActionService>((serviceProvider) => new AiActionService(
+            serviceProvider.GetService<AbroAiChatClient>(),
+            serviceProvider.GetService<IAbroAiStoreService>()));
+        services.AddSingleton<INoteAttachmentService>((serviceProvider) => new NoteAttachmentService(
+            serviceProvider.GetService<IRepositoryStorageService>(),
+            serviceProvider.GetService<ISafeKeyService>(),
+            serviceProvider.GetService<IDataProtectionService>(),
+            serviceProvider.GetService<ICryptoRandomService>(),
+            serviceProvider.GetService<ISettingsService>()));
         services.AddSingleton<AbroAiChatClient>((serviceProvider) => new AbroAiChatClient(
             serviceProvider.GetService<ISettingsService>()));
         services.AddSingleton<IAbroAdBlockService>((serviceProvider) => new AbroAdBlockService());
@@ -232,6 +244,7 @@ public static class MauiProgram
         services.AddSingleton<ISynchronizationService>((serviceProvider) => new SynchronizationService(
             serviceProvider.GetService<ISynchronizationState>()));
         services.AddSingleton<ISharingService>((serviceProvider) => new SharingService());
+        services.AddSingleton<IAttachmentFileService>((serviceProvider) => new AttachmentFileService());
         services.AddSingleton<IDeviceCalendarService>((serviceProvider) => new DeviceCalendarService());
         services.AddSingleton<IClockService>((serviceProvider) => new ClockService(
             serviceProvider.GetService<IXmlFileService>()));
@@ -312,6 +325,8 @@ public static class MauiProgram
         services.AddSingleton<ISynchronizationService>((serviceProvider) => new SynchronizationService(
             serviceProvider.GetService<ISynchronizationState>()));
         services.AddSingleton<ISharingService>((serviceProvider) => new SharingService(
+            serviceProvider.GetService<IAppContextService>()));
+        services.AddSingleton<IAttachmentFileService>((serviceProvider) => new AttachmentFileService(
             serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<IDeviceCalendarService>((serviceProvider) => new DeviceCalendarService(
             serviceProvider.GetService<IAppContextService>()));

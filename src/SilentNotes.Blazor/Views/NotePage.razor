@@ -29,6 +29,8 @@
 @inject ISharingService SharingService
 @inject IWebdavQuickSaveService WebdavQuickSaveService
 @inject IQrService QrService
+@inject INoteAttachmentService AttachmentService
+@inject IAttachmentFileService AttachmentFileService
 
 <style type="text/css">
 	.mud-main-content { background-color: @ViewModel.BackgroundColorHex; }
@@ -232,8 +234,10 @@
 		Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success"
 		title="@LanguageService["webdav_quick_save"]" Edge="Edge.End" />
 
-	<AskAiButton Size="Size.Medium" Color="Color.Inherit" Subject="@LanguageService["tab_notes"]"
-		ContextText="@RssFeedParser.StripHtml(ViewModel.UnlockedHtmlContent)" />
+	<AiActionsMenu Size="Size.Medium" Color="Color.Inherit" Subject="@LanguageService["tab_notes"]"
+		Text="@ViewModel.SearchableContent"
+		SelectionProvider="@GetSelectedTextAsync"
+		InsertHandler="@ReplaceSelectionAsync" />
 
 	@* Overflow menu *@
 	<MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" PopoverClass="overflow-menu" @bind-Open="_isOverflowMenuOpen">
@@ -333,6 +337,13 @@
 			<MudMenuItem OnClick="@(() => InsertImage())"
 				Icon="@IconService.GetSvgLink(IconNames.ImagePlus)"
 				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_image"]</MudMenuItem>
+
+			<MudMenuItem OnClick="@(async () => await AttachFileAsync())"
+				Icon="@Icons.Material.Filled.AttachFile"
+				Disabled="ViewModel.ShoppingModeActive">@LanguageService["note_attach_file"]</MudMenuItem>
+
+			<MudMenuItem OnClick="@OpenAttachments"
+				Icon="@Icons.Material.Filled.FolderZip">@LanguageService["note_attachments"]</MudMenuItem>
 
 			<MudMenuItem OnClick="@(async () => await OpenTextColorDialog())"
 				Icon="@Icons.Material.Filled.FormatColorText"
@@ -533,6 +544,42 @@
 	</MudCard>
 </MudOverlay>
 
+@* Note attachments *@
+<MudOverlay @bind-Visible="_attachmentsOpen" AutoClose="true">
+	<MudCard Style="width: 540px; max-width: 94vw;">
+		<MudCardContent>
+			<MudText Typo="Typo.subtitle2" Class="mb-2">@LanguageService["note_attachments"]</MudText>
+			@if (_attachments.Count == 0)
+			{
+				<MudText Typo="Typo.caption" Class="mud-text-secondary">@LanguageService["note_attachments_empty"]</MudText>
+			}
+			<div style="max-height: 380px; overflow-y: auto;">
+				@foreach (NoteAttachmentModel attachment in _attachments)
+				{
+					<div class="d-flex align-center pa-1" style="border-bottom:1px solid #333333; gap:6px;">
+						<div style="flex-grow:1; overflow:hidden;">
+							<MudText Typo="Typo.body2" Style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">@attachment.FileName</MudText>
+							<MudText Typo="Typo.caption" Class="mud-text-secondary">@FormatAttachmentSize(attachment.SizeBytes) · @attachment.CreatedAt.ToString("g")</MudText>
+						</div>
+						<MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Color="Color.Primary"
+							OnClick="@(async () => await OpenAttachmentAsync(attachment))" title="@LanguageService["note_open_link"]" />
+						<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small"
+							OnClick="@(async () => await ShareAttachmentAsync(attachment))" title="@LanguageService["share"]" />
+						<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+							OnClick="@(() => DeleteAttachment(attachment))" title="@LanguageService["delete"]" />
+					</div>
+				}
+			</div>
+		</MudCardContent>
+		<MudCardActions Class="justify-space-between">
+			<MudButton OnClick="@(async () => await AttachFileAsync())" Color="Color.Primary" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.AttachFile">
+				@LanguageService["note_attach_file"]
+			</MudButton>
+			<MudButton OnClick="@(() => _attachmentsOpen = false)" Variant="Variant.Text">@LanguageService["close"]</MudButton>
+		</MudCardActions>
+	</MudCard>
+</MudOverlay>
+
 @* Declare icons which can be reused multiple times, to reduce page size *@
 <div hidden>
 	@IconService.EmbedLinkableSvgs( new [] {
@@ -596,6 +643,8 @@
 	private bool _allowNoteContentChanges;
 	private bool _noteHasOpenableUrl;
 	private bool _isPickingFile;
+	private bool _attachmentsOpen;
+	private List<NoteAttachmentModel> _attachments = new List<NoteAttachmentModel>();
 	private bool _sourceViewActive;
 	private string _sourceText = string.Empty;
 	private string _sourceHighlightHtml = string.Empty;
@@ -949,6 +998,130 @@
 		ViewModel.ShareNoteCommand.Execute(plainText);
 	}
 
+	/// <summary>Gets the currently selected text of the editor, or an empty string.</summary>
+	private async Task<string> GetSelectedTextAsync()
+	{
+		try
+		{
+			if (_jsModule == null)
+				return string.Empty;
+			return await _jsModule.InvokeAsync<string>("getSelectedText");
+		}
+		catch (Exception)
+		{
+			return string.Empty;
+		}
+	}
+
+	/// <summary>Replaces the current editor selection with the given text.</summary>
+	private async Task ReplaceSelectionAsync(string text)
+	{
+		if (_jsModule == null || string.IsNullOrEmpty(text))
+			return;
+		await _jsModule.InvokeVoidAsync("replaceSelectionWithText", text);
+	}
+
+	/// <summary>Picks a file, stores it encrypted and inserts a link into the note.</summary>
+	private async Task AttachFileAsync()
+	{
+		if (ViewModel.ShoppingModeActive)
+			return;
+
+		_isPickingFile = true;
+		try
+		{
+			if (!await FilePickerService.PickFile(null, "*/*"))
+				return;
+
+			byte[] bytes = await FilePickerService.ReadPickedFile();
+			string fileName = FilePickerService.GetPickedFileName();
+			if (bytes == null || bytes.Length == 0)
+			{
+				FeedbackService.ShowToast(LanguageService["note_attachment_failed"], FeedbackSeverity.Warning);
+				return;
+			}
+
+			if (!AttachmentService.TryAddAttachment(ViewModel.Id, bytes, fileName, null, out NoteAttachmentModel attachment, out string error))
+			{
+				string message = error == "locked"
+					? LanguageService["note_attachment_locked"]
+					: LanguageService["note_attachment_failed"];
+				FeedbackService.ShowToast(message, FeedbackSeverity.Warning);
+				return;
+			}
+
+			string uri = AttachmentService.BuildAttachmentUri(ViewModel.Id, attachment.Id);
+			if (_jsModule != null)
+				await _jsModule.InvokeVoidAsync("insertLinkAtSelection", uri, attachment.FileName);
+
+			RefreshAttachments();
+			FeedbackService.ShowToast(LanguageService.LoadTextFmt("note_attachment_added_fmt", attachment.FileName));
+		}
+		catch (Exception)
+		{
+			FeedbackService.ShowToast(LanguageService["note_attachment_failed"], FeedbackSeverity.Warning);
+		}
+		finally
+		{
+			_isPickingFile = false;
+		}
+	}
+
+	private void OpenAttachments()
+	{
+		RefreshAttachments();
+		_attachmentsOpen = true;
+	}
+
+	private void RefreshAttachments()
+	{
+		_attachments = AttachmentService.ListAttachments(ViewModel.Id).ToList();
+	}
+
+	private async Task OpenAttachmentAsync(NoteAttachmentModel attachment)
+	{
+		byte[] content = await AttachmentService.ReadAttachmentAsync(ViewModel.Id, attachment.Id);
+		if (content == null)
+		{
+			FeedbackService.ShowToast(LanguageService["note_attachment_open_failed"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		if (!await AttachmentFileService.OpenAttachmentAsync(content, attachment.FileName, attachment.MimeType))
+			FeedbackService.ShowToast(LanguageService["note_attachment_open_failed"], FeedbackSeverity.Warning);
+	}
+
+	private async Task ShareAttachmentAsync(NoteAttachmentModel attachment)
+	{
+		byte[] content = await AttachmentService.ReadAttachmentAsync(ViewModel.Id, attachment.Id);
+		if (content == null)
+		{
+			FeedbackService.ShowToast(LanguageService["note_attachment_open_failed"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		if (!await AttachmentFileService.ShareAttachmentAsync(content, attachment.FileName, attachment.MimeType))
+			FeedbackService.ShowToast(LanguageService["note_attachment_open_failed"], FeedbackSeverity.Warning);
+	}
+
+	private void DeleteAttachment(NoteAttachmentModel attachment)
+	{
+		if (attachment == null)
+			return;
+		AttachmentService.DeleteAttachment(ViewModel.Id, attachment.Id);
+		RefreshAttachments();
+		StateHasChanged();
+	}
+
+	private static string FormatAttachmentSize(long bytes)
+	{
+		if (bytes < 1024)
+			return bytes + " B";
+		if (bytes < 1024 * 1024)
+			return (bytes / 1024.0).ToString("0.#") + " KB";
+		return (bytes / (1024.0 * 1024.0)).ToString("0.#") + " MB";
+	}
+
 	private async Task SaveNoteToWebdavAsync()
 	{
 		if (!WebdavQuickSaveService.IsConfigured)
@@ -1168,6 +1341,24 @@
 		if (href.StartsWith("tel:", StringComparison.OrdinalIgnoreCase))
 		{
 			NativeBrowserService.OpenWebsite(href);
+			return true;
+		}
+
+		if (NoteAttachmentLink.TryParse(href, out Guid attachmentNoteId, out Guid attachmentId))
+		{
+			NoteAttachmentModel attachment = AttachmentService.ListAttachments(attachmentNoteId)
+				.FirstOrDefault(item => item.Id == attachmentId);
+			if (attachment == null)
+			{
+				FeedbackService.ShowToast(LanguageService["note_attachment_missing"], FeedbackSeverity.Warning);
+				return true;
+			}
+
+			byte[] content = await AttachmentService.ReadAttachmentAsync(attachmentNoteId, attachmentId);
+			if (content == null)
+				FeedbackService.ShowToast(LanguageService["note_attachment_open_failed"], FeedbackSeverity.Warning);
+			else if (!await AttachmentFileService.OpenAttachmentAsync(content, attachment.FileName, attachment.MimeType))
+				FeedbackService.ShowToast(LanguageService["note_attachment_open_failed"], FeedbackSeverity.Warning);
 			return true;
 		}
 

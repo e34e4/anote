@@ -1344,3 +1344,41 @@ note_link_picker_empty = Nothing found
 note_link_kind_note = Note
 note_link_kind_contact = Contact
 note_link_kind_bookmark = Bookmark
+
+global_search_title = Search everything
+global_search_placeholder = Search notes, clips, bookmarks, mail, Telegram, RSS and logins...
+global_search_hint = Type at least 2 characters to search all tabs.
+global_search_empty = Nothing found.
+global_search_count = {0} results
+global_search_open_tab = Open tab
+global_search_group_notes = Notes
+global_search_group_clip = Clip
+global_search_group_bookmarks = Bookmarks
+global_search_group_mail = Mail
+global_search_group_tg = Telegram
+global_search_group_rss = RSS
+global_search_group_password = Password vault
+
+ai_action_summarize = Summarize
+ai_action_translate = Translate
+ai_action_rewrite = Rewrite
+ai_action_insert = Insert
+ai_action_no_text = There is no text to work on.
+ai_action_failed_fmt = AI action failed: {0}
+
+note_attach_file = Attach file...
+note_attachments = Attachments
+note_attachments_empty = No attachments yet.
+note_attachment_failed = Could not add the attachment.
+note_attachment_locked = Open the safe before adding an attachment.
+note_attachment_added_fmt = Attached {0}
+note_attachment_open_failed = Could not open the attachment.
+note_attachment_missing = The attachment does not exist anymore.
+
+player_previous = Previous
+player_next = Next
+player_queue_folder = Queue folder
+player_queued = {0} items queued
+player_queue_empty = No audio files to queue
+player_queue_clear_fmt = Clear queue ({0})
+lan_bridge_sync_hint = To sync notes between two devices over Wi-Fi, start the bridge here. On the other device choose 'LAN (same Wi-Fi)' in Settings > Cloud storage, enter this device's address and use this access token as password.

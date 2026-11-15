@@ -200,10 +200,22 @@ namespace SilentNotes.Services
         /// <returns>Returns true if the synchronization should be done, otherwise false.</returns>
         protected static bool ShouldSynchronize(IInternetStateService internetStateService, ISettingsService settingsService)
         {
-            if (!internetStateService.IsInternetConnected())
+            SettingsModel settings = settingsService.LoadSettingsOrDefault();
+            bool isLanStorage = string.Equals(
+                settings.Credentials?.CloudStorageId,
+                CloudStorageClientFactory.CloudStorageIdLan,
+                StringComparison.OrdinalIgnoreCase);
+
+            // The LAN storage lives in the local Wi-Fi, so no internet connection is required.
+            if (!isLanStorage && !internetStateService.IsInternetConnected())
                 return false;
 
-            AutoSynchronizationMode syncMode = settingsService.LoadSettingsOrDefault().AutoSyncMode;
+            AutoSynchronizationMode syncMode = settings.AutoSyncMode;
+            if (syncMode == AutoSynchronizationMode.Never)
+                return false;
+            if (isLanStorage)
+                return true;
+
             switch (syncMode)
             {
                 case AutoSynchronizationMode.Never:

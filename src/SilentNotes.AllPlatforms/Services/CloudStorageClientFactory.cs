@@ -28,6 +28,7 @@ namespace SilentNotes.Services
         public const string CloudStorageIdPcloudUs = "pcloud-us";
         public const string CloudStorageIdPCloudEurope = "pcloud-europe";
         public const string CloudStorageIdGmx = "gmx";
+        public const string CloudStorageIdLan = "lan";
 
         private const string _obfuscationKey = "4ed05d88-0193-4b14-9b0b-6977825de265";
         private const string GoogleClientIdObfuscated = "b2JmdXNjYXRpb24kdHdvZmlzaF9nY20kZlR5K1A4L05ka2pVZ2NkRURiTGZMdz09JHBia2RmMiRUYys0QkNwSzRzTCtLZS85LzNEVnh3PT0kMTAwMCS5o32MdtKqjqthaSYKFg+9Bvv9XRQTpPQhnYnPdk9ZIrwxZbYBARv+vG1oFpSdHzRFS3Hgsc0QorFWVVy2Xt4c6RPSYs2kFLa4h36KduqrLwKP5wD4qQuT";
@@ -68,6 +69,7 @@ namespace SilentNotes.Services
                 "ch.martinstoeckli.silentnotes://oauth2redirect/",
                 DataCenter.Europe));
             Add(CloudStorageIdGmx, () => new GmxCloudStorageClient(_useSocketsForPropFind));
+            Add(CloudStorageIdLan, () => new LanCloudStorageClient());
         }
 
         /// <inheritdoc/>
@@ -83,6 +85,7 @@ namespace SilentNotes.Services
             yield return CloudStorageIdPCloudEurope;
             yield return CloudStorageIdPcloudUs;
             yield return CloudStorageIdGmx;
+            yield return CloudStorageIdLan;
         }
 
         /// <inheritdoc/>
@@ -110,6 +113,8 @@ namespace SilentNotes.Services
                     return new CloudStorageMetadata { Title = "pCloud (U.S.)", AssetImageName = "cloud_service_pcloud.png" };
                 case CloudStorageIdGmx:
                     return new CloudStorageMetadata { Title = "GMX", AssetImageName = "cloud_service_gmx.png" };
+                case CloudStorageIdLan:
+                    return new CloudStorageMetadata { Title = "LAN (same Wi-Fi)", AssetImageName = "cloud_service_webdav.png" };
                 default:
                     throw new ArgumentOutOfRangeException(nameof(cloudStorageId), "Unknown cloud storage id.");
             }

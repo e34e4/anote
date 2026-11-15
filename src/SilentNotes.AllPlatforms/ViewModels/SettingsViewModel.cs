@@ -803,6 +803,7 @@ namespace SilentNotes.ViewModels
             options.Add(new DropdownItemViewModel { Value = ":screenshot_partial", Description = "✂️ " + Language["gui_floating_gesture_screenshot_partial"] });
             options.Add(new DropdownItemViewModel { Value = ":open_anote", Description = "📝 " + Language["gui_floating_gesture_open_anote"] });
             options.Add(new DropdownItemViewModel { Value = ":show_menu", Description = "🎛️ " + Language["gui_floating_gesture_show_menu"] });
+            options.Add(new DropdownItemViewModel { Value = ":search", Description = "🔎 " + Language["global_search_title"] });
 
             foreach (MainViewTabCatalog.TabDescriptor tab in MainViewTabCatalog.AllTabs)
             {

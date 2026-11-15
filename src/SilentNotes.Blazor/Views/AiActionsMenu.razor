@@ -1,0 +1,265 @@
+@using MudBlazor
+@using SilentNotes.Services
+
+@inject IAiActionService AiActionService
+@inject IAbroAiChatLauncher AiChatLauncher
+@inject IFeedbackService FeedbackService
+@inject ILanguageService LanguageService
+@inject IClipboardService ClipboardService
+
+<style type="text/css">
+	.ai-result-backdrop {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.72);
+		z-index: 2100;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 16px;
+	}
+	.ai-result-panel {
+		background: var(--mud-palette-surface);
+		color: var(--mud-palette-text-primary);
+		border-radius: 14px;
+		width: min(720px, 96vw);
+		max-height: 86vh;
+		display: flex;
+		flex-direction: column;
+		padding: 14px;
+		gap: 10px;
+		box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+	}
+	.ai-result-title {
+		font-weight: 600;
+	}
+	.ai-result-text {
+		flex: 1;
+		min-height: 220px;
+		resize: vertical;
+		background: var(--mud-palette-background);
+		color: var(--mud-palette-text-primary);
+		border: 1px solid var(--mud-palette-divider);
+		border-radius: 8px;
+		padding: 10px;
+		font-family: inherit;
+		font-size: 0.95rem;
+	}
+	.ai-result-actions {
+		display: flex;
+		gap: 8px;
+		justify-content: flex-end;
+		flex-wrap: wrap;
+	}
+	.ai-busy {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.55);
+		z-index: 2100;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #ffffff;
+	}
+</style>
+
+<span @onclick:stopPropagation="true">
+	<MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+		<ActivatorContent>
+			<MudIconButton OnClick="@context.ToggleAsync" Icon="@Icons.Material.Filled.AutoAwesome" Size="@Size" Color="@Color"
+				title="@(string.IsNullOrWhiteSpace(Title) ? LanguageService["ask_ai"] : Title)" />
+		</ActivatorContent>
+		<ChildContent>
+			<MudMenuItem OnClick="@(() => RunAsync(AiTextAction.Summarize))" Icon="@Icons.Material.Filled.ShortText">
+				@LanguageService["ai_action_summarize"]
+			</MudMenuItem>
+			<MudMenu Label="@LanguageService["ai_action_translate"]" Icon="@Icons.Material.Filled.Translate">
+				@foreach (string language in TranslateLanguages)
+				{
+					string capturedLanguage = language;
+					<MudMenuItem OnClick="@(() => RunAsync(AiTextAction.Translate, capturedLanguage))">@capturedLanguage</MudMenuItem>
+				}
+			</MudMenu>
+			<MudMenuItem OnClick="@(() => RunAsync(AiTextAction.Rewrite))" Icon="@Icons.Material.Filled.EditNote">
+				@LanguageService["ai_action_rewrite"]
+			</MudMenuItem>
+			<MudDivider />
+			<MudMenuItem OnClick="@AskAiAsync" Icon="@Icons.Material.Filled.Forum">
+				@LanguageService["ask_ai"]
+			</MudMenuItem>
+		</ChildContent>
+	</MudMenu>
+</span>
+
+@if (_isBusy)
+{
+	<div class="ai-busy">
+		<MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+	</div>
+}
+
+@if (_resultOpen)
+{
+	<div class="ai-result-backdrop" @onclick="CloseResult">
+		<div class="ai-result-panel" @onclick:stopPropagation="true">
+			<div class="ai-result-title">@_resultTitle</div>
+			<textarea class="ai-result-text" readonly>@_result</textarea>
+			<div class="ai-result-actions">
+				<MudButton Variant="Variant.Text" OnClick="CopyResultAsync">@LanguageService["copy"]</MudButton>
+				@if (InsertHandler != null)
+				{
+					<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="InsertResultAsync">@LanguageService["ai_action_insert"]</MudButton>
+				}
+				<MudButton Variant="Variant.Text" OnClick="CloseResult">@LanguageService["close"]</MudButton>
+			</div>
+		</div>
+	</div>
+}
+
+@code {
+	private static readonly string[] TranslateLanguages =
+	{
+		"English", "Russian", "German", "French", "Spanish", "Italian", "Portuguese", "Ukrainian", "Chinese",
+	};
+
+	private bool _isBusy;
+	private bool _resultOpen;
+	private string _result;
+	private string _resultTitle;
+
+	[Parameter]
+	public Size Size { get; set; } = Size.Small;
+
+	[Parameter]
+	public Color Color { get; set; } = Color.Default;
+
+	[Parameter]
+	public string Title { get; set; }
+
+	[Parameter]
+	public string Subject { get; set; }
+
+	/// <summary>Gets or sets the whole text used when no selection is available.</summary>
+	[Parameter]
+	public string Text { get; set; }
+
+	/// <summary>Optional provider which returns the whole text lazily (e.g. PDF OCR).</summary>
+	[Parameter]
+	public Func<Task<string>> TextProvider { get; set; }
+
+	/// <summary>Optional provider which returns the currently selected text.</summary>
+	[Parameter]
+	public Func<Task<string>> SelectionProvider { get; set; }
+
+	/// <summary>Optional handler which replaces the selection with the generated text.</summary>
+	[Parameter]
+	public Func<string, Task> InsertHandler { get; set; }
+
+	private async Task RunAsync(AiTextAction action, string language = null)
+	{
+		if (!AiActionService.IsConfigured)
+		{
+			FeedbackService.ShowToast(LanguageService["ask_ai_unavailable"]);
+			return;
+		}
+
+		string text = await GetWorkingTextAsync();
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			FeedbackService.ShowToast(LanguageService["ai_action_no_text"], FeedbackSeverity.Warning);
+			return;
+		}
+
+		_isBusy = true;
+		_resultTitle = GetActionTitle(action, language);
+		StateHasChanged();
+		try
+		{
+			_result = await AiActionService.RunAsync(action, text, language);
+			_resultOpen = true;
+		}
+		catch (Exception ex)
+		{
+			FeedbackService.ShowToast(LanguageService.LoadTextFmt("ai_action_failed_fmt", ex.Message), FeedbackSeverity.Warning);
+		}
+		finally
+		{
+			_isBusy = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task AskAiAsync()
+	{
+		if (!AiChatLauncher.IsSupported)
+		{
+			FeedbackService.ShowToast(LanguageService["ask_ai_unavailable"]);
+			return;
+		}
+
+		string text = await GetWorkingTextAsync();
+		await AiChatLauncher.AskAiAboutAsync(Subject, text);
+	}
+
+	private async Task<string> GetWorkingTextAsync()
+	{
+		if (SelectionProvider != null)
+		{
+			try
+			{
+				string selected = await SelectionProvider();
+				if (!string.IsNullOrWhiteSpace(selected))
+					return selected;
+			}
+			catch (Exception)
+			{
+			}
+		}
+
+		if (TextProvider != null)
+		{
+			try
+			{
+				string provided = await TextProvider();
+				if (!string.IsNullOrWhiteSpace(provided))
+					return provided;
+			}
+			catch (Exception)
+			{
+			}
+		}
+		return Text;
+	}
+
+	private string GetActionTitle(AiTextAction action, string language)
+	{
+		switch (action)
+		{
+			case AiTextAction.Summarize: return LanguageService["ai_action_summarize"];
+			case AiTextAction.Translate: return LanguageService["ai_action_translate"] + " — " + language;
+			case AiTextAction.Rewrite: return LanguageService["ai_action_rewrite"];
+			default: return LanguageService["ask_ai"];
+		}
+	}
+
+	private async Task CopyResultAsync()
+	{
+		if (!string.IsNullOrEmpty(_result))
+			await ClipboardService.SetTextAsync(_result);
+	}
+
+	private async Task InsertResultAsync()
+	{
+		if (InsertHandler == null || string.IsNullOrEmpty(_result))
+			return;
+		await InsertHandler(_result);
+		CloseResult();
+	}
+
+	private void CloseResult()
+	{
+		_resultOpen = false;
+		_result = null;
+		StateHasChanged();
+	}
+}

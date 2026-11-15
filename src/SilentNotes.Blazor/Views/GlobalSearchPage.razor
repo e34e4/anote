@@ -1,0 +1,185 @@
+@attribute [Route(RouteNames.GlobalSearch)]
+@inherits PageBase
+
+@using MudBlazor
+@using SilentNotes.Models
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+
+@inject ILanguageService LanguageService
+@inject ISvgIconService IconService
+@inject INavigationService Navigation
+@inject IRepositoryStorageService RepositoryStorageService
+@inject IClipboardHistoryService ClipboardHistoryService
+@inject IMailService MailService
+@inject ITelegramService TelegramService
+@inject IRssArticleCacheService RssArticleCacheService
+@inject IPasswordVaultService PasswordVaultService
+@inject ISafeKeyService SafeKeyService
+
+<style type="text/css">
+	.global-search-root {
+		padding: 10px;
+		max-width: 900px;
+		margin: 0 auto;
+	}
+	.global-search-group-title {
+		font-weight: 600;
+		color: var(--mud-palette-primary);
+		margin-top: 14px;
+	}
+	.global-search-hit {
+		display: flex;
+		flex-direction: column;
+		padding: 10px 6px;
+		border-bottom: 1px solid var(--mud-palette-divider);
+		cursor: pointer;
+	}
+	.global-search-hit:active {
+		background-color: rgba(255, 255, 255, 0.06);
+	}
+	.global-search-hit-title {
+		font-weight: 600;
+	}
+	.global-search-hit-detail {
+		font-size: 0.82rem;
+		opacity: 0.7;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+</style>
+
+<MudAppBar Class="flex-none" Fixed="true" Dense="true" WrapContent="false">
+	<MudIconButton OnClick="@(() => Navigation.NavigateTo(BackRoute))" Icon="@IconService[IconNames.ArrowLeft]" Color="Color.Inherit" title="@LanguageService["back"]" Edge="Edge.Start" />
+	<MudText Typo="Typo.h6" Class="ml-2">@LanguageService["global_search_title"]</MudText>
+</MudAppBar>
+
+<MudMainContent>
+	<div class="global-search-root">
+		<MudTextField T="string" Value="@_query" ValueChanged="@OnQueryValueChanged"
+			Immediate="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+			Adornment="Adornment.Start" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
+			Clearable="true" Placeholder="@LanguageService["global_search_placeholder"]"
+			AutoFocus="true" />
+
+		@if (ViewModel.NeedsMoreCharacters)
+		{
+			<MudText Class="mud-text-secondary mt-3">@LanguageService["global_search_hint"]</MudText>
+		}
+		else if (ViewModel.IsEmpty)
+		{
+			<MudText Class="mud-text-secondary mt-3">@LanguageService["global_search_empty"]</MudText>
+		}
+		else
+		{
+			<MudText Typo="Typo.caption" Class="mud-text-secondary mt-2">@LanguageService.LoadTextFmt("global_search_count", ViewModel.TotalCount)</MudText>
+
+			@foreach (GlobalSearchGroup group in ViewModel.Groups)
+			{
+				<div class="d-flex align-center justify-space-between global-search-group-title">
+					<span>@LanguageService[group.TitleKey] (@group.Hits.Count)</span>
+					<MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Text" OnClick="@(() => OpenGroup(group))">
+						@LanguageService["global_search_open_tab"]
+					</MudButton>
+				</div>
+
+				@foreach (GlobalSearchHit hit in group.Hits)
+				{
+					<div class="global-search-hit" @onclick="() => OpenHit(hit)">
+						<span class="global-search-hit-title">@hit.Title</span>
+						<span class="global-search-hit-detail">@hit.Detail</span>
+					</div>
+				}
+			}
+		}
+	</div>
+</MudMainContent>
+
+@code {
+	private string _query = string.Empty;
+
+	[Parameter]
+	public string Query { get; set; }
+
+	protected override void OnInitialized()
+	{
+		BackRoute = RouteNames.NoteRepository;
+		ViewModel = new GlobalSearchViewModel(
+			RepositoryStorageService,
+			ClipboardHistoryService,
+			MailService,
+			TelegramService,
+			RssArticleCacheService,
+			PasswordVaultService,
+			SafeKeyService);
+
+		if (!string.IsNullOrWhiteSpace(Query))
+		{
+			_query = Query;
+			OnQueryChanged();
+		}
+	}
+
+	private GlobalSearchViewModel ViewModel { get; set; }
+	private CancellationTokenSource _searchCts;
+
+	private async Task OnQueryValueChanged(string value)
+	{
+		_query = value;
+		_searchCts?.Cancel();
+		var cts = new CancellationTokenSource();
+		_searchCts = cts;
+		try
+		{
+			await Task.Delay(250, cts.Token);
+		}
+		catch (TaskCanceledException)
+		{
+			return;
+		}
+
+		ViewModel.Query = _query;
+		ViewModel.Search();
+		StateHasChanged();
+	}
+
+	private void OnQueryChanged()
+	{
+		ViewModel.Query = _query;
+		ViewModel.Search();
+		StateHasChanged();
+	}
+
+	private void OpenHit(GlobalSearchHit hit)
+	{
+		if (hit == null)
+			return;
+
+		if (!string.IsNullOrWhiteSpace(hit.Route))
+		{
+			Navigation.NavigateTo(hit.Route);
+			return;
+		}
+
+		SearchIntentRequest.Pending = new SearchIntentRequest
+		{
+			TabIndex = hit.TabIndex,
+			Filter = hit.Filter,
+		};
+		Navigation.NavigateTo(RouteNames.NoteRepository);
+	}
+
+	private void OpenGroup(GlobalSearchGroup group)
+	{
+		if (group == null)
+			return;
+
+		SearchIntentRequest.Pending = new SearchIntentRequest
+		{
+			TabIndex = group.TabIndex,
+			Filter = ViewModel.Query?.Trim(),
+		};
+		Navigation.NavigateTo(RouteNames.NoteRepository);
+	}
+}

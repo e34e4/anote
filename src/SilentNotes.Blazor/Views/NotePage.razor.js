@@ -467,3 +467,24 @@ export function insertTextAtSelection(text) {
 
     _page.editor.chain().focus().insertContent({ type: 'text', text: text }).run();
 }
+
+// Returns the currently selected text, or an empty string.
+export function getSelectedText() {
+    if (!IsInitialized()) return '';
+
+    var selection = _page.editor.state.selection;
+    if (selection.empty) return '';
+    return _page.editor.state.doc.textBetween(selection.from, selection.to, ' ');
+}
+
+// Replaces the current selection with the given text (or inserts it at the caret).
+export function replaceSelectionWithText(text) {
+    if (!IsInitialized() || !text) return;
+
+    var editor = _page.editor;
+    var selection = editor.state.selection;
+    if (selection.empty)
+        editor.chain().focus().insertContent(text).run();
+    else
+        editor.chain().focus().insertContentAt({ from: selection.from, to: selection.to }, text).run();
+}

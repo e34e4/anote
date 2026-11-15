@@ -81,6 +81,33 @@ namespace SilentNotes.Platforms
             + "window.__abroImgMo.observe(document.documentElement,{childList:true,subtree:true});}"
             + "}catch(e){}})();";
 
+        private const string ReaderModeToggleScript =
+            "(function(){try{var style=document.getElementById('abro-reader-style');"
+            + "var host=document.getElementById('abro-reader-host');"
+            + "if(style&&host){style.remove();host.remove();document.documentElement.classList.remove('abro-reader');return 'off';}"
+            + "var best=null,bestScore=0;"
+            + "document.querySelectorAll('article,main,[role=main],section,div').forEach(function(el){"
+            + "var ps=el.querySelectorAll('p').length;var len=(el.innerText||'').length;"
+            + "var score=ps*120+len;if(ps>=3&&len>400&&score>bestScore){bestScore=score;best=el;}});"
+            + "var root=best||document.body;if(!root)return 'none';"
+            + "var s=document.createElement('style');s.id='abro-reader-style';"
+            + "s.textContent='html.abro-reader body>*:not(#abro-reader-host){display:none!important;}"
+            + "html.abro-reader{background:#f7f6f3!important;}"
+            + "#abro-reader-host{display:block!important;max-width:760px;margin:0 auto;padding:24px 18px 80px;"
+            + "font:19px/1.65 Georgia,serif;color:#141414;background:#f7f6f3;}"
+            + "#abro-reader-host img,#abro-reader-host video,#abro-reader-host iframe{max-width:100%!important;height:auto!important;}"
+            + "#abro-reader-host a{color:#0b57d0;}"
+            + "#abro-reader-host h1,#abro-reader-host h2,#abro-reader-host h3{line-height:1.25;}"
+            + "#abro-reader-host pre,#abro-reader-host code{white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,monospace;font-size:0.9em;}'"
+            + ";(document.head||document.documentElement).appendChild(s);"
+            + "var h=document.createElement('div');h.id='abro-reader-host';"
+            + "h.appendChild(root.cloneNode(true));document.body.appendChild(h);"
+            + "document.documentElement.classList.add('abro-reader');return 'on';}catch(e){return 'err:'+e;}})()";
+
+        private const string PageTextScript =
+            "(function(){try{var t=document.body?document.body.innerText:'';"
+            + "t=(t||'').replace(/\\s+/g,' ').trim();return t.substring(0,14000);}catch(e){return '';}})()";
+
         private static readonly object HistoryLock = new object();
 
         private readonly List<BrowserTab> _tabs = new List<BrowserTab>();
@@ -565,6 +592,7 @@ namespace SilentNotes.Platforms
                     Tabs = _tabs.Select(t => t.Url ?? t.PendingUrl ?? HomeUrl).ToList(),
                 };
                 File.WriteAllText(_tabsFile, JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
+                ScheduleTabsSync();
             }
             catch
             {
@@ -1238,6 +1266,8 @@ namespace SilentNotes.Platforms
             const string clearCookies = "Clear cookies";
             const string clearCache = "Clear cache";
             const string openFiles = "Open files folder";
+            const string readerMode = "Reader mode";
+            const string translatePage = "Translate page";
 
             string choice = await ShowTwoColumnMenuAsync(
                 "Abro",
@@ -1253,6 +1283,8 @@ namespace SilentNotes.Platforms
                 passwords,
                 proxy,
                 blockImages,
+                readerMode,
+                translatePage,
                 savePdf,
                 clearCookies,
                 clearCache,
@@ -1296,6 +1328,12 @@ namespace SilentNotes.Platforms
                     await OpenSettingsPageAsync(() => new AbroBlockImagesSettingsPage(), "Block images").ConfigureAwait(true);
                     RefreshBlockImagesOnAllTabs();
                     break;
+                case readerMode:
+                    ToggleReaderMode();
+                    break;
+                case translatePage:
+                    await TranslatePageAsync().ConfigureAwait(true);
+                    break;
                 case savePdf:
                     await OpenSettingsPageAsync(
                         () => new AbroSavedPagesPage(_pagesDir, SaveCurrentPageAsPdfAsync),
@@ -1329,6 +1367,180 @@ namespace SilentNotes.Platforms
             catch
             {
             }
+        }
+
+        private void ToggleReaderMode()
+        {
+            try
+            {
+                AWebView native = _current?.Native;
+                if (native == null)
+                {
+                    ShowToast("No page loaded");
+                    return;
+                }
+
+                native.EvaluateJavascript(ReaderModeToggleScript, new AbroJsResultCallback(result =>
+                {
+                    string state = UnwrapJsString(result);
+                    if (state == "off")
+                        ShowToast("Reader mode off");
+                    else if (state == "on")
+                        ShowToast("Reader mode on");
+                    else if (state != null && state.StartsWith("err", StringComparison.Ordinal))
+                        ShowToast("Reader mode failed");
+                    else
+                        ShowToast("No readable content found");
+                }));
+            }
+            catch (Exception ex)
+            {
+                ShowToast(ex.Message);
+            }
+        }
+
+        private async Task TranslatePageAsync()
+        {
+            AWebView native = _current?.Native;
+            if (native == null)
+            {
+                ShowToast("No page loaded");
+                return;
+            }
+
+            string language = await DisplayActionSheetAsync(
+                "Translate page into",
+                "Cancel",
+                null,
+                "English",
+                "Russian",
+                "German",
+                "French",
+                "Spanish",
+                "Italian",
+                "Portuguese",
+                "Ukrainian",
+                "Chinese").ConfigureAwait(true);
+            if (string.IsNullOrWhiteSpace(language) || language == "Cancel")
+                return;
+
+            ShowToast("Translating…");
+            native.EvaluateJavascript(PageTextScript, new AbroJsResultCallback(result =>
+            {
+                string text = UnwrapJsString(result);
+                _ = TranslatePageTextAsync(text, language);
+            }));
+        }
+
+        private async Task TranslatePageTextAsync(string text, string language)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                ShowToast("No text found on this page");
+                return;
+            }
+
+            try
+            {
+                IAiActionService aiActionService = Ioc.Instance.GetService<IAiActionService>();
+                if (aiActionService == null || !aiActionService.IsConfigured)
+                {
+                    ShowToast("Configure an AI provider in aNote Settings first");
+                    return;
+                }
+
+                string translated = await aiActionService.RunAsync(AiTextAction.Translate, text, language).ConfigureAwait(true);
+                await ShowTextResultPageAsync("Translation — " + language, translated).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                ShowToast(ex.Message);
+            }
+        }
+
+        private async Task ShowTextResultPageAsync(string title, string text)
+        {
+            var page = new ContentPage { BackgroundColor = Colors.Black };
+
+            var rootGrid = new Grid { Padding = new Thickness(10) };
+            rootGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            rootGrid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+
+            var header = new Grid { ColumnSpacing = 8, HeightRequest = 48 };
+            header.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+            header.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            header.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+
+            var backButton = new Button
+            {
+                Text = "←",
+                TextColor = Colors.White,
+                BackgroundColor = Colors.Transparent,
+                FontSize = 20,
+            };
+            backButton.Clicked += async (_, __) => await Navigation.PopModalAsync();
+
+            var titleLabel = new Label
+            {
+                Text = title,
+                TextColor = Colors.White,
+                FontSize = 16,
+                VerticalOptions = LayoutOptions.Center,
+                LineBreakMode = LineBreakMode.TailTruncation,
+            };
+
+            var copyButton = new Button
+            {
+                Text = "Copy",
+                TextColor = Colors.White,
+                BackgroundColor = Color.FromArgb("#2481cc"),
+                FontSize = 13,
+            };
+            copyButton.Clicked += async (_, __) =>
+            {
+                try
+                {
+                    await Ioc.Instance.GetService<IClipboardService>().SetTextAsync(text);
+                    ShowToast("Copied");
+                }
+                catch (Exception)
+                {
+                }
+            };
+
+            header.Add(backButton, 0, 0);
+            header.Add(titleLabel, 1, 0);
+            header.Add(copyButton, 2, 0);
+
+            var contentLabel = new Label
+            {
+                Text = text,
+                TextColor = Colors.White,
+                FontSize = 15,
+                LineBreakMode = LineBreakMode.WordWrap,
+            };
+            var scrollView = new ScrollView { Content = contentLabel };
+
+            rootGrid.Add(header, 0, 0);
+            rootGrid.Add(scrollView, 0, 1);
+            page.Content = rootGrid;
+
+            await Navigation.PushModalAsync(page);
+        }
+
+        private static string UnwrapJsString(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+            try
+            {
+                if (value.Length > 1 && value[0] == '"')
+                    return JsonSerializer.Deserialize<string>(value) ?? string.Empty;
+            }
+            catch (JsonException)
+            {
+            }
+            return value;
         }
 
         private async Task SaveCurrentPageAsPdfAsync()
@@ -2073,11 +2285,13 @@ namespace SilentNotes.Platforms
             SettingsModel settings = settingsService.LoadSettingsOrDefault();
             string bookmarksToggle = settings.AbroBookmarksSyncEnabled ? "Disable bookmarks sync" : "Enable bookmarks sync";
             string historyToggle = settings.AbroHistorySyncEnabled ? "Disable history sync" : "Enable history sync";
+            string tabsToggle = settings.AbroTabsSyncEnabled ? "Disable tab sync" : "Enable tab sync";
             string aiToggle = settings.AbroAiSyncEnabled ? "Disable AI sync" : "Enable AI sync";
             const string syncNow = "Sync now";
             const string overwrite = "Overwrite remote";
             const string bookmarksPath = "Bookmarks path";
             const string historyPath = "History path";
+            const string tabsPath = "Tabs path";
             const string aiPath = "AI path";
 
             string choice = await DisplayActionSheetAsync(
@@ -2088,9 +2302,11 @@ namespace SilentNotes.Platforms
                 overwrite,
                 bookmarksToggle,
                 historyToggle,
+                tabsToggle,
                 aiToggle,
                 bookmarksPath,
                 historyPath,
+                tabsPath,
                 aiPath).ConfigureAwait(true);
 
             switch (choice)
@@ -2118,6 +2334,15 @@ namespace SilentNotes.Platforms
                     ShowToast(settings.AbroHistorySyncEnabled
                         ? "History sync enabled (Booky WebDAV)"
                         : "History sync disabled");
+                    break;
+                case var _ when choice == tabsToggle:
+                    settings.AbroTabsSyncEnabled = !settings.AbroTabsSyncEnabled;
+                    if (string.IsNullOrWhiteSpace(settings.AbroTabsSyncRemotePath))
+                        settings.AbroTabsSyncRemotePath = "abro/tabs.json";
+                    settingsService.TrySaveSettingsToLocalDevice(settings);
+                    ShowToast(settings.AbroTabsSyncEnabled
+                        ? "Tab sync enabled (Booky WebDAV)"
+                        : "Tab sync disabled");
                     break;
                 case var _ when choice == aiToggle:
                     settings.AbroAiSyncEnabled = !settings.AbroAiSyncEnabled;
@@ -2162,6 +2387,24 @@ namespace SilentNotes.Platforms
                         settings.AbroHistorySyncRemotePath = path.Trim().TrimStart('/');
                         settingsService.TrySaveSettingsToLocalDevice(settings);
                         ShowToast("History path saved");
+                        break;
+                    }
+                case tabsPath:
+                    {
+                        string path = await DisplayPromptAsync(
+                            "Tabs path",
+                            "Relative to Booky WebDAV URL",
+                            "Save",
+                            "Cancel",
+                            "abro/tabs.json",
+                            -1,
+                            Keyboard.Text,
+                            settings.AbroTabsSyncRemotePath ?? "abro/tabs.json").ConfigureAwait(true);
+                        if (path == null)
+                            return;
+                        settings.AbroTabsSyncRemotePath = path.Trim().TrimStart('/');
+                        settingsService.TrySaveSettingsToLocalDevice(settings);
+                        ShowToast("Tabs path saved");
                         break;
                     }
                 case aiPath:
@@ -2226,6 +2469,18 @@ namespace SilentNotes.Platforms
                     : "AI: " + (string.IsNullOrEmpty(aiSync.LastError) ? result.ToString() : aiSync.LastError));
             }
 
+            IAbroTabsSyncService tabsSync = TryGetTabsSyncService();
+            if (tabsSync?.IsConfigured == true)
+            {
+                anyConfigured = true;
+                AbroBrowserSyncResult result = overwrite
+                    ? await tabsSync.OverwriteRemoteAsync().ConfigureAwait(true)
+                    : await tabsSync.SyncAsync().ConfigureAwait(true);
+                parts.Add(result == AbroBrowserSyncResult.Success
+                    ? "tabs ok"
+                    : "tabs: " + (string.IsNullOrEmpty(tabsSync.LastError) ? result.ToString() : tabsSync.LastError));
+            }
+
             if (!anyConfigured)
             {
                 ShowToast("Enable sync items and configure Booky WebDAV first");
@@ -2247,6 +2502,21 @@ namespace SilentNotes.Platforms
             IAbroHistorySyncService syncService = TryGetHistorySyncService();
             if (syncService?.IsConfigured == true)
                 _ = syncService.SyncAsync();
+        }
+
+        private DateTime _lastTabsSyncUtc = DateTime.MinValue;
+
+        private void ScheduleTabsSync()
+        {
+            IAbroTabsSyncService syncService = TryGetTabsSyncService();
+            if (syncService?.IsConfigured != true)
+                return;
+
+            // SaveTabs runs on nearly every navigation; keep the WebDAV traffic low.
+            if (DateTime.UtcNow - _lastTabsSyncUtc < TimeSpan.FromSeconds(20))
+                return;
+            _lastTabsSyncUtc = DateTime.UtcNow;
+            _ = syncService.SyncAsync();
         }
 
         private static IAbroAiStoreService TryGetAiStoreService()
@@ -2314,6 +2584,18 @@ namespace SilentNotes.Platforms
             try
             {
                 return Ioc.Instance.GetService<IAbroHistorySyncService>();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static IAbroTabsSyncService TryGetTabsSyncService()
+        {
+            try
+            {
+                return Ioc.Instance.GetService<IAbroTabsSyncService>();
             }
             catch
             {

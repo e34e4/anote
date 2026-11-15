@@ -1,0 +1,6 @@
+• Global search across notes, clips, bookmarks, mail, Telegram, RSS and password logins, reachable from the overflow menu, the quick menu and a gesture.
+• Encrypted file attachments in notes (PDF, audio, archives, …) with open and share.
+• Player queue/playlists with auto-advance, an ongoing media notification with background playback, playback speed and sidecar subtitles for videos.
+• Explicit AI actions (summarize, translate, rewrite) for selected text, whole notes, emails, RSS articles and Reader documents/PDFs.
+• Device-to-device sync over the local Wi-Fi, without FTP/WebDAV or cloud accounts; the LAN bridge now also serves the encrypted repository container.
+• Abro: reader mode, AI page translation and cross-device tab sync over WebDAV.

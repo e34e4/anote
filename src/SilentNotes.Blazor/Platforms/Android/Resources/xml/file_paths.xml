@@ -6,4 +6,5 @@
     <cache-path name="reader_share" path="reader_share/" />
     <cache-path name="shot_share" path="shot_share/" />
     <cache-path name="log_share" path="log_share/" />
+    <cache-path name="attachments" path="attachments/" />
 </paths>

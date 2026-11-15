@@ -196,6 +196,11 @@
 					</ChildContent>
 				</MudMenu>
 			}
+			<AiActionsMenu Size="Size.Small" Color="Color.Inherit" Subject="@ViewModel.ActiveTitle"
+				Text="@ViewModel.ActiveDocument.Text"
+				TextProvider="@ViewModel.ExtractActiveTextAsync"
+				SelectionProvider="@GetReaderSelectionAsync"
+				InsertHandler="@ReplaceReaderSelectionAsync" />
 			<MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Color="Color.Inherit"
 				OnClick="OpenExternallyAsync" title="@LanguageService["reader_open_external"]" />
 		</div>
@@ -404,6 +409,19 @@
 	{
 		_editorMenuOpen = false;
 		_textEditor?.OpenPreview();
+	}
+
+	private async Task<string> GetReaderSelectionAsync()
+	{
+		if (_textEditor == null)
+			return string.Empty;
+		return await _textEditor.GetSelectedTextAsync();
+	}
+
+	private async Task ReplaceReaderSelectionAsync(string text)
+	{
+		if (_textEditor != null)
+			await _textEditor.ReplaceSelectedTextAsync(text);
 	}
 
 	private void OnEditorSettingsChanged()

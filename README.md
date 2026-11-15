@@ -24,12 +24,16 @@ If you want to help, please read the [contribution guidelines](CONTRIBUTING.md).
 * ✔ Create To-Do lists and checklists to keep an overview of your pending tasks, with reordering,
   sorting, check-all/uncheck-all and a shopping mode.
 * ✔ Add pictures to your notes, they are downscaled and embedded into the note.
+* ✔ Attach arbitrary encrypted files (PDF, audio, archives, …) to a note, and open or share them.
+* ✔ Search everything at once: notes, clips, bookmarks, mail, Telegram, RSS and password logins from a single box.
+* ✔ Run explicit AI actions (summarize, translate, rewrite) on selected text, whole notes, emails, RSS articles and Reader documents/PDFs.
 * ✔ Protect your notes with a user defined password and keep them in safes.
 * ✔ Quickly find the right note with the full-text search, just by typing a few letters.
 * ✔ Organize and filter the notes with a tagging system, and pin important notes to the top.
 * ✔ Get a note back from the recycle-bin if it was deleted by accident.
 * ✔ Store the notes to an online-storage of your choice (self hosting), this allows to synchronize them between devices and offers an easy backup.
 * ✔ Currently supported are the `FTP` protocol, the `WebDav` protocol, `Dropbox`, `Google-Drive` and `One-Drive`.
+* ✔ Synchronize two devices directly over the local Wi-Fi (LAN), without any cloud account or external server.
 * ✔ The notes never leave the device unencrypted, they are end-to-end encrypted and can only be read on your devices.
 * ✔ Choose the encryption and key derivation algorithm used for the encrypted repository.
 * ✔ Keep a history of copied texts and pictures in the clipboard tab.
@@ -63,8 +67,10 @@ If you want to help, please read the [contribution guidelines](CONTRIBUTING.md).
 * ✔ Exchange files with a WebDAV server, and quickly save files from other tabs to WebDAV.
 * ✔ Place calls and optionally act as the default Phone app.
 * ✔ Browse local media and documents with the Player and Reader tabs, including PDF, DjVu, Office and ebook files.
+* ✔ Queue audio folders and playlists, play in the background from an ongoing notification, change the playback speed, and load sidecar subtitles for videos.
 * ✔ Play audio and video from a URL, and download media with yt-dlp from YouTube, VK, Vimeo, Reddit and other supported sites.
 * ✔ A built-in multi-tab browser (Abro) with ad blocking, saved pages, downloads, PDF export, history, bookmarks and an AI chat.
+* ✔ Abro reader mode, AI page translation and tab handoff between devices.
 * ✔ Ask AI about notes, RSS articles and files, using OpenAI-compatible providers.
 * ✔ Act as the default system browser (URLCheck mode) to inspect, clean and route links to any installed browser.
 * ✔ Act as the default assistant, so the assist gesture can dictate a note and attach a screenshot.

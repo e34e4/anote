@@ -36,6 +36,7 @@ namespace SilentNotes
         public const string Backup = "/settings/backup";
         public const string LanBridge = "/settings/lanbridge";
         public const string TextTransform = "/texttransform";
+        public const string GlobalSearch = "/globalsearch";
         public const string TransferCodePrompt = "/transfercodeprompt";
         public const string TransferCodeHistory = "/transfercodehistory";
 

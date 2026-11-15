@@ -75,6 +75,8 @@ namespace SilentNotes.Models
             AbroBookmarksSyncRemotePath = "abro/bookmarks.json";
             AbroHistorySyncEnabled = false;
             AbroHistorySyncRemotePath = "abro/history.json";
+            AbroTabsSyncEnabled = false;
+            AbroTabsSyncRemotePath = "abro/tabs.json";
             BookySyncUsername = string.Empty;
             BookySyncPassword = string.Empty;
             ScreenshotFormat = "jpg";
@@ -519,6 +521,20 @@ namespace SilentNotes.Models
         /// </summary>
         [XmlElement("abro_history_sync_remote_path")]
         public string AbroHistorySyncRemotePath { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the open Abro tabs should be synchronized
+        /// over the Booky WebDAV credentials, to hand tabs over between devices.
+        /// </summary>
+        [XmlElement("abro_tabs_sync_enabled")]
+        public bool AbroTabsSyncEnabled { get; set; }
+
+        /// <summary>
+        /// Gets or sets the path of the Abro tabs file on the Booky WebDAV server, relative
+        /// to <see cref="BookySyncUrl"/>. Defaults to "abro/tabs.json".
+        /// </summary>
+        [XmlElement("abro_tabs_sync_remote_path")]
+        public string AbroTabsSyncRemotePath { get; set; }
 
         /// <summary>
         /// Gets or sets the user name for the WebDAV server of the Booky sync.

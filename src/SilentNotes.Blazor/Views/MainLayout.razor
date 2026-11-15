@@ -22,6 +22,7 @@
 @inject IAbroAiSyncService AbroAiSyncService
 @inject IAbroBookmarkSyncService AbroBookmarkSyncService
 @inject IAbroHistorySyncService AbroHistorySyncService
+@inject IAbroTabsSyncService AbroTabsSyncService
 @inject ISettingsService SettingsService
 @inject IEnvironmentService EnvironmentService
 @inject ILanguageService LanguageService
@@ -175,6 +176,8 @@
 				await AbroBookmarkSyncService.SyncAsync();
 			if (AbroHistorySyncService.IsConfigured)
 				await AbroHistorySyncService.SyncAsync();
+			if (AbroTabsSyncService.IsConfigured)
+				await AbroTabsSyncService.SyncAsync();
 
 			// Pausing the synchronization allows to user to switch to another app, to copy and
 			// paste some content, without an interferring synchronization when switching back.

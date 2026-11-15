@@ -52,6 +52,9 @@ namespace SilentNotes.Services
         /// <summary>Raised when playback state or progress changes.</summary>
         event Action StateChanged;
 
+        /// <summary>Raised when audio playback reached its natural end (for queue auto-advance).</summary>
+        event Action PlaybackCompleted;
+
         /// <summary>Gets the path/URI of the item currently loaded in the player, or null.</summary>
         string ActivePath { get; }
 
@@ -90,6 +93,12 @@ namespace SilentNotes.Services
 
         /// <summary>Seeks to a position (0..1 of duration).</summary>
         void SeekRelative(double relative);
+
+        /// <summary>Gets the current playback speed factor (1.0 is normal speed).</summary>
+        double PlaybackSpeed { get; }
+
+        /// <summary>Sets the playback speed factor, 0.5 to 2.0.</summary>
+        void SetPlaybackSpeed(double speed);
 
         /// <summary>
         /// Opens an image for viewing. Currently uses a simple fullscreen viewer; the Player tab

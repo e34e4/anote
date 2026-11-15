@@ -231,13 +231,35 @@
 					<MudIconButton Icon="@(ViewModel.IsPlaying ? Icons.Material.Filled.PauseCircleFilled : Icons.Material.Filled.PlayCircleFilled)"
 						Color="Color.Primary" Size="Size.Medium"
 						OnClick="() => ViewModel.TogglePlayCommand.Execute(null)" />
+					<MudIconButton Icon="@Icons.Material.Filled.SkipPrevious" Size="Size.Small" Color="Color.Inherit"
+						OnClick="() => ViewModel.PlayPreviousCommand.Execute(null)" title="@LanguageService["player_previous"]" />
+					<MudIconButton Icon="@Icons.Material.Filled.SkipNext" Size="Size.Small" Color="Color.Inherit"
+						OnClick="() => ViewModel.PlayNextCommand.Execute(null)" title="@LanguageService["player_next"]" />
 					<MudIconButton Icon="@Icons.Material.Filled.Stop" Size="Size.Small" Color="Color.Inherit"
 						OnClick="() => ViewModel.StopCommand.Execute(null)" />
 					<span class="player-now-time">@ViewModel.PlaybackProgressText</span>
 				</div>
 				<MudSlider T="double" Value="@ViewModel.PlaybackRelative" ValueChanged="OnSeek" Min="0" Max="1" Step="0.001" Color="Color.Primary" Class="mt-1" />
+				<div class="player-roots" style="padding-top:2px;">
+					@foreach (double speed in SpeedOptions)
+					{
+						double capturedSpeed = speed;
+						<button class="player-chip @(ViewModel.IsSpeed(capturedSpeed) ? "active" : null)"
+							@onclick="() => ViewModel.SetSpeedCommand.Execute(capturedSpeed)">@FormatSpeed(capturedSpeed)</button>
+					}
+				</div>
 			</div>
 		}
+
+		<div class="player-roots">
+			<button class="player-chip" @onclick="() => ViewModel.QueueFolderCommand.Execute(null)">@LanguageService["player_queue_folder"]</button>
+			@if (ViewModel.HasQueue)
+			{
+				<button class="player-chip" @onclick="() => ViewModel.PlayPreviousCommand.Execute(null)">◀ @LanguageService["player_previous"]</button>
+				<button class="player-chip" @onclick="() => ViewModel.PlayNextCommand.Execute(null)">@LanguageService["player_next"] ▶</button>
+				<button class="player-chip" @onclick="() => ViewModel.ClearQueueCommand.Execute(null)">@LanguageService.LoadTextFmt("player_queue_clear_fmt", ViewModel.QueueCount)</button>
+			}
+		</div>
 
 		<MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">@ViewModel.CountText</MudText>
 
@@ -301,8 +323,15 @@
 </div>
 
 @code {
+	private static readonly double[] SpeedOptions = { 0.75, 1.0, 1.25, 1.5, 2.0 };
+
 	[Parameter]
 	public PlayerViewModel ViewModel { get; set; }
+
+	private static string FormatSpeed(double speed)
+	{
+		return speed.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "x";
+	}
 
 	protected override void OnInitialized()
 	{

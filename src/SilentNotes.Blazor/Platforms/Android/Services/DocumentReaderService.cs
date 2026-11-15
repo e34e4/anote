@@ -471,6 +471,75 @@ namespace SilentNotes.Platforms.Services
             RaiseStateChanged();
         }
 
+        /// <inheritdoc/>
+        public async Task<string> ExtractActiveTextAsync(int maxPages = 5)
+        {
+            if (_activeDocument == null)
+                return string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(_activeDocument.Text))
+                return _activeDocument.Text;
+
+            if (_activeDocument.RenderMode == DocumentRenderMode.Html)
+                return NoteHtmlUtils.GetPlainText(_activeDocument.Html);
+
+            if (_activeDocument.RenderMode != DocumentRenderMode.PdfPages || _pdfRenderer == null)
+                return string.Empty;
+
+            IOcrService ocrService = Ioc.Instance.GetService<IOcrService>();
+            if (ocrService == null || !ocrService.IsSupported)
+                return string.Empty;
+
+            var builder = new StringBuilder();
+            int pageCount = Math.Min(Math.Max(1, maxPages), _pdfRenderer.PageCount);
+            for (int pageIndex = 0; pageIndex < pageCount; pageIndex++)
+            {
+                byte[] png = RenderPdfPageToPng(pageIndex);
+                if (png == null)
+                    continue;
+
+                string text = await ocrService.RecognizeTextAsync(png).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+
+                if (builder.Length > 0)
+                    builder.Append("\n\n");
+                builder.Append(text.Trim());
+                if (builder.Length >= 48000)
+                    break;
+            }
+            return builder.ToString();
+        }
+
+        private byte[] RenderPdfPageToPng(int pageIndex)
+        {
+            try
+            {
+                using (PdfRenderer.Page page = _pdfRenderer.OpenPage(pageIndex))
+                {
+                    int targetWidth = 1080;
+                    float scale = targetWidth / (float)Math.Max(1, page.Width);
+                    int w = Math.Max(1, (int)(page.Width * scale));
+                    int h = Math.Max(1, (int)(page.Height * scale));
+
+                    using (Bitmap bitmap = Bitmap.CreateBitmap(w, h, Bitmap.Config.Argb8888))
+                    {
+                        bitmap.EraseColor(Color.White);
+                        page.Render(bitmap, null, null, PdfRenderMode.ForDisplay);
+                        using (var ms = new MemoryStream())
+                        {
+                            bitmap.Compress(Bitmap.CompressFormat.Png, 90, ms);
+                            return ms.ToArray();
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
         private void RenderPdfPage(int pageIndex)
         {
             if (_pdfRenderer == null || _activeDocument == null)
