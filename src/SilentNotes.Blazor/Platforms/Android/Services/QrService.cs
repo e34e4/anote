@@ -161,7 +161,12 @@ namespace SilentNotes.Platforms.Services
             // so scanning still works on devices/builds where ML Kit registrars fail.
             if (CanCreateMlKitBarcodeClient(formats))
                 return new QrScanPage(resultSource, formats);
-            return new QrScanPageZxing(resultSource, formats);
+
+            // ZXing uses its own format flags, map the requested formats.
+            ZXing.Net.Maui.BarcodeFormat zxingFormats = (formats == BarcodeFormats.QRCode)
+                ? ZXing.Net.Maui.BarcodeFormat.QrCode
+                : ZXing.Net.Maui.BarcodeFormats.All;
+            return new QrScanPageZxing(resultSource, zxingFormats);
         }
 
         private bool CanCreateMlKitBarcodeClient(BarcodeFormats formats)
