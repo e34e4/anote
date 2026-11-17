@@ -16,6 +16,10 @@ using SilentNotes.Models;
 using SilentNotes.Services;
 using SilentNotes.Workers;
 using MauiApplication = Microsoft.Maui.Controls.Application;
+// The enclosing namespace contains an "Android" segment, so plain Android.Graphics would
+// resolve to SilentNotes.Platforms.Android.Graphics; the global:: aliases keep it unambiguous.
+using AndroidBitmap = global::Android.Graphics.Bitmap;
+using AndroidBitmapFactory = global::Android.Graphics.BitmapFactory;
 
 namespace SilentNotes.Platforms
 {
@@ -37,6 +41,12 @@ namespace SilentNotes.Platforms
         private readonly Label _providerLabel;
         private readonly Picker _providerPicker;
         private readonly List<PendingAttachment> _pendingAttachments = new List<PendingAttachment>();
+
+        /// <summary>Longest side of an uploaded picture before base64 encoding.</summary>
+        private const int MaxApiImageDim = 1600;
+
+        /// <summary>Size budget for one encoded picture before base64 encoding.</summary>
+        private const int MaxApiImageBytes = 1200 * 1024;
 
         private sealed class PendingAttachment
         {
@@ -371,8 +381,22 @@ namespace SilentNotes.Platforms
                         else if (bytes.Length >= 12 && bytes[0] == 0x52 && bytes[8] == 0x57)
                             pending.MimeType = "image/webp";
                     }
-                    pending.Base64Data = Convert.ToBase64String(bytes ?? Array.Empty<byte>());
-                    SetStatus("Attached image " + Truncate(name, 40));
+
+                    // Shrink before base64: a raw phone photo becomes a huge JSON body, which
+                    // is the main cause of slow uploads and gateway timeouts.
+                    byte[] shrunk = DownscaleForApi(
+                        bytes, pending.MimeType, out string shrunkMime, out int originalBytes);
+                    pending.MimeType = shrunkMime ?? pending.MimeType;
+                    pending.Base64Data = Convert.ToBase64String(shrunk ?? Array.Empty<byte>());
+                    if (originalBytes > 0 && shrunk != null && shrunk.Length < originalBytes)
+                    {
+                        SetStatus("Attached image " + Truncate(name, 40) + " (" +
+                            FormatKb(originalBytes) + " → " + FormatKb(shrunk.Length) + ")");
+                    }
+                    else
+                    {
+                        SetStatus("Attached image " + Truncate(name, 40));
+                    }
                 }
                 else if (AbroAiAskText.TryDecodeText(bytes, out string text))
                 {
@@ -407,6 +431,138 @@ namespace SilentNotes.Platforms
             if (bytes.Length >= 12 && bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[8] == 0x57)
                 return true;
             return false;
+        }
+
+        /// <summary>
+        /// Downscales/compresses a picked picture so the base64 payload stays small.
+        /// </summary>
+        /// <remarks>
+        /// Images are inlined into the chat request; a raw phone photo produces a multi-megabyte
+        /// body which makes the upload slow and pushes the request into gateway timeouts. The
+        /// original bytes are returned when the image is already small or cannot be decoded.
+        /// </remarks>
+        private static byte[] DownscaleForApi(
+            byte[] bytes, string mimeType, out string resultMime, out int originalBytes)
+        {
+            resultMime = mimeType;
+            originalBytes = bytes?.Length ?? 0;
+            if (bytes == null || bytes.Length < 4)
+                return bytes;
+
+            string mime = mimeType ?? string.Empty;
+            if (mime.IndexOf("gif", StringComparison.OrdinalIgnoreCase) >= 0)
+                return bytes; // Keep animations intact.
+
+            try
+            {
+                using var bounds = new AndroidBitmapFactory.Options();
+                bounds.InJustDecodeBounds = true;
+                AndroidBitmapFactory.DecodeByteArray(bytes, 0, bytes.Length, bounds);
+                if (bounds.OutWidth <= 0 || bounds.OutHeight <= 0)
+                    return bytes;
+
+                int longest = Math.Max(bounds.OutWidth, bounds.OutHeight);
+                bool tooLarge = longest > MaxApiImageDim;
+                bool tooHeavy = bytes.Length > MaxApiImageBytes;
+                if (!tooLarge && !tooHeavy)
+                    return bytes;
+
+                int sample = 1;
+                while (longest / (sample * 2) >= MaxApiImageDim)
+                    sample *= 2;
+
+                using var decodeOptions = new AndroidBitmapFactory.Options();
+                decodeOptions.InSampleSize = sample;
+                using AndroidBitmap decoded = AndroidBitmapFactory.DecodeByteArray(
+                    bytes, 0, bytes.Length, decodeOptions);
+                if (decoded == null)
+                    return bytes;
+
+                AndroidBitmap current = decoded;
+                int targetDim = Math.Min(MaxApiImageDim, Math.Max(decoded.Width, decoded.Height));
+                for (int attempt = 0; attempt < 4; attempt++)
+                {
+                    int currentLongest = Math.Max(current.Width, current.Height);
+                    if (currentLongest > targetDim)
+                    {
+                        float scale = (float)targetDim / currentLongest;
+                        int width = Math.Max(1, (int)(current.Width * scale));
+                        int height = Math.Max(1, (int)(current.Height * scale));
+                        current = AndroidBitmap.CreateScaledBitmap(current, width, height, true);
+                    }
+
+                    byte[] encoded = EncodeImageForApi(current, ref mime);
+                    if (encoded == null)
+                        return bytes;
+
+                    if (encoded.Length <= MaxApiImageBytes)
+                    {
+                        if (encoded.Length >= bytes.Length && !tooLarge)
+                            return bytes; // Never inflate a file just to hit the dimension cap.
+
+                        resultMime = mime;
+                        return encoded;
+                    }
+
+                    // Still too heavy: shrink further and encode again.
+                    targetDim = (int)(targetDim * 0.75f);
+                    if (targetDim < 480)
+                        break;
+                }
+
+                return bytes;
+            }
+            catch
+            {
+                return bytes;
+            }
+        }
+
+        /// <summary>
+        /// Encodes a bitmap, keeping the smaller of PNG (screenshots) and JPEG (photos).
+        /// </summary>
+        private static byte[] EncodeImageForApi(AndroidBitmap bitmap, ref string mime)
+        {
+            using var png = new System.IO.MemoryStream();
+            bool pngOk = bitmap.Compress(AndroidBitmap.CompressFormat.Png, 100, png);
+            if (bitmap.HasAlpha)
+            {
+                if (!pngOk)
+                    return null;
+                mime = "image/png";
+                return png.ToArray();
+            }
+
+            using var jpeg = new System.IO.MemoryStream();
+            bool jpegOk = bitmap.Compress(AndroidBitmap.CompressFormat.Jpeg, 80, jpeg);
+            if (!pngOk && !jpegOk)
+                return null;
+            if (!jpegOk)
+            {
+                mime = "image/png";
+                return png.ToArray();
+            }
+            if (!pngOk)
+            {
+                mime = "image/jpeg";
+                return jpeg.ToArray();
+            }
+
+            if (png.Length <= jpeg.Length)
+            {
+                mime = "image/png";
+                return png.ToArray();
+            }
+
+            mime = "image/jpeg";
+            return jpeg.ToArray();
+        }
+
+        private static string FormatKb(int bytes)
+        {
+            if (bytes >= 1024 * 1024)
+                return (bytes / (1024.0 * 1024.0)).ToString("0.0") + " MB";
+            return Math.Max(1, bytes / 1024) + " KB";
         }
 
         private static AbroAiProviderModel ResolveProvider(AbroAiStoreModel store, AbroAiConversationModel conversation)
@@ -742,7 +898,7 @@ namespace SilentNotes.Platforms
             _sendButton.IsEnabled = false;
             _attachButton.IsEnabled = false;
             _input.Text = string.Empty;
-            SetStatus("Thinking…");
+            SetStatus("Waiting for the AI…");
 
             string displayContent = text;
             if (string.IsNullOrEmpty(displayContent) && imageAttachments.Count > 0)
@@ -764,8 +920,50 @@ namespace SilentNotes.Platforms
             Persist(scheduleSync: false);
             await ScrollToEndAsync().ConfigureAwait(true);
 
+            // Live bubble: the answer is filled in while it streams from the provider, so a
+            // slow picture question shows progress instead of appearing frozen.
+            Label liveLabel = CreatePlainLabel("…", Colors.White, 15);
+            var liveBubble = new Border
+            {
+                StrokeThickness = 0,
+                BackgroundColor = Color.FromArgb("#2c2c2e"),
+                Padding = new Thickness(12, 10),
+                StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 12 },
+                Content = liveLabel,
+                HorizontalOptions = LayoutOptions.Start,
+                MaximumWidthRequest = 360,
+            };
+            _messageStack.Children.Add(liveBubble);
+            await ScrollToEndAsync().ConfigureAwait(true);
+
+            var streamed = new StringBuilder();
+            long lastPaintTicks = 0;
+
+            void OnDelta(string piece)
+            {
+                if (string.IsNullOrEmpty(piece))
+                    return;
+                streamed.Append(piece);
+
+                // Repaint at most ~8 times a second; deltas arrive far faster.
+                long now = Environment.TickCount64;
+                if (now - Interlocked.Read(ref lastPaintTicks) < 120)
+                    return;
+                Interlocked.Exchange(ref lastPaintTicks, now);
+
+                string snapshot = streamed.ToString();
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    liveLabel.Text = snapshot;
+                    SetStatus("Writing… " + snapshot.Length + " chars");
+                });
+            }
+
             _sendCts?.Cancel();
             _sendCts = new CancellationTokenSource();
+            using var waitCts = new CancellationTokenSource();
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            _ = ShowElapsedStatusAsync(stopwatch, waitCts.Token);
             try
             {
                 string reply = await _chatClient
@@ -774,8 +972,10 @@ namespace SilentNotes.Platforms
                         _conversation.Messages,
                         _sendCts.Token,
                         mode: AbroAiChatClient.DefaultMode,
-                        threadId: _conversation.Id.ToString())
+                        threadId: _conversation.Id.ToString(),
+                        onDelta: OnDelta)
                     .ConfigureAwait(true);
+                _messageStack.Children.Remove(liveBubble);
                 var assistant = new AbroAiMessageModel
                 {
                     Role = "assistant",
@@ -791,17 +991,40 @@ namespace SilentNotes.Platforms
             }
             catch (OperationCanceledException)
             {
+                _messageStack.Children.Remove(liveBubble);
                 SetStatus("Cancelled");
             }
             catch (Exception ex)
             {
+                _messageStack.Children.Remove(liveBubble);
                 SetStatus(ex.Message);
             }
             finally
             {
+                waitCts.Cancel();
                 _busy = false;
                 _sendButton.IsEnabled = true;
                 _attachButton.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Keeps the status line ticking while the provider works.
+        /// </summary>
+        private async Task ShowElapsedStatusAsync(System.Diagnostics.Stopwatch stopwatch, CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
+                    int seconds = (int)stopwatch.Elapsed.TotalSeconds;
+                    MainThread.BeginInvokeOnMainThread(() => SetStatus("Waiting for the AI… " + seconds + "s"));
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Finished or cancelled; nothing to report.
             }
         }
 

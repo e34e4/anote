@@ -1,0 +1,4 @@
+• Abro AI: picture questions no longer fail with "read operation timed out" — replies are streamed, so long vision answers wait instead of timing out at 2 minutes.
+• Attached pictures are downscaled before sending, so uploads are much faster and use less data.
+• The answer now appears while it is being written, with an elapsed-seconds counter.
+• Failed requests are retried automatically, and a cut-off answer keeps the text received so far.
