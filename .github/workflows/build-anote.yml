@@ -20,7 +20,9 @@ on:
 env:
   Project_Path: src\SilentNotes.Blazor\anote.csproj
   WinManifest_Path: src\SilentNotes.Blazor\Platforms\Windows\Package.appxmanifest
-  Dotnet_Version: 10.0.x
+  # Pin exact SDK (not 10.0.x) so runners with a preinstalled .NET 11 preview do not
+  # pick a conflicting default for workload installs.
+  Dotnet_Version: 10.0.404
   Target_Framework_Android: net10.0-android
   Target_Framework_Windows: net10.0-windows10.0.19041.0
 
@@ -97,6 +99,18 @@ jobs:
       uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.Dotnet_Version }}
+
+    # windows-latest may ship .NET 11 sdk-manifests that conflict with maui-android 10.0.401
+    # (Emscripten.Node.net10 pack claimed by both emscripten.net10 and emscripten.current).
+    - name: Remove conflicting .NET 11 workload manifests
+      shell: pwsh
+      run: |
+        Get-ChildItem -Path "${env:ProgramFiles}\dotnet\sdk-manifests" -Directory -ErrorAction SilentlyContinue |
+          Where-Object { $_.Name -like '11.*' } |
+          ForEach-Object {
+            Write-Host "Removing $($_.FullName)"
+            Remove-Item -LiteralPath $_.FullName -Recurse -Force
+          }
 
     - name: Install MAUI
       run: dotnet workload install maui-android --ignore-failed-sources --version 10.0.401
@@ -218,6 +232,16 @@ jobs:
       uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.Dotnet_Version }}
+
+    - name: Remove conflicting .NET 11 workload manifests
+      shell: pwsh
+      run: |
+        Get-ChildItem -Path "${env:ProgramFiles}\dotnet\sdk-manifests" -Directory -ErrorAction SilentlyContinue |
+          Where-Object { $_.Name -like '11.*' } |
+          ForEach-Object {
+            Write-Host "Removing $($_.FullName)"
+            Remove-Item -LiteralPath $_.FullName -Recurse -Force
+          }
 
     - name: Install MAUI
       run: |
