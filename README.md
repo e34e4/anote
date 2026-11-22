@@ -16,8 +16,8 @@ If you want to help, please read the [contribution guidelines](CONTRIBUTING.md).
 
 ## What's new
 
-The last three development rounds added sixteen larger features. Numbering follows the three
-implementation rounds (1–5, 6–10 and 11–16):
+The last development rounds added eighteen larger features. Numbering follows the implementation
+rounds (1–5, 6–10, 11–16 and 17–18):
 
 **Notes, capture and local tools**
 
@@ -70,6 +70,16 @@ implementation rounds (1–5, 6–10 and 11–16):
 16. **Abro browser tools** — a distraction-free reader mode with article extraction, AI page
     translation with a readable result page, and cross-device tab handoff through a WebDAV
     `abro/tabs.json` file.
+
+**Home screen and AI history**
+
+17. **AI History** — open every previous AI chat from the notes overflow menu (⋮ → AI History) and
+    continue any conversation with full context. Picture questions in Abro AI stream the answer live
+    (with an elapsed-seconds counter), downscale images before upload, retry transient gateway errors
+    and keep partial text if a stream breaks.
+18. **Home-screen widget note** — a black terminal-style 2×2 Android widget with green text, synced
+    to a pinned widget note. Tap the widget to type on the home screen, then open the note in aNote;
+    launcher shortcuts still expose Voice, Notes, Clipboard and Recorder.
 
 ## Features
 
@@ -129,8 +139,11 @@ implementation rounds (1–5, 6–10 and 11–16):
 * ✔ A built-in multi-tab browser (Abro) with ad blocking, saved pages, downloads, PDF export, history, bookmarks and an AI chat.
 * ✔ Abro reader mode, AI page translation and tab handoff between devices.
 * ✔ Ask AI about notes, RSS articles and files, using OpenAI-compatible providers.
+* ✔ Reopen past AI chats from the notes overflow menu (AI History) and continue them with full context.
+* ✔ Stream Abro AI answers for picture questions, with live bubbles, retries and downscaled uploads.
 * ✔ Act as the default system browser (URLCheck mode) to inspect, clean and route links to any installed browser.
 * ✔ Act as the default assistant, so the assist gesture can dictate a note and attach a screenshot.
+* ✔ A home-screen widget (black pad, green text) synced to a pinned widget note, plus launcher shortcuts.
 * ✔ A Quick Settings tile for instant scratchpad capture over any app.
 * ✔ Share text or links from other apps straight into a note, a bookmark, an RSS subscription or the
   clipboard, and share images or files into the clipboard, Camera tab, Reader or a note attachment.
@@ -145,12 +158,24 @@ implementation rounds (1–5, 6–10 and 11–16):
 
 | | | |
 | --- | --- | --- |
-| ![Notes](docs/screenshots/01-notes.png) | ![Note editor](docs/screenshots/02-note-editor.png) | ![Picture in a note](docs/screenshots/03-note-image.png) |
-| Notes | Note editor | Picture in a note |
-| ![Clipboard history](docs/screenshots/05-clip.png) | ![Clock](docs/screenshots/06-clock.png) | ![Messages](docs/screenshots/07-sms.png) |
-| Clipboard history | Clock | Messages |
-| ![Phone contacts](docs/screenshots/04-phone.png) | ![Settings](docs/screenshots/08-settings.png) | |
-| Phone contacts | Settings | |
+| ![Notes](docs/screenshots/01-notes.png) | ![Notes menu](docs/screenshots/02-notes-menu.png) | ![Picture in a note](docs/screenshots/03-note-image.png) |
+| Notes | Notes menu (AI History) | Picture in a note |
+| ![Note editor](docs/screenshots/04-note-editor.png) | ![Clipboard history](docs/screenshots/05-clip.png) | ![Voice](docs/screenshots/06-voice.png) |
+| Note editor | Clipboard history | Voice |
+| ![RSS](docs/screenshots/07-rss.png) | ![Phone contacts](docs/screenshots/08-phone.png) | ![Calendar](docs/screenshots/09-calendar.png) |
+| RSS | Phone contacts | Calendar |
+| ![Calculator](docs/screenshots/10-calculator.png) | ![Clock](docs/screenshots/11-clock.png) | ![Messages](docs/screenshots/12-sms.png) |
+| Programmer calculator | Clock | Messages |
+| ![QR](docs/screenshots/13-qr.png) | ![Recorder](docs/screenshots/14-rec.png) | ![Camera](docs/screenshots/15-camera.png) |
+| QR | Recorder | Camera |
+| ![Dialer](docs/screenshots/16-dialer.png) | ![Mail](docs/screenshots/17-mail.png) | ![Player](docs/screenshots/18-player.png) |
+| Dialer | Mail | Player |
+| ![Reader](docs/screenshots/19-reader.png) | ![Password vault](docs/screenshots/20-password.png) | ![Abro](docs/screenshots/21-abro.png) |
+| Reader | Password vault | Abro |
+| ![Settings](docs/screenshots/22-settings.png) | ![Home widget](docs/screenshots/23-widget.png) | ![Widget picker](docs/screenshots/24-widget-picker.png) |
+| Settings | Home-screen widget | Widget picker |
+| ![App shortcuts](docs/screenshots/25-app-shortcuts.png) | ![User interface](docs/screenshots/26-settings-ui.png) | |
+| App shortcuts | User interface | |
 
 ## The tabs
 
@@ -355,7 +380,10 @@ History, cookies, cache and downloads live in the visible folder `/sdcard/anote/
 are restored on start. Abro offers ad blocking with subscriptions, and settings for black mode,
 blocking images, the font and the search engine. It also provides an **AI chat** that talks to
 OpenAI-compatible providers configured in *Settings → AI providers*; the providers and the chat
-history can be synchronized over the Booky WebDAV credentials.
+history can be synchronized over the Booky WebDAV credentials. Picture questions stream the answer
+as it arrives (with a live bubble and elapsed-seconds counter); images are downscaled before upload
+and transient gateway errors are retried. Past chats are also listed under **AI History** in the
+notes overflow menu, where any conversation can be continued with full context.
 
 ### Voice — assistant
 
@@ -363,6 +391,14 @@ The **Voice** tab is the landing place for assistant captures. When aNote is set
 assistant, the assist gesture asks “Recognize voice?”, records speech, and prepends the transcript
 (and a screenshot when available) to the pinned Voice note. The tab also publishes launcher
 shortcuts (Voice, Notes, Clipboard, Rec, Abro) and links to the assistant settings.
+
+### Home-screen widget
+
+Android home screens can host an **aNote widget**: a black terminal-style pad with green text,
+described in the widget picker as a “Black terminal-style pad synced to the widget note”. The widget
+mirrors a pinned note tagged for the widget; tapping it lets you type on the home screen and open
+the note in aNote. Long-press the app icon for launcher shortcuts (Voice, Open notes, Clipboard,
+Open recorder).
 
 ## Floating button and quick menu
 
@@ -377,7 +413,10 @@ the settings.
 
 Ask AI is available from notes and RSS articles (Android, when at least one AI provider is
 configured). It uses OpenAI-compatible endpoints (API base URL, model ID and API key) and can attach
-files to the request.
+files to the request. From the notes overflow menu, **AI History** lists every previous chat so you
+can reopen and continue one with its full context. In Abro AI, answers for picture questions are
+requested as a stream when the provider allows it, so long image analyses no longer hit a hard
+timeout while the model is still working.
 
 ## LAN bridge, backup and text tools
 

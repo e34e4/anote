@@ -347,3 +347,6 @@ tools/anote-web/anote-web.service
 
 # Prefetched youtubedl-android AARs (downloaded in CI; ~190MB)
 src/SilentNotes.Blazor/libs/youtubedl-android/
+
+# Local screenshot paste dump (named copies live in docs/screenshots)
+/screenshots/
