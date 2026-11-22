@@ -174,8 +174,10 @@ rounds (1–5, 6–10, 11–16 and 17–18):
 | Reader | Password vault | Abro |
 | ![Settings](docs/screenshots/22-settings.png) | ![Home widget](docs/screenshots/23-widget.png) | ![Widget picker](docs/screenshots/24-widget-picker.png) |
 | Settings | Home-screen widget | Widget picker |
-| ![App shortcuts](docs/screenshots/25-app-shortcuts.png) | ![User interface](docs/screenshots/26-settings-ui.png) | |
-| App shortcuts | User interface | |
+| ![App shortcuts](docs/screenshots/25-app-shortcuts.png) | ![User interface](docs/screenshots/26-settings-ui.png) | ![System hardware](docs/screenshots/27-system-hardware.png) |
+| App shortcuts | User interface | System — Hardware |
+| ![System storage](docs/screenshots/28-system-storage.png) | ![System logcat](docs/screenshots/29-system-logcat.png) | ![System memory](docs/screenshots/30-system-memory.png) |
+| System — Storage | System — Logcat | System — Memory |
 
 ## The tabs
 
