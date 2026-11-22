@@ -20,5 +20,10 @@ namespace SilentNotes.Services
         /// <paramref name="contextText"/>.
         /// </summary>
         Task AskAiAboutAsync(string subject, string contextText);
+
+        /// <summary>
+        /// Opens the unified AI conversation history list (previous chats from all entry points).
+        /// </summary>
+        Task OpenConversationHistoryAsync();
     }
 }

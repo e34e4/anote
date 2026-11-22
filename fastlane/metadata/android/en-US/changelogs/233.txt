@@ -1,0 +1,2 @@
+• AI History: open all previous AI chats from the notes ⋮ menu and continue any chat with full context.
+• Home-screen widget: black pad with green text synced to a pinned “widget” note; tap to type, then Open in aNote.

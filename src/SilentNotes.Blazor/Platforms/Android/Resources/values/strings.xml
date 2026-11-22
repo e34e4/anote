@@ -4,4 +4,6 @@
     <string name="accessibility_service_description">Shows a floating button to open aNote, and can read the current browser page url to prefill bookmarks</string>
     <string name="autofill_service_description">Fills usernames and passwords from the aNote password vault</string>
     <string name="autofill_unlock">Unlock aNote</string>
+    <string name="widget_description">Black terminal-style pad synced to the widget note</string>
+    <string name="widget_label">aNote widget</string>
 </resources>

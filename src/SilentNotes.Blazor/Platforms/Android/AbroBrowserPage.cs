@@ -2002,7 +2002,7 @@ namespace SilentNotes.Platforms
         {
             const string newChat = "New chat";
             const string withSelection = "Chat with selection";
-            const string previousChats = "Previous chats";
+            const string previousChats = "AI History";
 
             string choice = await DisplayActionSheetAsync(
                 "AI",

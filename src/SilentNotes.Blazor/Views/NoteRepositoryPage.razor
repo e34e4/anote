@@ -61,6 +61,7 @@
 @inject IRssArticleCacheService RssArticleCacheService
 @inject IOcrService OcrService
 @inject IAbroBrowserService AbroBrowserService
+@inject IAbroAiChatLauncher AiChatLauncher
 @inject IAssistantService AssistantService
 
 <style type="text/css">
@@ -392,6 +393,10 @@
 			<MudMenuItem OnClick="@(() => Navigation.NavigateTo(RouteNames.GlobalSearch))" Icon="@IconService[IconNames.Magnify]">@LanguageService["global_search_title"]</MudMenuItem>
 			<MudMenuItem OnClick="@(() => Navigation.NavigateTo(RouteNames.TextTransform))" Icon="@Icons.Material.Filled.Transform">@LanguageService["text_tools_title"]</MudMenuItem>
 			<MudMenuItem OnClick="@(() => Navigation.NavigateTo(RouteNames.LanBridge))" Icon="@Icons.Material.Filled.Lan">@LanguageService["gui_lan_bridge"]</MudMenuItem>
+			@if (AiChatLauncher.IsSupported)
+			{
+				<MudMenuItem OnClick="@OpenAiHistoryAsync" Icon="@Icons.Material.Filled.Forum">@LanguageService["ai_history"]</MudMenuItem>
+			}
 			<MudDivider />
 
 			@if (ViewModel.IsAnySafeOpen)
@@ -1350,6 +1355,18 @@
 			_passwordViewModel.ImportCommand.Execute(null);
 		_passwordViewModel.EnsureLoaded();
 		StateHasChanged();
+	}
+
+	private async Task OpenAiHistoryAsync()
+	{
+		_isOverflowMenuOpen = false;
+		if (!AiChatLauncher.IsSupported)
+		{
+			FeedbackService.ShowToast(LanguageService["ask_ai_unavailable"]);
+			return;
+		}
+
+		await AiChatLauncher.OpenConversationHistoryAsync();
 	}
 
 	private async Task HandleScrollJumpBackAsync()

@@ -24,5 +24,11 @@ namespace SilentNotes.Platforms.Services
             string prompt = AbroAiAskText.FormatInitialPrompt(subject, contextText);
             return MainThread.InvokeOnMainThreadAsync(() => AbroAiChatPage.PresentFromAnoteAsync(prompt));
         }
+
+        /// <inheritdoc/>
+        public Task OpenConversationHistoryAsync()
+        {
+            return MainThread.InvokeOnMainThreadAsync(() => AbroAiConversationsPage.PresentFromAnoteAsync());
+        }
     }
 }

@@ -11,6 +11,7 @@ using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using MauiApplication = Microsoft.Maui.Controls.Application;
 
 namespace SilentNotes.Platforms
 {
@@ -23,10 +24,21 @@ namespace SilentNotes.Platforms
         private readonly IAbroAiSyncService _syncService;
         private readonly VerticalStackLayout _listStack;
         private readonly Label _emptyLabel;
+        private readonly Page _previousRootPage;
+        private readonly TaskCompletionSource _closedSource;
+        private readonly bool _rootPresentation;
         private AbroAiStoreModel _store;
 
         public AbroAiConversationsPage()
+            : this(null, null)
         {
+        }
+
+        private AbroAiConversationsPage(Page previousRootPage, TaskCompletionSource closedSource)
+        {
+            _previousRootPage = previousRootPage;
+            _closedSource = closedSource;
+            _rootPresentation = previousRootPage != null && closedSource != null;
             BackgroundColor = Colors.Black;
             _storeService = Ioc.Instance.GetService<IAbroAiStoreService>();
             _syncService = Ioc.Instance.GetService<IAbroAiSyncService>();
@@ -37,7 +49,7 @@ namespace SilentNotes.Platforms
 
             var titleLabel = new Label
             {
-                Text = "Previous chats",
+                Text = "AI History",
                 TextColor = Colors.White,
                 FontSize = 16,
                 VerticalOptions = LayoutOptions.Center,
@@ -93,6 +105,34 @@ namespace SilentNotes.Platforms
             root.Add(header, 0, 0);
             root.Add(scroll, 0, 1);
             Content = root;
+        }
+
+        /// <summary>
+        /// Presents AI history on top of the aNote root page. Must run on the UI thread.
+        /// </summary>
+        internal static Task PresentFromAnoteAsync()
+        {
+            if (MauiApplication.Current?.Windows == null || MauiApplication.Current.Windows.Count == 0)
+                return Task.CompletedTask;
+
+            try
+            {
+                Window window = MauiApplication.Current.Windows[0];
+                Page previousPage = window.Page;
+                var closedSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                var listPage = new AbroAiConversationsPage(previousPage, closedSource);
+                NavigationPage.SetHasNavigationBar(listPage, false);
+                window.Page = new NavigationPage(listPage)
+                {
+                    BarBackgroundColor = Colors.Black,
+                    BarTextColor = Colors.White,
+                };
+                return closedSource.Task;
+            }
+            catch
+            {
+                return Task.CompletedTask;
+            }
         }
 
         protected override void OnAppearing()
@@ -229,6 +269,21 @@ namespace SilentNotes.Platforms
 
         private async Task CloseAsync()
         {
+            if (_rootPresentation && _previousRootPage != null)
+            {
+                try
+                {
+                    if (MauiApplication.Current?.Windows != null && MauiApplication.Current.Windows.Count > 0)
+                        MauiApplication.Current.Windows[0].Page = _previousRootPage;
+                }
+                catch
+                {
+                }
+
+                _closedSource?.TrySetResult();
+                return;
+            }
+
             try
             {
                 await Navigation.PopModalAsync(false).ConfigureAwait(true);

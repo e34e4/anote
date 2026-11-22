@@ -18,5 +18,8 @@ namespace SilentNotes.Platforms.Services
 
         /// <inheritdoc/>
         public Task AskAiAboutAsync(string subject, string contextText) => Task.CompletedTask;
+
+        /// <inheritdoc/>
+        public Task OpenConversationHistoryAsync() => Task.CompletedTask;
     }
 }
