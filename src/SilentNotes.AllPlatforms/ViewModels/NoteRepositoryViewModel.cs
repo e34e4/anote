@@ -41,6 +41,7 @@ namespace SilentNotes.ViewModels
         private NoteRepositoryModel _model;
         private NoteViewModelReadOnly _selectedOrderNote;
         private ITreeItemViewModel _selectedTagNode;
+        private bool _isApplyingFilter;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NoteRepositoryViewModel"/> class.
@@ -139,12 +140,13 @@ namespace SilentNotes.ViewModels
             // Add special tags
             TagsRootNode.Children.Add(new NoTagTreeItemViewModel("‹" + Language["filter_only_without_tags"] + "›"));
 
-            // Try to reapply the selected tags (ignore internal __anote_*__ tags that would hide notes).
+            // Reapply remembered tags, but never restore internal __anote_*__ filters that hide notes.
             SettingsModel settings = _settingsService?.LoadSettingsOrDefault();
             SanitizeNoteListFilters(settings);
             ITreeItemViewModel parent = TagsRootNode;
             ITreeItemViewModel child = null;
-            foreach (string filterTag in NoteSystemTags.WithoutSystemTags(settings.FilterTags))
+            List<string> rememberTags = NoteSystemTags.WithoutSystemTags(settings.FilterTags);
+            foreach (string filterTag in rememberTags)
             {
                 child = parent.Children.FirstOrDefault(item => item.Title == filterTag);
                 if (child == null)
@@ -155,7 +157,7 @@ namespace SilentNotes.ViewModels
             }
             if (child != null)
                 SelectedTagNode = child;
-            else if (settings.FilterTags.Count > 0)
+            else
                 SelectedTagNode = null;
 
             ApplyFilter();
@@ -184,10 +186,15 @@ namespace SilentNotes.ViewModels
             }
 
             string status = NoteMetadata.NormalizeStatus(settings.NotesFilterStatus);
-            if (!string.IsNullOrEmpty(status) && !NoteMetadata.IsValidStatus(status))
+            // MudSelect sentinel "__any__" must never be persisted or used as a real status filter.
+            if (string.Equals(status, NoteMetadata.FilterStatusAny, StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrEmpty(status) && !NoteMetadata.IsValidStatus(status)))
             {
-                settings.NotesFilterStatus = string.Empty;
-                changed = true;
+                if (!string.IsNullOrEmpty(settings.NotesFilterStatus))
+                {
+                    settings.NotesFilterStatus = string.Empty;
+                    changed = true;
+                }
             }
             else if (!string.Equals(settings.NotesFilterStatus ?? string.Empty, status, StringComparison.Ordinal))
             {
@@ -552,6 +559,30 @@ namespace SilentNotes.ViewModels
 
         private void ApplyFilter()
         {
+            if (_isApplyingFilter)
+                return;
+
+            _isApplyingFilter = true;
+            try
+            {
+                ApplyFilterCore();
+
+                // Safety net: if ordinary notes exist but the current filter only leaves system-hub
+                // notes (e.g. the home-screen "widget" note), drop the filter so the overview is usable.
+                if (ShouldResetFilterToRevealOrdinaryNotes())
+                {
+                    ResetAllNoteListFiltersQuietly();
+                    ApplyFilterCore();
+                }
+            }
+            finally
+            {
+                _isApplyingFilter = false;
+            }
+        }
+
+        private void ApplyFilterCore()
+        {
             SettingsModel settings = _settingsService?.LoadSettingsOrDefault();
             string normalizedFilter = SearchableHtmlConverter.NormalizeWhitespaces(settings.Filter);
             var options = (SelectedTagNode is NoTagTreeItemViewModel)
@@ -578,6 +609,47 @@ namespace SilentNotes.ViewModels
                 if (!hideNote)
                     FilteredNotes.Add(noteViewModel);
             }
+        }
+
+        private bool ShouldResetFilterToRevealOrdinaryNotes()
+        {
+            bool hasOrdinary = AllNotes.Any(note =>
+                !note.InRecyclingBin && NoteSystemTags.IsOrdinaryNote(note.Tags));
+            if (!hasOrdinary)
+                return false;
+
+            bool filteredHasOrdinary = FilteredNotes.Any(note =>
+                NoteSystemTags.IsOrdinaryNote(note.Tags));
+            return !filteredHasOrdinary;
+        }
+
+        /// <summary>
+        /// Clears tag / search / metadata filters without re-entering <see cref="ApplyFilter"/>.
+        /// </summary>
+        private void ResetAllNoteListFiltersQuietly()
+        {
+            SelectedTagNode = null;
+
+            SettingsModel settings = _settingsService?.LoadSettingsOrDefault();
+            if (settings == null)
+                return;
+
+            settings.Filter = null;
+            settings.FilterTags = new List<string>();
+            settings.NotesFilterStatus = string.Empty;
+            settings.NotesFilterPriority = NoteMetadata.FilterPriorityAny;
+            settings.NotesFilterOverdueOnly = false;
+            _settingsService.TrySaveSettingsToLocalDevice(settings);
+
+            OnPropertyChanged(nameof(Filter));
+            OnPropertyChanged(nameof(IsFiltered));
+            OnPropertyChanged(nameof(MetadataFilterStatus));
+            OnPropertyChanged(nameof(MetadataFilterStatusSelect));
+            OnPropertyChanged(nameof(MetadataFilterPriority));
+            OnPropertyChanged(nameof(MetadataFilterOverdueOnly));
+            OnPropertyChanged(nameof(IsFilteredByTag));
+            OnPropertyChanged(nameof(IsFilteredByMetadata));
+            OnPropertyChanged("ClearFilter");
         }
 
         /// <summary>

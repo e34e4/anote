@@ -30,7 +30,8 @@ namespace SilentNotes.Workers
         public const string FocusLogTag = "__anote_focus__";
 
         /// <summary>Stable id used when creating the focus log note for the first time.</summary>
-        public static readonly Guid FocusLogNoteId = new Guid("a401e001-001c-4000-8000-000000000003");
+        /// <remarks>Must stay distinct from <see cref="WidgetNoteHelper.WidgetNoteId"/> (…0003).</remarks>
+        public static readonly Guid FocusLogNoteId = new Guid("a401e001-001c-4000-8000-000000000004");
 
         private const string HeaderHtml = "<h1>Focus log</h1>";
 

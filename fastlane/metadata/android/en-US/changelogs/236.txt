@@ -1,0 +1,1 @@
+Fix Notes overview stuck on the widget hub note: auto-clear filters that hide ordinary notes, stop widget/clipboard helpers from clearing the live repository cache, and separate the focus-log note id from the widget note.

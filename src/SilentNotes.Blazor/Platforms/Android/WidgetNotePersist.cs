@@ -25,11 +25,14 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                IRepositoryStorageService repo = ResolveRepository(context);
+                IRepositoryStorageService repo = ResolveRepository(context, out bool isolated);
                 if (repo == null)
                     return string.Empty;
 
-                repo.ClearCache();
+                // Only clear cache on an isolated bootstrap provider. Clearing the live IoC
+                // cache races the main UI and can reload a partial repository.
+                if (isolated)
+                    repo.ClearCache();
                 repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
                 NoteModel note = WidgetNoteHelper.EnsureWidgetNote(model, out bool changed);
                 if (changed)
@@ -48,11 +51,12 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                IRepositoryStorageService repo = ResolveRepository(context);
+                IRepositoryStorageService repo = ResolveRepository(context, out bool isolated);
                 if (repo == null)
                     return null;
 
-                repo.ClearCache();
+                if (isolated)
+                    repo.ClearCache();
                 repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
                 NoteModel note = WidgetNoteHelper.EnsureWidgetNote(model, out bool changed);
                 if (changed)
@@ -71,11 +75,12 @@ namespace SilentNotes.Platforms
         {
             try
             {
-                IRepositoryStorageService repo = ResolveRepository(context);
+                IRepositoryStorageService repo = ResolveRepository(context, out bool isolated);
                 if (repo == null)
                     return false;
 
-                repo.ClearCache();
+                if (isolated)
+                    repo.ClearCache();
                 repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
                 NoteModel note = WidgetNoteHelper.EnsureWidgetNote(model);
                 WidgetNoteHelper.SetWidgetBody(note, text ?? string.Empty);
@@ -126,8 +131,9 @@ namespace SilentNotes.Platforms
             }
         }
 
-        private static IRepositoryStorageService ResolveRepository(Context context)
+        private static IRepositoryStorageService ResolveRepository(Context context, out bool isolated)
         {
+            isolated = false;
             if (IsIocReady())
             {
                 try
@@ -149,6 +155,7 @@ namespace SilentNotes.Platforms
                 MauiProgram.RegisterPlatformServices(services);
                 ServiceProvider provider = services.BuildServiceProvider();
                 provider.GetService<IAppContextService>()?.InitializeWithContextOnly(context.ApplicationContext ?? context);
+                isolated = true;
                 return provider.GetService<IRepositoryStorageService>();
             }
             catch (Exception ex)

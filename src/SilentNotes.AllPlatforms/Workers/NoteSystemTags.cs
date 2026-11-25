@@ -33,5 +33,19 @@ namespace SilentNotes.Workers
                 return new List<string>();
             return tags.Where(tag => !IsSystemTag(tag)).ToList();
         }
+
+        /// <summary>Returns true when any tag in the list is a system tag.</summary>
+        public static bool HasSystemTag(IEnumerable<string> tags)
+        {
+            return tags != null && tags.Any(IsSystemTag);
+        }
+
+        /// <summary>
+        /// Ordinary user notes are those without an internal <c>__anote_*</c> hub tag.
+        /// </summary>
+        public static bool IsOrdinaryNote(IEnumerable<string> tags)
+        {
+            return !HasSystemTag(tags);
+        }
     }
 }

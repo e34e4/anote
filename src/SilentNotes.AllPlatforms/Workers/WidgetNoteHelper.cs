@@ -99,15 +99,10 @@ namespace SilentNotes.Workers
             if (byId != null)
                 return byId;
 
-            NoteModel byTag = repository.Notes.FirstOrDefault(n =>
+            // Match by tag only — never hijack an ordinary user note that happens to be titled "widget".
+            return repository.Notes.FirstOrDefault(n =>
                 n.Tags != null
                 && n.Tags.Any(t => string.Equals(t, WidgetTag, StringComparison.OrdinalIgnoreCase)));
-            if (byTag != null)
-                return byTag;
-
-            // Fall back to a note whose title is exactly "widget".
-            return repository.Notes.FirstOrDefault(n =>
-                string.Equals(NoteHtmlUtils.GetTitle(n.HtmlContent), "widget", StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>Gets the plain-text body of the widget note (without the title heading).</summary>

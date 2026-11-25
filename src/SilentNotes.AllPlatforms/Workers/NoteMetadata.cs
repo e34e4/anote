@@ -56,8 +56,11 @@ namespace SilentNotes.Workers
         public static bool IsValidStatus(string status)
         {
             status = NormalizeStatus(status);
-            if (string.IsNullOrEmpty(status) || status == FilterStatusAny)
+            if (string.IsNullOrEmpty(status))
                 return true;
+            // FilterStatusAny is a UI sentinel, not a stored note status.
+            if (status == FilterStatusAny)
+                return false;
             return status == StatusTodo
                 || status == StatusDoing
                 || status == StatusDone

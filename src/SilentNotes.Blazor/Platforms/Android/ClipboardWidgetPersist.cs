@@ -109,11 +109,12 @@ namespace SilentNotes.Platforms
 
             try
             {
-                IRepositoryStorageService repo = ResolveRepository(context);
+                IRepositoryStorageService repo = ResolveRepository(context, out bool isolated);
                 if (repo == null)
                     return false;
 
-                repo.ClearCache();
+                if (isolated)
+                    repo.ClearCache();
                 repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
                 CaptureNoteHelper.AppendScratchpad(model, text);
                 bool saved = repo.TrySaveRepository(model);
@@ -235,8 +236,9 @@ namespace SilentNotes.Platforms
             }
         }
 
-        private static IRepositoryStorageService ResolveRepository(Context context)
+        private static IRepositoryStorageService ResolveRepository(Context context, out bool isolated)
         {
+            isolated = false;
             if (IsIocReady())
             {
                 try
@@ -258,6 +260,7 @@ namespace SilentNotes.Platforms
                 MauiProgram.RegisterPlatformServices(services);
                 ServiceProvider provider = services.BuildServiceProvider();
                 provider.GetService<IAppContextService>()?.InitializeWithContextOnly(context.ApplicationContext ?? context);
+                isolated = true;
                 return provider.GetService<IRepositoryStorageService>();
             }
             catch (Exception ex)

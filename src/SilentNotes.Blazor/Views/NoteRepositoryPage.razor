@@ -1359,6 +1359,9 @@
 		{
 			RepositoryStorageService.LoadRepositoryOrDefault(out NoteRepositoryModel repo);
 			ViewModel.Model = repo;
+			// Model setter fills FilteredNotes without tag/search filters; re-apply so the
+			// ordinary-note safety net can clear a stale widget-tag filter.
+			_ = ViewModel.InitializeTagTree();
 		}
 		InvokeAsync(StateHasChanged);
 	}
