@@ -1,0 +1,1 @@
+Fix Notes list stuck on InvalidRepository/widget hub note (XmlAttribute DateTime? on bookmarks), stop caching or mutating InvalidRepository, and harden Clip tab rendering so large clipboard histories no longer SIGSEGV.

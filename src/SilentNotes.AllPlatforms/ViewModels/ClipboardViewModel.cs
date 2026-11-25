@@ -12,6 +12,7 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.ViewModels
 {
@@ -28,6 +29,8 @@ namespace SilentNotes.ViewModels
         private readonly ILanguageService _languageService;
         private readonly IClipboardWebdavSyncService _webdavSyncService;
         private List<ClipboardItemViewModel> _items = new List<ClipboardItemViewModel>();
+        private IReadOnlyList<ClipboardItemViewModel> _filteredAllItems = Array.Empty<ClipboardItemViewModel>();
+        private IReadOnlyList<ClipboardItemViewModel> _filteredFavoriteItems = Array.Empty<ClipboardItemViewModel>();
         private string _newItemText;
         private string _filter;
 
@@ -138,6 +141,7 @@ namespace SilentNotes.ViewModels
             {
                 if (SetProperty(ref _filter, value))
                 {
+                    RebuildFilteredLists();
                     OnPropertyChanged(nameof(AllItems));
                     OnPropertyChanged(nameof(FavoriteItems));
                     OnPropertyChanged(nameof(IsFiltered));
@@ -159,7 +163,7 @@ namespace SilentNotes.ViewModels
         /// </summary>
         public IReadOnlyList<ClipboardItemViewModel> AllItems
         {
-            get { return ApplyFilter(_items.Where(i => !i.IsFavorite)).ToList(); }
+            get { return _filteredAllItems; }
         }
 
         /// <summary>
@@ -167,7 +171,13 @@ namespace SilentNotes.ViewModels
         /// </summary>
         public IReadOnlyList<ClipboardItemViewModel> FavoriteItems
         {
-            get { return ApplyFilter(_items.Where(i => i.IsFavorite)).ToList(); }
+            get { return _filteredFavoriteItems; }
+        }
+
+        private void RebuildFilteredLists()
+        {
+            _filteredAllItems = ApplyFilter(_items.Where(i => !i.IsFavorite)).ToList();
+            _filteredFavoriteItems = ApplyFilter(_items.Where(i => i.IsFavorite)).ToList();
         }
 
         private IEnumerable<ClipboardItemViewModel> ApplyFilter(IEnumerable<ClipboardItemViewModel> items)
@@ -201,6 +211,7 @@ namespace SilentNotes.ViewModels
         {
             ClipboardHistoryModel model = _historyService.LoadHistoryOrDefault();
             _items = model.Items.Where(item => !item.IsDeleted).Select(item => new ClipboardItemViewModel(item, _historyService)).ToList();
+            RebuildFilteredLists();
 
             OnPropertyChanged(nameof(AllItems));
             OnPropertyChanged(nameof(FavoriteItems));
@@ -286,9 +297,11 @@ namespace SilentNotes.ViewModels
     /// </summary>
     public class ClipboardItemViewModel : ViewModelBase
     {
+        private const long MaxThumbnailFileBytes = 512 * 1024;
         private readonly IClipboardHistoryService _historyService;
         private string _thumbnailDataUri;
         private bool _thumbnailLoaded;
+        private bool? _hasOpenableUrl;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ClipboardItemViewModel"/> class.
@@ -349,6 +362,19 @@ namespace SilentNotes.ViewModels
         }
 
         /// <summary>
+        /// Gets a value indicating whether the text item contains an openable http(s) URL.
+        /// </summary>
+        public bool HasOpenableUrl
+        {
+            get
+            {
+                if (!_hasOpenableUrl.HasValue)
+                    _hasOpenableUrl = !IsImage && UrlActionHelpers.ContainsOpenableUrl(Model.Text);
+                return _hasOpenableUrl.Value;
+            }
+        }
+
+        /// <summary>
         /// Gets the thumbnail of the copied image as a data URI, or null.
         /// </summary>
         public string ThumbnailDataUri
@@ -362,7 +388,11 @@ namespace SilentNotes.ViewModels
                     {
                         string path = _historyService.GetThumbImagePath(Model.ImageFileName);
                         if (!string.IsNullOrEmpty(path) && File.Exists(path))
-                            _thumbnailDataUri = "data:image/png;base64," + Convert.ToBase64String(File.ReadAllBytes(path));
+                        {
+                            var info = new FileInfo(path);
+                            if (info.Length > 0 && info.Length <= MaxThumbnailFileBytes)
+                                _thumbnailDataUri = "data:image/png;base64," + Convert.ToBase64String(File.ReadAllBytes(path));
+                        }
                     }
                     catch (Exception)
                     {

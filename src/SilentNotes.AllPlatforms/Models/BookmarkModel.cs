@@ -15,6 +15,7 @@ namespace SilentNotes.Models
     public class BookmarkModel
     {
         private Guid _id;
+        private DateTime? _linkCheckedAt;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="BookmarkModel"/> class.
@@ -92,17 +93,34 @@ namespace SilentNotes.Models
         [XmlAttribute("link_check_status")]
         public string LinkCheckStatus { get; set; }
 
+        public bool LinkCheckStatusSpecified { get { return !string.IsNullOrEmpty(LinkCheckStatus); } }
+
         /// <summary>
         /// Gets or sets the UTC time when <see cref="LinkCheckStatus"/> was last updated.
         /// </summary>
+        [XmlIgnore]
+        public DateTime? LinkCheckedAt
+        {
+            get { return _linkCheckedAt; }
+            set { _linkCheckedAt = value; }
+        }
+
         [XmlAttribute("link_checked_at")]
-        public DateTime? LinkCheckedAt { get; set; }
+        public DateTime LinkCheckedAtSerializeable
+        {
+            get { return LinkCheckedAt.Value; }
+            set { LinkCheckedAt = DateTime.SpecifyKind(value, DateTimeKind.Utc); }
+        }
+
+        public bool LinkCheckedAtSerializeableSpecified { get { return LinkCheckedAt != null; } }
 
         /// <summary>
         /// Gets or sets the HTTP status code from the last link check, or 0 if unknown.
         /// </summary>
         [XmlAttribute("link_http_status")]
         public int LinkHttpStatus { get; set; }
+
+        public bool LinkHttpStatusSpecified { get { return LinkHttpStatus != 0; } }
 
         /// <summary>
         /// Sets the <see cref="ModifiedAt"/> property to the current UTC time.

@@ -510,7 +510,14 @@ namespace SilentNotes.Platforms
             try
             {
                 IRepositoryStorageService repositoryService = Ioc.Instance.GetService<IRepositoryStorageService>();
-                repositoryService.LoadRepositoryOrDefault(out NoteRepositoryModel repository);
+                RepositoryStorageLoadResult loadResult = repositoryService.LoadRepositoryOrDefault(out NoteRepositoryModel repository);
+                if (loadResult == RepositoryStorageLoadResult.InvalidRepository
+                    || repository == null
+                    || Object.ReferenceEquals(NoteRepositoryModel.InvalidRepository, repository))
+                {
+                    OpenTab(0);
+                    return;
+                }
                 NoteModel note = DailyNoteHelper.EnsureTodayWithoutCalendar(repository, out bool changed);
                 if (changed)
                     repositoryService.TrySaveRepository(repository);

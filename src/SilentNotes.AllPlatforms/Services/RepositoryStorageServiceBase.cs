@@ -87,8 +87,10 @@ namespace SilentNotes.Services
                     modelWasUpdated = true;
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine("[aNote] Failed to load repository: " + ex);
+                Console.Error.WriteLine("[aNote] Failed to load repository: " + ex);
                 result = RepositoryStorageLoadResult.InvalidRepository;
                 repositoryModel = NoteRepositoryModel.InvalidRepository;
                 modelWasUpdated = false;
@@ -110,7 +112,14 @@ namespace SilentNotes.Services
             // Automatically save settings if they where modified by an update
             if (modelWasUpdated)
                 TrySaveRepository(repositoryModel);
-            _cachedRepository = repositoryModel;
+
+            // Never cache InvalidRepository; otherwise subsequent calls return SuccessfullyLoaded
+            // with the shared InvalidRepository singleton.
+            if (result != RepositoryStorageLoadResult.InvalidRepository
+                && !Object.ReferenceEquals(NoteRepositoryModel.InvalidRepository, repositoryModel))
+            {
+                _cachedRepository = repositoryModel;
+            }
             return result;
         }
 

@@ -33,7 +33,12 @@ namespace SilentNotes.Platforms
                 // cache races the main UI and can reload a partial repository.
                 if (isolated)
                     repo.ClearCache();
-                repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
+                RepositoryStorageLoadResult loadResult = repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
+                if (loadResult == RepositoryStorageLoadResult.InvalidRepository
+                    || model == null
+                    || Object.ReferenceEquals(NoteRepositoryModel.InvalidRepository, model))
+                    return string.Empty;
+
                 NoteModel note = WidgetNoteHelper.EnsureWidgetNote(model, out bool changed);
                 if (changed)
                     repo.TrySaveRepository(model);
@@ -57,7 +62,12 @@ namespace SilentNotes.Platforms
 
                 if (isolated)
                     repo.ClearCache();
-                repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
+                RepositoryStorageLoadResult loadResult = repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
+                if (loadResult == RepositoryStorageLoadResult.InvalidRepository
+                    || model == null
+                    || Object.ReferenceEquals(NoteRepositoryModel.InvalidRepository, model))
+                    return null;
+
                 NoteModel note = WidgetNoteHelper.EnsureWidgetNote(model, out bool changed);
                 if (changed)
                     repo.TrySaveRepository(model);
@@ -81,7 +91,12 @@ namespace SilentNotes.Platforms
 
                 if (isolated)
                     repo.ClearCache();
-                repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
+                RepositoryStorageLoadResult loadResult = repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
+                if (loadResult == RepositoryStorageLoadResult.InvalidRepository
+                    || model == null
+                    || Object.ReferenceEquals(NoteRepositoryModel.InvalidRepository, model))
+                    return false;
+
                 NoteModel note = WidgetNoteHelper.EnsureWidgetNote(model);
                 WidgetNoteHelper.SetWidgetBody(note, text ?? string.Empty);
                 bool saved = repo.TrySaveRepository(model);

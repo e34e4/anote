@@ -40,20 +40,30 @@
 	}
 	else
 	{
+		ResetPaginationIfFilterChanged();
+		var allItems = ViewModel.AllItems;
+		var favoriteItems = ViewModel.FavoriteItems;
 		<MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="false">
 			<MudTabPanel Text="@LanguageService["clipboard_all"]">
 				<div class="clipboard-list">
-					@if (ViewModel.AllItems.Count == 0)
+					@if (allItems.Count == 0)
 					{
 						<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@(ViewModel.IsFiltered ? LanguageService["clipboard_no_matches"] : LanguageService["clipboard_all_empty"])</MudText>
 					}
-					@foreach (var item in ViewModel.AllItems)
+					@foreach (var item in allItems.Take(_allVisibleCount))
 					{
-						<MudPaper Elevation="1" Class="pa-2 my-2 clipboard-card d-flex align-start">
+						<MudPaper @key="item.Id" Elevation="1" Class="pa-2 my-2 clipboard-card d-flex align-start">
 							<div class="flex-grow-1 overflow-hidden">
 								@if (item.IsImage)
 								{
-									<img class="clipboard-image" src="@item.ThumbnailDataUri" @onclick="() => ViewModel.OpenImageCommand.Execute(item)" title="@LanguageService["clipboard_image_open"]" />
+									@if (!string.IsNullOrEmpty(item.ThumbnailDataUri))
+									{
+										<img class="clipboard-image" loading="lazy" decoding="async" src="@item.ThumbnailDataUri" @onclick="() => ViewModel.OpenImageCommand.Execute(item)" title="@LanguageService["clipboard_image_open"]" />
+									}
+									else
+									{
+										<MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => ViewModel.OpenImageCommand.Execute(item)">@LanguageService["clipboard_image_open"]</MudButton>
+									}
 								}
 								else
 								{
@@ -64,7 +74,10 @@
 							<MudStack Row="true" Spacing="0" Class="flex-shrink-0">
 								@if (!item.IsImage)
 								{
-									<OpenLinkButton Text="@item.Model.Text" Title="@LanguageService["note_open_link"]" />
+									@if (item.HasOpenableUrl)
+									{
+										<OpenLinkButton Text="@item.Model.Text" Title="@LanguageService["note_open_link"]" />
+									}
 									<AskAiButton Subject="@LanguageService["tab_clipboard"]" ContextText="@item.Model.Text" />
 									<MudIconButton Icon="@Icons.Material.Filled.Transform" Size="Size.Small" OnClick="@(() => TransformClip(item))" title="@LanguageService["text_tools_title"]" />
 								}
@@ -79,23 +92,38 @@
 							</MudStack>
 						</MudPaper>
 					}
+					@if (allItems.Count > _allVisibleCount)
+					{
+						<div class="d-flex justify-center my-2">
+							<MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" OnClick="ShowMoreAll">
+								+@Math.Min(PageSize, allItems.Count - _allVisibleCount) (@(allItems.Count - _allVisibleCount))
+							</MudButton>
+						</div>
+					}
 				</div>
 			</MudTabPanel>
 			<MudTabPanel Text="@LanguageService["clipboard_favorites"]">
 				<div class="clipboard-list">
-					@if (ViewModel.FavoriteItems.Count == 0)
+					@if (favoriteItems.Count == 0)
 					{
 						<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@(ViewModel.IsFiltered ? LanguageService["clipboard_no_matches"] : LanguageService["clipboard_empty"])</MudText>
 					}
 					else
 					{
-						@foreach (var item in ViewModel.FavoriteItems)
+						@foreach (var item in favoriteItems.Take(_favoriteVisibleCount))
 						{
-							<MudPaper Elevation="1" Class="pa-2 my-2 clipboard-card d-flex align-start">
+							<MudPaper @key="item.Id" Elevation="1" Class="pa-2 my-2 clipboard-card d-flex align-start">
 								<div class="flex-grow-1 overflow-hidden">
 									@if (item.IsImage)
 									{
-										<img class="clipboard-image" src="@item.ThumbnailDataUri" @onclick="() => ViewModel.OpenImageCommand.Execute(item)" title="@LanguageService["clipboard_image_open"]" />
+										@if (!string.IsNullOrEmpty(item.ThumbnailDataUri))
+										{
+											<img class="clipboard-image" loading="lazy" decoding="async" src="@item.ThumbnailDataUri" @onclick="() => ViewModel.OpenImageCommand.Execute(item)" title="@LanguageService["clipboard_image_open"]" />
+										}
+										else
+										{
+											<MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => ViewModel.OpenImageCommand.Execute(item)">@LanguageService["clipboard_image_open"]</MudButton>
+										}
 									}
 									else
 									{
@@ -106,7 +134,10 @@
 								<MudStack Row="true" Spacing="0" Class="flex-shrink-0">
 									@if (!item.IsImage)
 									{
-										<OpenLinkButton Text="@item.Model.Text" Title="@LanguageService["note_open_link"]" />
+										@if (item.HasOpenableUrl)
+										{
+											<OpenLinkButton Text="@item.Model.Text" Title="@LanguageService["note_open_link"]" />
+										}
 										<AskAiButton Subject="@LanguageService["tab_clipboard"]" ContextText="@item.Model.Text" />
 										<MudIconButton Icon="@Icons.Material.Filled.Transform" Size="Size.Small" OnClick="@(() => TransformClip(item))" title="@LanguageService["text_tools_title"]" />
 									}
@@ -120,6 +151,14 @@
 									<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ViewModel.DeleteCommand.Execute(item))" title="@LanguageService["clipboard_delete"]" />
 								</MudStack>
 							</MudPaper>
+						}
+						@if (favoriteItems.Count > _favoriteVisibleCount)
+						{
+							<div class="d-flex justify-center my-2">
+								<MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" OnClick="ShowMoreFavorites">
+									+@Math.Min(PageSize, favoriteItems.Count - _favoriteVisibleCount) (@(favoriteItems.Count - _favoriteVisibleCount))
+								</MudButton>
+							</div>
 						}
 					}
 				</div>
@@ -154,11 +193,37 @@
 </div>
 
 @code {
+	private const int PageSize = 30;
+	private int _allVisibleCount = PageSize;
+	private int _favoriteVisibleCount = PageSize;
+	private string _lastFilter;
+
 	/// <summary>
 	/// Gets or sets the view model of the clipboard tab.
 	/// </summary>
 	[Parameter]
 	public ClipboardViewModel ViewModel { get; set; }
+
+	private void ResetPaginationIfFilterChanged()
+	{
+		string current = ViewModel?.Filter ?? string.Empty;
+		if (!string.Equals(_lastFilter, current, StringComparison.Ordinal))
+		{
+			_lastFilter = current;
+			_allVisibleCount = PageSize;
+			_favoriteVisibleCount = PageSize;
+		}
+	}
+
+	private void ShowMoreAll()
+	{
+		_allVisibleCount += PageSize;
+	}
+
+	private void ShowMoreFavorites()
+	{
+		_favoriteVisibleCount += PageSize;
+	}
 
 	/// <summary>
 	/// Gets a value indicating whether the OS can monitor the clipboard.

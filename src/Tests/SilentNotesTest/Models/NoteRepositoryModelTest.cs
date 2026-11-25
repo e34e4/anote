@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Xml.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SilentNotes.Models;
+using SilentNotes.Workers;
 
 namespace SilentNotesTest.Models
 {
@@ -131,6 +133,40 @@ namespace SilentNotesTest.Models
             Assert.AreEqual(2, tags.Count);
             Assert.AreEqual("Def", tags[0]);
             Assert.AreEqual("OPQ", tags[1]);
+        }
+
+        [TestMethod]
+        public void XmlSerialization_RoundTripsNotesBookmarksAndContacts()
+        {
+            DateTime checkedAt = new DateTime(2026, 11, 25, 12, 0, 0, DateTimeKind.Utc);
+            NoteRepositoryModel model = CreateNoteRepositoryModel();
+            model.Notes[0].Status = NoteMetadata.StatusTodo;
+            model.Notes[0].Priority = NoteMetadata.PriorityHigh;
+            model.Notes[0].DueAt = checkedAt;
+            model.Bookmarks.Add(new BookmarkModel
+            {
+                Title = "Example",
+                Url = "https://example.com",
+                LinkCheckStatus = "ok",
+                LinkCheckedAt = checkedAt,
+                LinkHttpStatus = 200,
+            });
+            model.Bookmarks.Add(new BookmarkModel
+            {
+                Title = "Unchecked",
+                Url = "https://example.org",
+                LinkCheckedAt = null,
+            });
+
+            XDocument xml = XmlUtils.SerializeToXmlDocument(model, System.Text.Encoding.UTF8);
+            NoteRepositoryModel loaded = XmlUtils.DeserializeFromXmlDocument<NoteRepositoryModel>(xml);
+
+            Assert.AreEqual(1, loaded.Notes.Count);
+            Assert.AreEqual(NoteMetadata.StatusTodo, loaded.Notes[0].Status);
+            Assert.AreEqual(2, loaded.Bookmarks.Count);
+            Assert.AreEqual(checkedAt, loaded.Bookmarks[0].LinkCheckedAt);
+            Assert.AreEqual(200, loaded.Bookmarks[0].LinkHttpStatus);
+            Assert.IsNull(loaded.Bookmarks[1].LinkCheckedAt);
         }
 
         private static NoteRepositoryModel CreateNoteRepositoryModel()

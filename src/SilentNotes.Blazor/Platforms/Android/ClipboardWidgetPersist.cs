@@ -115,7 +115,12 @@ namespace SilentNotes.Platforms
 
                 if (isolated)
                     repo.ClearCache();
-                repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
+                RepositoryStorageLoadResult loadResult = repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
+                if (loadResult == RepositoryStorageLoadResult.InvalidRepository
+                    || model == null
+                    || Object.ReferenceEquals(NoteRepositoryModel.InvalidRepository, model))
+                    return false;
+
                 CaptureNoteHelper.AppendScratchpad(model, text);
                 bool saved = repo.TrySaveRepository(model);
 
