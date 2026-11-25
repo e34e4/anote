@@ -559,9 +559,9 @@
 			<MudDrawerContainer Style="height: 100%; overflow: auto;">
 				<MudStack Class="px-3 pb-3" Spacing="1">
 					<h3 class="h-colored">@LanguageService["notes_filter_metadata"]</h3>
-					<MudSelect T="string" @bind-Value="ViewModel.MetadataFilterStatus" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+					<MudSelect T="string" @bind-Value="ViewModel.MetadataFilterStatusSelect" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense"
 						Label="@LanguageService["notes_filter_status"]">
-						<MudSelectItem T="string" Value="@string.Empty">@LanguageService["notes_filter_any"]</MudSelectItem>
+						<MudSelectItem T="string" Value="@NoteMetadata.FilterStatusAny">@LanguageService["notes_filter_any"]</MudSelectItem>
 						<MudSelectItem T="string" Value="@NoteMetadata.StatusTodo">@LanguageService["note_meta_status_todo"]</MudSelectItem>
 						<MudSelectItem T="string" Value="@NoteMetadata.StatusDoing">@LanguageService["note_meta_status_doing"]</MudSelectItem>
 						<MudSelectItem T="string" Value="@NoteMetadata.StatusDone">@LanguageService["note_meta_status_done"]</MudSelectItem>

@@ -1,0 +1,1 @@
+• Fix Notes list showing only the widget note: hide internal __anote_*__ tags from the filter tree and clear accidental system-tag / metadata filters on load.

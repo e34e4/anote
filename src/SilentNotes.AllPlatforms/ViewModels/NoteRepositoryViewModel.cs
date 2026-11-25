@@ -139,13 +139,14 @@ namespace SilentNotes.ViewModels
             // Add special tags
             TagsRootNode.Children.Add(new NoTagTreeItemViewModel("‹" + Language["filter_only_without_tags"] + "›"));
 
-            // Try to reapply the selected tags
+            // Try to reapply the selected tags (ignore internal __anote_*__ tags that would hide notes).
             SettingsModel settings = _settingsService?.LoadSettingsOrDefault();
+            SanitizeNoteListFilters(settings);
             ITreeItemViewModel parent = TagsRootNode;
             ITreeItemViewModel child = null;
-            foreach (string filterTag in settings.FilterTags)
+            foreach (string filterTag in NoteSystemTags.WithoutSystemTags(settings.FilterTags))
             {
-                child = parent.Children.FirstOrDefault(child => child.Title == filterTag);
+                child = parent.Children.FirstOrDefault(item => item.Title == filterTag);
                 if (child == null)
                     break;
 
@@ -154,8 +155,48 @@ namespace SilentNotes.ViewModels
             }
             if (child != null)
                 SelectedTagNode = child;
+            else if (settings.FilterTags.Count > 0)
+                SelectedTagNode = null;
 
             ApplyFilter();
+        }
+
+        /// <summary>
+        /// Clears accidental filters that hide ordinary notes (system tags, invalid metadata).
+        /// </summary>
+        private void SanitizeNoteListFilters(SettingsModel settings)
+        {
+            if (settings == null)
+                return;
+
+            bool changed = false;
+            if (settings.FilterTags != null && settings.FilterTags.Any(NoteSystemTags.IsSystemTag))
+            {
+                settings.FilterTags = NoteSystemTags.WithoutSystemTags(settings.FilterTags);
+                changed = true;
+            }
+
+            if (!NoteMetadata.IsValidPriority(settings.NotesFilterPriority)
+                && settings.NotesFilterPriority != NoteMetadata.FilterPriorityAny)
+            {
+                settings.NotesFilterPriority = NoteMetadata.FilterPriorityAny;
+                changed = true;
+            }
+
+            string status = NoteMetadata.NormalizeStatus(settings.NotesFilterStatus);
+            if (!string.IsNullOrEmpty(status) && !NoteMetadata.IsValidStatus(status))
+            {
+                settings.NotesFilterStatus = string.Empty;
+                changed = true;
+            }
+            else if (!string.Equals(settings.NotesFilterStatus ?? string.Empty, status, StringComparison.Ordinal))
+            {
+                settings.NotesFilterStatus = status;
+                changed = true;
+            }
+
+            if (changed)
+                _settingsService?.TrySaveSettingsToLocalDevice(settings);
         }
 
         private ILanguageService Language { get; }
@@ -276,6 +317,7 @@ namespace SilentNotes.ViewModels
         private void ClearTagFilter()
         {
             SelectedTagNode = null;
+            ClearMetadataFilters();
             ApplyFilter();
         }
 
@@ -382,13 +424,37 @@ namespace SilentNotes.ViewModels
             set
             {
                 SettingsModel settings = _settingsService?.LoadSettingsOrDefault();
+                if (settings == null)
+                    return;
                 string normalized = NoteMetadata.NormalizeStatus(value);
+                if (string.Equals(normalized, NoteMetadata.FilterStatusAny, StringComparison.OrdinalIgnoreCase))
+                    normalized = string.Empty;
                 if (SetProperty(settings.NotesFilterStatus ?? string.Empty, normalized, v => settings.NotesFilterStatus = v))
                 {
                     OnPropertyChanged(nameof(MetadataFilterStatus));
+                    OnPropertyChanged(nameof(MetadataFilterStatusSelect));
                     OnPropertyChanged(nameof(IsFilteredByMetadata));
                     ApplyFilter();
                 }
+            }
+        }
+
+        /// <summary>
+        /// MudSelect-friendly status filter (never empty — uses <see cref="NoteMetadata.FilterStatusAny"/>).
+        /// </summary>
+        public string MetadataFilterStatusSelect
+        {
+            get
+            {
+                string status = MetadataFilterStatus;
+                return string.IsNullOrEmpty(status) ? NoteMetadata.FilterStatusAny : status;
+            }
+
+            set
+            {
+                MetadataFilterStatus = string.Equals(value, NoteMetadata.FilterStatusAny, StringComparison.OrdinalIgnoreCase)
+                    ? string.Empty
+                    : value;
             }
         }
 
@@ -464,6 +530,7 @@ namespace SilentNotes.ViewModels
             MetadataFilterStatus = string.Empty;
             MetadataFilterPriority = NoteMetadata.FilterPriorityAny;
             MetadataFilterOverdueOnly = false;
+            OnPropertyChanged(nameof(MetadataFilterStatusSelect));
         }
 
         /// <summary>
@@ -492,7 +559,7 @@ namespace SilentNotes.ViewModels
                 : NoteFilter.FilterOptions.FilterByTagList;
             NoteFilter noteFilter = new NoteFilter(
                 normalizedFilter,
-                GetFilterTags(),
+                NoteSystemTags.WithoutSystemTags(GetFilterTags()),
                 options,
                 MetadataFilterStatus,
                 MetadataFilterPriority,

@@ -3,7 +3,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using MudBlazor;
+using SilentNotes.Workers;
 
 namespace SilentNotes.ViewModels
 {
@@ -56,7 +61,9 @@ namespace SilentNotes.ViewModels
                 }
             }
 
-            var result = relatedTags.ToList();
+            var result = relatedTags
+                .Where(tag => !NoteSystemTags.IsSystemTag(tag))
+                .ToList();
             result.Sort(StringComparer.InvariantCultureIgnoreCase);
             foreach (string relatedTag in result)
                 new TagTreeItemViewModel(relatedTag, this, _allNotes);

@@ -27,6 +27,9 @@ namespace SilentNotes.Workers
         /// <summary>Filter sentinel: any priority.</summary>
         public const int FilterPriorityAny = -1;
 
+        /// <summary>UI sentinel for "any status" (MudSelect cannot reliably bind empty string).</summary>
+        public const string FilterStatusAny = "__any__";
+
         public static readonly IReadOnlyList<string> BoardColumnStatuses = new[]
         {
             StatusTodo,
@@ -53,7 +56,7 @@ namespace SilentNotes.Workers
         public static bool IsValidStatus(string status)
         {
             status = NormalizeStatus(status);
-            if (string.IsNullOrEmpty(status))
+            if (string.IsNullOrEmpty(status) || status == FilterStatusAny)
                 return true;
             return status == StatusTodo
                 || status == StatusDoing

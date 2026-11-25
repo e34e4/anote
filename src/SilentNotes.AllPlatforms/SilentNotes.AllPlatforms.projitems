@@ -178,6 +178,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Workers\KeyValueList.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteFilter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteMetadata.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteSystemTags.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteMover.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteRepositoryMerger.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteRepositoryUpdater.cs" />
