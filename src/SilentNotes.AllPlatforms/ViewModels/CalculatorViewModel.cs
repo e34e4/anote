@@ -59,6 +59,16 @@ namespace SilentNotes.ViewModels
         private string _dateResult = string.Empty;
         private readonly Dictionary<string, double> _variables = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         private readonly List<CalculatorVariableItem> _variableList = new List<CalculatorVariableItem>();
+        private readonly List<CalculatorCustomCurrencyItem> _customCurrencyList = new List<CalculatorCustomCurrencyItem>();
+        private readonly List<CalculatorCustomRateProfileItem> _customRateProfileList = new List<CalculatorCustomRateProfileItem>();
+        private string _customCurrencyCode = string.Empty;
+        private string _customCurrencyUsdRate = string.Empty;
+        private string _customProfileName = string.Empty;
+        private string _customProfileBaseLabel = string.Empty;
+        private string _customProfileQuoteLabel = string.Empty;
+        private string _customProfileRate = string.Empty;
+        private string _selectedCustomRateProfileId = string.Empty;
+        private string _customRateOutput = string.Empty;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="CalculatorViewModel"/> class.
@@ -88,9 +98,14 @@ namespace SilentNotes.ViewModels
             DeleteVariableCommand = new RelayCommand<CalculatorVariableItem>(DeleteVariable);
             UseVariableCommand = new RelayCommand<CalculatorVariableItem>(UseVariable);
             ShiftDateCommand = new RelayCommand(ShiftDate);
+            SaveCustomCurrencyCommand = new RelayCommand(SaveCustomCurrency);
+            DeleteCustomCurrencyCommand = new RelayCommand<CalculatorCustomCurrencyItem>(DeleteCustomCurrency);
+            SaveCustomRateProfileCommand = new RelayCommand(SaveCustomRateProfile);
+            DeleteCustomRateProfileCommand = new RelayCommand<CalculatorCustomRateProfileItem>(DeleteCustomRateProfile);
 
             LoadHistory();
             LoadVariables();
+            LoadCustomRates();
             RecalculateConverter();
             ResetDateTools();
         }
@@ -148,6 +163,18 @@ namespace SilentNotes.ViewModels
 
         /// <summary>Gets the command which shifts the start date by the entered interval.</summary>
         public ICommand ShiftDateCommand { get; }
+
+        /// <summary>Gets the command which stores a custom currency USD rate.</summary>
+        public ICommand SaveCustomCurrencyCommand { get; }
+
+        /// <summary>Gets the command which removes a custom currency rate.</summary>
+        public ICommand DeleteCustomCurrencyCommand { get; }
+
+        /// <summary>Gets the command which stores a custom rate profile.</summary>
+        public ICommand SaveCustomRateProfileCommand { get; }
+
+        /// <summary>Gets the command which removes a custom rate profile.</summary>
+        public ICommand DeleteCustomRateProfileCommand { get; }
 
         /// <summary>Gets the entered expression.</summary>
         public string Expression
@@ -353,7 +380,68 @@ namespace SilentNotes.ViewModels
             private set => SetProperty(ref _converterOutput, value);
         }
 
-        public IReadOnlyList<string> CurrencyCodes => UnitConverterEngine.CurrencyCodes;
+        public IReadOnlyList<string> CurrencyCodes =>
+            UnitConverterEngine.GetCurrencyCodes(BuildCustomCurrencyRatePairs());
+
+        public IReadOnlyList<CalculatorCustomCurrencyItem> CustomCurrencyRates => _customCurrencyList;
+
+        public bool HasCustomCurrencyRates => _customCurrencyList.Count > 0;
+
+        public IReadOnlyList<CalculatorCustomRateProfileItem> CustomRateProfiles => _customRateProfileList;
+
+        public bool HasCustomRateProfiles => _customRateProfileList.Count > 0;
+
+        public string CustomCurrencyCode
+        {
+            get => _customCurrencyCode;
+            set => SetProperty(ref _customCurrencyCode, value);
+        }
+
+        public string CustomCurrencyUsdRate
+        {
+            get => _customCurrencyUsdRate;
+            set => SetProperty(ref _customCurrencyUsdRate, value);
+        }
+
+        public string CustomProfileName
+        {
+            get => _customProfileName;
+            set => SetProperty(ref _customProfileName, value);
+        }
+
+        public string CustomProfileBaseLabel
+        {
+            get => _customProfileBaseLabel;
+            set => SetProperty(ref _customProfileBaseLabel, value);
+        }
+
+        public string CustomProfileQuoteLabel
+        {
+            get => _customProfileQuoteLabel;
+            set => SetProperty(ref _customProfileQuoteLabel, value);
+        }
+
+        public string CustomProfileRate
+        {
+            get => _customProfileRate;
+            set => SetProperty(ref _customProfileRate, value);
+        }
+
+        public string SelectedCustomRateProfileId
+        {
+            get => _selectedCustomRateProfileId;
+            set
+            {
+                if (SetProperty(ref _selectedCustomRateProfileId, value))
+                    RecalculateConverter();
+            }
+        }
+
+        public string CustomRateOutput
+        {
+            get => _customRateOutput;
+            private set => SetProperty(ref _customRateOutput, value);
+        }
 
         public string CurrencyFrom
         {
@@ -419,7 +507,11 @@ namespace SilentNotes.ViewModels
                             ConverterOutput = string.Empty;
                             break;
                         }
-                        ConverterOutput = UnitConverterEngine.ConvertCurrency(money, _currencyFrom, _currencyTo);
+                        ConverterOutput = UnitConverterEngine.ConvertCurrency(
+                            money,
+                            _currencyFrom,
+                            _currencyTo,
+                            BuildCustomCurrencyRatePairs());
                         break;
                     case UnitConverterEngine.ConverterCategory.ComputerScience:
                         ConverterOutput = ConvertComputerScience();
@@ -431,11 +523,39 @@ namespace SilentNotes.ViewModels
                         ConverterOutput = string.Empty;
                         break;
                 }
+
+                RecalculateCustomRateProfile();
             }
             catch
             {
                 ConverterOutput = string.Empty;
+                CustomRateOutput = string.Empty;
             }
+        }
+
+        private void RecalculateCustomRateProfile()
+        {
+            CustomRateOutput = string.Empty;
+            if (string.IsNullOrWhiteSpace(_selectedCustomRateProfileId))
+                return;
+
+            CalculatorCustomRateProfileItem profile = _customRateProfileList
+                .FirstOrDefault(item => string.Equals(item.Id, _selectedCustomRateProfileId, StringComparison.Ordinal));
+            if (profile == null || profile.Rate <= 0)
+                return;
+
+            if (!double.TryParse(_converterInput, NumberStyles.Float, CultureInfo.InvariantCulture, out double amount)
+                && !double.TryParse(_converterInput, NumberStyles.Float, CultureInfo.CurrentCulture, out amount))
+            {
+                return;
+            }
+
+            CustomRateOutput = UnitConverterEngine.ConvertCustomRate(amount, profile.Rate);
+        }
+
+        private IEnumerable<KeyValuePair<string, double>> BuildCustomCurrencyRatePairs()
+        {
+            return _customCurrencyList.Select(item => new KeyValuePair<string, double>(item.Code, item.UsdRate));
         }
 
         private string ConvertPhysics()
@@ -885,6 +1005,174 @@ namespace SilentNotes.ViewModels
             Input(item.Name);
         }
 
+        private void LoadCustomRates()
+        {
+            _customCurrencyList.Clear();
+            _customRateProfileList.Clear();
+            if (_settingsService == null)
+            {
+                NotifyCustomRatesChanged();
+                return;
+            }
+
+            try
+            {
+                SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+                if (settings.CustomCurrencyRates != null)
+                {
+                    foreach (CurrencyRateEntryModel entry in settings.CustomCurrencyRates)
+                    {
+                        if (entry == null || string.IsNullOrWhiteSpace(entry.Code) || entry.UsdRate <= 0)
+                            continue;
+                        string code = entry.Code.Trim().ToUpperInvariant();
+                        _customCurrencyList.Add(new CalculatorCustomCurrencyItem(code, entry.UsdRate));
+                    }
+                }
+
+                if (settings.CustomRateProfiles != null)
+                {
+                    foreach (CustomRateProfileEntryModel entry in settings.CustomRateProfiles)
+                    {
+                        if (entry == null || string.IsNullOrWhiteSpace(entry.Id))
+                            continue;
+                        _customRateProfileList.Add(new CalculatorCustomRateProfileItem(
+                            entry.Id,
+                            entry.Name,
+                            entry.BaseLabel,
+                            entry.QuoteLabel,
+                            entry.Rate));
+                    }
+                }
+
+                _customCurrencyList.Sort((left, right) => string.CompareOrdinal(left.Code, right.Code));
+                _customRateProfileList.Sort((left, right) => string.CompareOrdinal(left.Name, right.Name));
+            }
+            catch (Exception)
+            {
+            }
+
+            NotifyCustomRatesChanged();
+        }
+
+        private void PersistCustomRates()
+        {
+            if (_settingsService == null)
+                return;
+
+            try
+            {
+                SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+                settings.CustomCurrencyRates = _customCurrencyList
+                    .Select(item => new CurrencyRateEntryModel { Code = item.Code, UsdRate = item.UsdRate })
+                    .ToList();
+                settings.CustomRateProfiles = _customRateProfileList
+                    .Select(item => new CustomRateProfileEntryModel
+                    {
+                        Id = item.Id,
+                        Name = item.Name,
+                        BaseLabel = item.BaseLabel,
+                        QuoteLabel = item.QuoteLabel,
+                        Rate = item.Rate,
+                    })
+                    .ToList();
+                _settingsService.TrySaveSettingsToLocalDevice(settings);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private void NotifyCustomRatesChanged()
+        {
+            OnPropertyChanged(
+                nameof(CustomCurrencyRates),
+                nameof(HasCustomCurrencyRates),
+                nameof(CustomRateProfiles),
+                nameof(HasCustomRateProfiles),
+                nameof(CurrencyCodes));
+        }
+
+        private void SaveCustomCurrency()
+        {
+            string code = CustomCurrencyCode?.Trim().ToUpperInvariant();
+            if (string.IsNullOrWhiteSpace(code) || code.Length > 12)
+                return;
+
+            if (!double.TryParse(CustomCurrencyUsdRate, NumberStyles.Float, CultureInfo.InvariantCulture, out double usdRate)
+                && !double.TryParse(CustomCurrencyUsdRate, NumberStyles.Float, CultureInfo.CurrentCulture, out usdRate))
+            {
+                return;
+            }
+
+            if (usdRate <= 0)
+                return;
+
+            int index = _customCurrencyList.FindIndex(item => string.Equals(item.Code, code, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0)
+                _customCurrencyList[index] = new CalculatorCustomCurrencyItem(code, usdRate);
+            else
+                _customCurrencyList.Add(new CalculatorCustomCurrencyItem(code, usdRate));
+            _customCurrencyList.Sort((left, right) => string.CompareOrdinal(left.Code, right.Code));
+
+            CustomCurrencyCode = string.Empty;
+            CustomCurrencyUsdRate = string.Empty;
+            PersistCustomRates();
+            NotifyCustomRatesChanged();
+            RecalculateConverter();
+        }
+
+        private void DeleteCustomCurrency(CalculatorCustomCurrencyItem item)
+        {
+            if (item == null)
+                return;
+            _customCurrencyList.RemoveAll(entry => string.Equals(entry.Code, item.Code, StringComparison.OrdinalIgnoreCase));
+            PersistCustomRates();
+            NotifyCustomRatesChanged();
+            RecalculateConverter();
+        }
+
+        private void SaveCustomRateProfile()
+        {
+            string name = CustomProfileName?.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            if (!double.TryParse(CustomProfileRate, NumberStyles.Float, CultureInfo.InvariantCulture, out double rate)
+                && !double.TryParse(CustomProfileRate, NumberStyles.Float, CultureInfo.CurrentCulture, out rate))
+            {
+                return;
+            }
+
+            if (rate <= 0)
+                return;
+
+            string id = Guid.NewGuid().ToString("N");
+            string baseLabel = string.IsNullOrWhiteSpace(CustomProfileBaseLabel) ? "Base" : CustomProfileBaseLabel.Trim();
+            string quoteLabel = string.IsNullOrWhiteSpace(CustomProfileQuoteLabel) ? "Quote" : CustomProfileQuoteLabel.Trim();
+            _customRateProfileList.Add(new CalculatorCustomRateProfileItem(id, name, baseLabel, quoteLabel, rate));
+            _customRateProfileList.Sort((left, right) => string.CompareOrdinal(left.Name, right.Name));
+
+            CustomProfileName = string.Empty;
+            CustomProfileBaseLabel = string.Empty;
+            CustomProfileQuoteLabel = string.Empty;
+            CustomProfileRate = string.Empty;
+            PersistCustomRates();
+            NotifyCustomRatesChanged();
+            RecalculateConverter();
+        }
+
+        private void DeleteCustomRateProfile(CalculatorCustomRateProfileItem item)
+        {
+            if (item == null)
+                return;
+            _customRateProfileList.RemoveAll(entry => string.Equals(entry.Id, item.Id, StringComparison.Ordinal));
+            if (string.Equals(_selectedCustomRateProfileId, item.Id, StringComparison.Ordinal))
+                SelectedCustomRateProfileId = string.Empty;
+            PersistCustomRates();
+            NotifyCustomRatesChanged();
+            RecalculateConverter();
+        }
+
         private void ResetDateTools()
         {
             if (string.IsNullOrEmpty(_dateFrom))
@@ -1062,5 +1350,52 @@ namespace SilentNotes.ViewModels
         public string Id { get; }
 
         public string Label { get; }
+    }
+
+    /// <summary>
+    /// A custom currency rate stored for offline calculator conversion.
+    /// </summary>
+    public class CalculatorCustomCurrencyItem
+    {
+        public CalculatorCustomCurrencyItem(string code, double usdRate)
+        {
+            Code = code;
+            UsdRate = usdRate;
+        }
+
+        public string Code { get; }
+
+        public double UsdRate { get; }
+
+        public string DisplayText =>
+            Code + " = " + UsdRate.ToString("0.########", CultureInfo.InvariantCulture) + " USD";
+    }
+
+    /// <summary>
+    /// A named custom rate profile (e.g. kWh to currency).
+    /// </summary>
+    public class CalculatorCustomRateProfileItem
+    {
+        public CalculatorCustomRateProfileItem(string id, string name, string baseLabel, string quoteLabel, double rate)
+        {
+            Id = id;
+            Name = name;
+            BaseLabel = baseLabel;
+            QuoteLabel = quoteLabel;
+            Rate = rate;
+        }
+
+        public string Id { get; }
+
+        public string Name { get; }
+
+        public string BaseLabel { get; }
+
+        public string QuoteLabel { get; }
+
+        public double Rate { get; }
+
+        public string DisplayText =>
+            Name + ": 1 " + BaseLabel + " = " + Rate.ToString("0.########", CultureInfo.InvariantCulture) + " " + QuoteLabel;
     }
 }

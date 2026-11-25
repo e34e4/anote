@@ -36,6 +36,9 @@ namespace SilentNotesTest.Models
                 SafeId = new Guid("10000000000000000000000000000000"),
                 Tags = new List<string>() { "Aa", "Bb" },
                 AttachementKey = "attachementKey1",
+                Status = NoteMetadata.StatusDoing,
+                Priority = NoteMetadata.PriorityHigh,
+                DueAt = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc),
             };
             NoteModel note2 = note1.Clone();
 
@@ -52,6 +55,9 @@ namespace SilentNotesTest.Models
             Assert.AreEqual(note1.Tags[0], note2.Tags[0]);
             Assert.AreEqual(note1.Tags[1], note2.Tags[1]);
             Assert.AreEqual(note1.AttachementKey, note2.AttachementKey);
+            Assert.AreEqual(note1.Status, note2.Status);
+            Assert.AreEqual(note1.Priority, note2.Priority);
+            Assert.AreEqual(note1.DueAt, note2.DueAt);
 
             // Serialized notes must be identical
             string note1Xml = XmlUtils.SerializeToString(note1);

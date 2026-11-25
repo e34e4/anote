@@ -33,16 +33,19 @@
 @inject IClipboardHistoryService ClipboardHistoryService
 @inject IClipboardWebdavSyncService ClipboardWebdavSyncService
 @inject IBookySyncService BookySyncService
+@inject IBookmarkLinkCheckService BookmarkLinkCheckService
 @inject IDeviceCalendarService DeviceCalendarService
 @inject IClockService ClockService
 @inject ICompassService CompassService
 @inject IDeviceSmsService SmsService
 @inject IImageFileService ImageFileService
 @inject IImageEditorService ImageEditorService
+@inject IDocumentCropService DocumentCropService
 @inject IQrService QrService
 @inject IQrHistoryService QrHistoryService
 @inject ISharingService SharingService
 @inject IAudioRecorderService AudioRecorderService
+@inject IRecVoiceMemoLauncher RecVoiceMemoLauncher
 @inject IScreenRecorderService ScreenRecorderService
 @inject IScreenshotGalleryService ScreenshotGalleryService
 @inject IWebdavFileService WebdavFileService
@@ -133,6 +136,80 @@
 		top: auto;
 		bottom: var(--note-handle-my);
 	}
+	.note-meta-badges {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-top: 6px;
+	}
+	.note-meta-badge {
+		font-size: 0.72rem;
+		line-height: 1.2;
+		padding: 2px 6px;
+		border-radius: 4px;
+		background: rgba(0, 0, 0, 0.35);
+		color: #f0f0f0;
+	}
+	.note-light .note-meta-badge { background: rgba(0, 0, 0, 0.12); color: #222; }
+	.note-meta-badge.priority-high { background: rgba(255, 152, 0, 0.35); }
+	.note-meta-badge.priority-urgent { background: rgba(244, 67, 54, 0.45); }
+	.note-meta-badge.overdue { background: rgba(244, 67, 54, 0.55); }
+	.note-meta-badge.status-done { opacity: 0.75; }
+	.notes-table-wrap {
+		padding: 8px;
+		overflow-x: auto;
+	}
+	.notes-table-wrap .mud-table-root {
+		background: #0a0a0a;
+		color: #e8e8e8;
+	}
+	.notes-table-row {
+		cursor: pointer;
+	}
+	.notes-board {
+		display: flex;
+		flex-wrap: nowrap;
+		gap: 8px;
+		overflow-x: auto;
+		padding: 8px 4px 16px;
+		align-items: flex-start;
+	}
+	.notes-board-col {
+		flex: 0 0 220px;
+		max-width: 260px;
+		min-height: 120px;
+		background: #0d0d0d;
+		border: 1px solid #222;
+		border-radius: 6px;
+		padding: 6px;
+	}
+	.notes-board-col-title {
+		font-size: 0.8rem;
+		font-weight: 600;
+		padding: 4px 6px 8px;
+		color: #ccc;
+		border-bottom: 1px solid #222;
+		margin-bottom: 6px;
+	}
+	.notes-board-card {
+		position: relative;
+		background: #1a1a1a;
+		border-radius: 4px;
+		padding: 8px;
+		margin-bottom: 6px;
+		cursor: pointer;
+		font-size: 0.85rem;
+		color: #e0e0e0;
+		min-height: 48px;
+	}
+	.notes-board-card:hover { background: #252525; }
+	.notes-board-card-title { font-weight: 500; word-break: break-word; }
+	.notes-board-card-meta { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
+	.notes-board-card .notes-board-menu {
+		position: absolute;
+		top: 0;
+		right: 0;
+	}
 </style>
 
 @* Two row header: the filter controls on the first row, the tab buttons on the second row *@
@@ -141,7 +218,7 @@
 		@if (_activeTab == 0)
 		{
 			<MudIconButton @ref="_tagsButton" OnClick="@(() => ViewModel.IsDrawerOpen = !ViewModel.IsDrawerOpen)"
-				Class="@Css.BuildClass(new CssClassIf("btn-toggled", ViewModel.IsFilteredByTag))"
+				Class="@Css.BuildClass(new CssClassIf("btn-toggled", ViewModel.IsFilteredByTag || ViewModel.IsFilteredByMetadata))"
 				Icon="@(IconService.GetSvgLink(IconNames.TagMultiple))" Color="Color.Inherit"
 				title="@GetTagsTooltip()" />
 			<MudPaper Class="d-inline-flex align-center rounded-pill pa-0 ml-1" Style="background-color: var(--mud-palette-appbar-text)" MaxWidth="70%" MaxHeight="36px" Elevation="0">
@@ -152,6 +229,18 @@
 					Adornment="@(ViewModel.IsFiltered ? Adornment.None : Adornment.End)" AdornmentIcon="@IconService.GetSvgLink(IconNames.Magnify)"
 					Immediate="true" Clearable="true" />
 			</MudPaper>
+			<MudIconButton
+				Class="@Css.BuildClass(new CssClassIf("btn-toggled", ViewModel.ViewMode == NotesRepositoryViewMode.List), "ml-1")"
+				Icon="@Icons.Material.Filled.ViewAgenda" Color="Color.Inherit" title="@LanguageService["notes_view_list"]"
+				OnClick="@(() => ViewModel.ViewMode = NotesRepositoryViewMode.List)" />
+			<MudIconButton
+				Class="@Css.BuildClass(new CssClassIf("btn-toggled", ViewModel.ViewMode == NotesRepositoryViewMode.Table))"
+				Icon="@Icons.Material.Filled.TableRows" Color="Color.Inherit" title="@LanguageService["notes_view_table"]"
+				OnClick="@(() => ViewModel.ViewMode = NotesRepositoryViewMode.Table)" />
+			<MudIconButton
+				Class="@Css.BuildClass(new CssClassIf("btn-toggled", ViewModel.ViewMode == NotesRepositoryViewMode.Board))"
+				Icon="@Icons.Material.Filled.ViewColumn" Color="Color.Inherit" title="@LanguageService["notes_view_board"]"
+				OnClick="@(() => ViewModel.ViewMode = NotesRepositoryViewMode.Board)" />
 		}
 		else if (_activeTab == 1)
 		{
@@ -468,6 +557,28 @@
 			</MudDrawerHeader>
 			<MudDivider Class="my-2" />
 			<MudDrawerContainer Style="height: 100%; overflow: auto;">
+				<MudStack Class="px-3 pb-3" Spacing="1">
+					<h3 class="h-colored">@LanguageService["notes_filter_metadata"]</h3>
+					<MudSelect T="string" @bind-Value="ViewModel.MetadataFilterStatus" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+						Label="@LanguageService["notes_filter_status"]">
+						<MudSelectItem T="string" Value="@string.Empty">@LanguageService["notes_filter_any"]</MudSelectItem>
+						<MudSelectItem T="string" Value="@NoteMetadata.StatusTodo">@LanguageService["note_meta_status_todo"]</MudSelectItem>
+						<MudSelectItem T="string" Value="@NoteMetadata.StatusDoing">@LanguageService["note_meta_status_doing"]</MudSelectItem>
+						<MudSelectItem T="string" Value="@NoteMetadata.StatusDone">@LanguageService["note_meta_status_done"]</MudSelectItem>
+						<MudSelectItem T="string" Value="@NoteMetadata.StatusBlocked">@LanguageService["note_meta_status_blocked"]</MudSelectItem>
+					</MudSelect>
+					<MudSelect T="int" @bind-Value="ViewModel.MetadataFilterPriority" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+						Label="@LanguageService["notes_filter_priority"]">
+						<MudSelectItem T="int" Value="@NoteMetadata.FilterPriorityAny">@LanguageService["notes_filter_any"]</MudSelectItem>
+						<MudSelectItem T="int" Value="@NoteMetadata.PriorityLow">@LanguageService["note_meta_priority_low"]</MudSelectItem>
+						<MudSelectItem T="int" Value="@NoteMetadata.PriorityNormal">@LanguageService["note_meta_priority_normal"]</MudSelectItem>
+						<MudSelectItem T="int" Value="@NoteMetadata.PriorityHigh">@LanguageService["note_meta_priority_high"]</MudSelectItem>
+						<MudSelectItem T="int" Value="@NoteMetadata.PriorityUrgent">@LanguageService["note_meta_priority_urgent"]</MudSelectItem>
+					</MudSelect>
+					<MudCheckBox T="bool" @bind-Value="ViewModel.MetadataFilterOverdueOnly" Color="Color.Primary" Label="@LanguageService["notes_filter_overdue"]" />
+					<MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="ViewModel.ClearMetadataFilters">@LanguageService["reset"]</MudButton>
+				</MudStack>
+				<MudDivider Class="my-2" />
 				<MudTreeView id="tagTree"
 					Items="@_tagsRootNode.Children"
 					Color="Color.Tertiary">
@@ -498,54 +609,139 @@
 	@if (_activeTab == 0)
 	{
 		<div id="content" class="px-1 py-2">
-			<ul id="note-repository" class="note-list flex-column flex-sm-row">
-				@foreach (var note in ViewModel.FilteredNotes)
-				{
-					<li @key="note.Id" class="note-item" data-note="@note.Id" @onclick="() => Navigation.NavigateTo(note.Route)">
-						<div class="note-card mud-elevation-3 @note.LightOrDarkClass()" style="background-color:@note.BackgroundColorHex">
-							@if (note.IsLocked)
+			@if (ViewModel.ViewMode == NotesRepositoryViewMode.Table)
+			{
+				<div class="notes-table-wrap">
+					<MudTable T="NoteViewModelReadOnly" Items="ViewModel.FilteredNotes" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm"
+						RowClass="notes-table-row" RowClassFunc="@((_, _) => "notes-table-row")" OnRowClick="OnNotesTableRowClick">
+						<HeaderContent>
+							<MudTh>@LanguageService["notes_col_title"]</MudTh>
+							<MudTh>@LanguageService["notes_col_status"]</MudTh>
+							<MudTh>@LanguageService["notes_col_priority"]</MudTh>
+							<MudTh>@LanguageService["notes_col_due"]</MudTh>
+						</HeaderContent>
+						<RowTemplate>
+							<MudTd DataLabel="@LanguageService["notes_col_title"]">@context.DisplayTitle</MudTd>
+							<MudTd DataLabel="@LanguageService["notes_col_status"]">@GetStatusLabel(context.Status)</MudTd>
+							<MudTd DataLabel="@LanguageService["notes_col_priority"]">@GetPriorityLabel(context.Priority)</MudTd>
+							<MudTd DataLabel="@LanguageService["notes_col_due"]" Style="@(context.IsDueOverdue ? "color:#f44336" : null)">@FormatDueCell(context)</MudTd>
+						</RowTemplate>
+					</MudTable>
+				</div>
+			}
+			else if (ViewModel.ViewMode == NotesRepositoryViewMode.Board)
+			{
+				<div class="notes-board" id="note-repository">
+					@foreach (var column in _boardColumns)
+					{
+						<div class="notes-board-col">
+							<div class="notes-board-col-title">@GetBoardColumnTitle(column)</div>
+							@foreach (var note in GetBoardColumnNotes(column))
 							{
-								<div class="note-locked">@IconService.EmbedSvgLink(IconNames.LockOutline)</div>
-							}
-							else
-							{
-								@* prevent drag start with onmousedown:preventDefault *@
-								<div class="note-viewer over-view @note.CssClassNoteType" @onmousedown:preventDefault="true">@((MarkupString)note.GetShortenedUnlockedHtmlContent())</div>
-							}
-
-							@if (note.IsPinned)
-							{
-								<div class="pin">@IconService.EmbedSvgLink(IconNames.Pin, 22)</div>
-							}
-							<div class="note-handle note-handle-top @Css.BuildClass(new CssClassIf("bluish-highlighted", note == ViewModel.SelectedOrderNote))" @onmousedown="() => ViewModel.SelectOrderNote(note)" @onclick:stopPropagation="true">@IconService.EmbedSvgLink(IconNames.ArrowAll, 22)</div>
-							@if(!note.IsLocked)
-							{
-								@if (UrlActionHelpers.ContainsOpenableUrl(note.UnlockedHtmlContent))
-								{
-									<div class="note-handle note-handle-open-link" @onclick:stopPropagation="true">
-										<OpenLinkButton Text="@note.UnlockedHtmlContent" Title="@LanguageService["note_open_link"]" />
-									</div>
-								}
-								<div class="note-handle note-handle-open-link" @onclick:stopPropagation="true">
-									<AskAiButton Subject="@LanguageService["tab_notes"]" ContextText="@RssFeedParser.StripHtml(note.UnlockedHtmlContent)" />
+								<div @key="note.Id" class="notes-board-card mud-elevation-1" data-note="@note.Id" @onclick="() => Navigation.NavigateTo(note.Route)">
+									<div class="notes-board-card-title">@note.DisplayTitle</div>
+									@if (note.Priority > NoteMetadata.PriorityLow || note.DueAt.HasValue)
+									{
+										<div class="notes-board-card-meta">
+											@if (note.Priority > NoteMetadata.PriorityLow)
+											{
+												<span class="note-meta-badge @GetPriorityBadgeClass(note.Priority)">@GetPriorityLabel(note.Priority)</span>
+											}
+											@if (note.DueAt.HasValue)
+											{
+												<span class="note-meta-badge @(note.IsDueOverdue ? "overdue" : "")">@NoteMetadata.FormatDueDate(note.DueAt)</span>
+											}
+										</div>
+									}
+									@if (!note.IsLocked)
+									{
+										<MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" @onclick:stopPropagation="true">
+											<ActivatorContent>
+												<MudIconButton Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" OnClick="@context.ToggleAsync" Class="notes-board-menu" />
+											</ActivatorContent>
+											<ChildContent>
+												<MudMenuItem Disabled="@(string.IsNullOrEmpty(note.Status))" OnClick="@(() => ViewModel.SetNoteStatus(note.Id, string.Empty))">@LanguageService["note_meta_status_none"]</MudMenuItem>
+												<MudMenuItem OnClick="@(() => ViewModel.SetNoteStatus(note.Id, NoteMetadata.StatusTodo))">@LanguageService["note_meta_status_todo"]</MudMenuItem>
+												<MudMenuItem OnClick="@(() => ViewModel.SetNoteStatus(note.Id, NoteMetadata.StatusDoing))">@LanguageService["note_meta_status_doing"]</MudMenuItem>
+												<MudMenuItem OnClick="@(() => ViewModel.SetNoteStatus(note.Id, NoteMetadata.StatusDone))">@LanguageService["note_meta_status_done"]</MudMenuItem>
+												<MudMenuItem OnClick="@(() => ViewModel.SetNoteStatus(note.Id, NoteMetadata.StatusBlocked))">@LanguageService["note_meta_status_blocked"]</MudMenuItem>
+											</ChildContent>
+										</MudMenu>
+									}
 								</div>
-								<div class="note-handle note-handle-bottom" @onclick="() => ViewModel.DeleteNoteCommand.Execute(note.Id)" @onclick:stopPropagation="true">@IconService.EmbedSvgLink(IconNames.Delete, 19)</div>
 							}
-							@if (ViewModel.IsAnySafeOpen && !note.IsLocked)
-							{
-								@if (note.IsInSafe)
+						</div>
+					}
+				</div>
+			}
+			else
+			{
+				<ul id="note-repository" class="note-list flex-column flex-sm-row">
+					@foreach (var note in ViewModel.FilteredNotes)
+					{
+						<li @key="note.Id" class="note-item" data-note="@note.Id" @onclick="() => Navigation.NavigateTo(note.Route)">
+							<div class="note-card mud-elevation-3 @note.LightOrDarkClass()" style="background-color:@note.BackgroundColorHex">
+								@if (note.IsLocked)
 								{
-									<div class="note-handle note-handle-inset reddish" @onclick="() => ViewModel.RemoveNoteFromSafe(note.Id)" @onclick:stopPropagation="true">@IconService.EmbedSvgLink(IconNames.Lock, 18)</div>
+									<div class="note-locked">@IconService.EmbedSvgLink(IconNames.LockOutline)</div>
 								}
 								else
 								{
-									<div class="note-handle note-handle-inset greenish" @onclick="() => ViewModel.AddNoteToSafe(note.Id)" @onclick:stopPropagation="true">@IconService.EmbedSvgLink(IconNames.LockOpenVariant, 18)</div>
+									@* prevent drag start with onmousedown:preventDefault *@
+									<div class="note-viewer over-view @note.CssClassNoteType" @onmousedown:preventDefault="true">@((MarkupString)note.GetShortenedUnlockedHtmlContent())</div>
+									@if (note.HasMetadataBadges)
+									{
+										<div class="note-meta-badges">
+											@if (!string.IsNullOrEmpty(note.Status))
+											{
+												<span class="note-meta-badge @GetStatusBadgeClass(note.Status)">@GetStatusLabel(note.Status)</span>
+											}
+											@if (note.Priority > NoteMetadata.PriorityLow)
+											{
+												<span class="note-meta-badge @GetPriorityBadgeClass(note.Priority)">@GetPriorityLabel(note.Priority)</span>
+											}
+											@if (note.DueAt.HasValue)
+											{
+												<span class="note-meta-badge @(note.IsDueOverdue ? "overdue" : "")">@NoteMetadata.FormatDueDate(note.DueAt)</span>
+											}
+										</div>
+									}
 								}
-							}
-						</div>
-					</li>
-				}
-			</ul>
+
+								@if (note.IsPinned)
+								{
+									<div class="pin">@IconService.EmbedSvgLink(IconNames.Pin, 22)</div>
+								}
+								<div class="note-handle note-handle-top @Css.BuildClass(new CssClassIf("bluish-highlighted", note == ViewModel.SelectedOrderNote))" @onmousedown="() => ViewModel.SelectOrderNote(note)" @onclick:stopPropagation="true">@IconService.EmbedSvgLink(IconNames.ArrowAll, 22)</div>
+								@if(!note.IsLocked)
+								{
+									@if (UrlActionHelpers.ContainsOpenableUrl(note.UnlockedHtmlContent))
+									{
+										<div class="note-handle note-handle-open-link" @onclick:stopPropagation="true">
+											<OpenLinkButton Text="@note.UnlockedHtmlContent" Title="@LanguageService["note_open_link"]" />
+										</div>
+									}
+									<div class="note-handle note-handle-open-link" @onclick:stopPropagation="true">
+										<AskAiButton Subject="@LanguageService["tab_notes"]" ContextText="@RssFeedParser.StripHtml(note.UnlockedHtmlContent)" />
+									</div>
+									<div class="note-handle note-handle-bottom" @onclick="() => ViewModel.DeleteNoteCommand.Execute(note.Id)" @onclick:stopPropagation="true">@IconService.EmbedSvgLink(IconNames.Delete, 19)</div>
+								}
+								@if (ViewModel.IsAnySafeOpen && !note.IsLocked)
+								{
+									@if (note.IsInSafe)
+									{
+										<div class="note-handle note-handle-inset reddish" @onclick="() => ViewModel.RemoveNoteFromSafe(note.Id)" @onclick:stopPropagation="true">@IconService.EmbedSvgLink(IconNames.Lock, 18)</div>
+									}
+									else
+									{
+										<div class="note-handle note-handle-inset greenish" @onclick="() => ViewModel.AddNoteToSafe(note.Id)" @onclick:stopPropagation="true">@IconService.EmbedSvgLink(IconNames.LockOpenVariant, 18)</div>
+									}
+								}
+							</div>
+						</li>
+					}
+				</ul>
+			}
 		</div>
 
 		@* The FAB for adding a new note *@
@@ -772,7 +968,8 @@
 			BookySyncService,
 			FeedbackService,
 			AbroBrowserService,
-			RssArticleCacheService);
+			RssArticleCacheService,
+			BookmarkLinkCheckService);
 
 		_contactsViewModel = new ContactsViewModel(
 			noteRepositoryModel,
@@ -797,8 +994,8 @@
 			NativeBrowserService);
 
 		_calculatorViewModel = new CalculatorViewModel(LanguageService, SettingsService);
-		_calendarViewModel = new CalendarViewModel(DeviceCalendarService, LanguageService, FeedbackService);
-		_clockViewModel = new ClockViewModel(ClockService, LanguageService, FeedbackService, CompassService, AbroBrowserService);
+		_calendarViewModel = new CalendarViewModel(DeviceCalendarService, LanguageService, FeedbackService, RepositoryStorageService);
+		_clockViewModel = new ClockViewModel(ClockService, LanguageService, FeedbackService, noteRepositoryModel, RepositoryStorageService, CompassService, AbroBrowserService);
 		_ = _clockViewModel.RescheduleAsync();
 		_smsViewModel = new SmsViewModel(SmsService, LanguageService, FeedbackService);
 		_qrViewModel = new QrViewModel(
@@ -817,7 +1014,8 @@
 			LanguageService,
 			FeedbackService,
 			ScreenRecorderService,
-			ScreenshotGalleryService);
+			ScreenshotGalleryService,
+			RecVoiceMemoLauncher);
 		_fileViewModel = new FileViewModel(
 			WebdavFileService,
 			SettingsService,
@@ -845,6 +1043,7 @@
 			LanguageService,
 			FeedbackService,
 			ImageEditorService,
+			DocumentCropService,
 			OcrService,
 			ClipboardService,
 			RepositoryStorageService,
@@ -1572,6 +1771,84 @@
 	private string GetTagsTooltip()
 	{
 		return string.Join(", ", ViewModel.GetFilterTags());
+	}
+
+	private static readonly string[] _boardColumns =
+	{
+		NoteMetadata.StatusTodo,
+		NoteMetadata.StatusDoing,
+		NoteMetadata.StatusDone,
+		NoteMetadata.StatusBlocked,
+		string.Empty,
+	};
+
+	private void OnNotesTableRowClick(TableRowClickEventArgs<NoteViewModelReadOnly> args)
+	{
+		if (args?.Item != null)
+			Navigation.NavigateTo(args.Item.Route);
+	}
+
+	private IEnumerable<NoteViewModelReadOnly> GetBoardColumnNotes(string columnKey)
+	{
+		foreach (NoteViewModelReadOnly note in ViewModel.FilteredNotes)
+		{
+			if (NoteMetadata.GetBoardColumnKey(note.Status) == columnKey)
+				yield return note;
+		}
+	}
+
+	private string GetBoardColumnTitle(string columnKey)
+	{
+		if (string.IsNullOrEmpty(columnKey))
+			return LanguageService["notes_board_no_status"];
+		return GetStatusLabel(columnKey);
+	}
+
+	private string GetStatusLabel(string status)
+	{
+		status = NoteMetadata.NormalizeStatus(status);
+		return status switch
+		{
+			NoteMetadata.StatusTodo => LanguageService["note_meta_status_todo"],
+			NoteMetadata.StatusDoing => LanguageService["note_meta_status_doing"],
+			NoteMetadata.StatusDone => LanguageService["note_meta_status_done"],
+			NoteMetadata.StatusBlocked => LanguageService["note_meta_status_blocked"],
+			_ => string.Empty,
+		};
+	}
+
+	private string GetPriorityLabel(int priority)
+	{
+		return priority switch
+		{
+			NoteMetadata.PriorityLow => LanguageService["note_meta_priority_low"],
+			NoteMetadata.PriorityNormal => LanguageService["note_meta_priority_normal"],
+			NoteMetadata.PriorityHigh => LanguageService["note_meta_priority_high"],
+			NoteMetadata.PriorityUrgent => LanguageService["note_meta_priority_urgent"],
+			_ => string.Empty,
+		};
+	}
+
+	private static string GetStatusBadgeClass(string status)
+	{
+		status = NoteMetadata.NormalizeStatus(status);
+		return status == NoteMetadata.StatusDone ? "status-done" : string.Empty;
+	}
+
+	private static string GetPriorityBadgeClass(int priority)
+	{
+		if (priority >= NoteMetadata.PriorityUrgent)
+			return "priority-urgent";
+		if (priority >= NoteMetadata.PriorityHigh)
+			return "priority-high";
+		return string.Empty;
+	}
+
+	private static string FormatDueCell(NoteViewModelReadOnly note)
+	{
+		if (!note.DueAt.HasValue)
+			return string.Empty;
+		return NoteMetadata.FormatDueDate(note.DueAt);
 	}
 
 	private void ReloadMainTabDisplayOrder()

@@ -40,6 +40,8 @@ namespace SilentNotes.ViewModels
         private readonly IFeedbackService _feedbackService;
         private readonly ICompassService _compassService;
         private readonly IAbroBrowserService _abroBrowserService;
+        private readonly NoteRepositoryModel _noteRepository;
+        private readonly IRepositoryStorageService _repositoryStorageService;
 
         private ClockDataModel _data;
         private ClockSection _section = ClockSection.Clock;
@@ -67,6 +69,8 @@ namespace SilentNotes.ViewModels
         private int _timerHours;
         private int _timerMinutes = 5;
         private int _timerSeconds;
+        private string _timerMode;
+        private List<FocusLinkNoteItem> _linkableNotes = new List<FocusLinkNoteItem>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ClockViewModel"/> class.
@@ -75,12 +79,16 @@ namespace SilentNotes.ViewModels
             IClockService clockService,
             ILanguageService languageService,
             IFeedbackService feedbackService,
+            NoteRepositoryModel noteRepository,
+            IRepositoryStorageService repositoryStorageService,
             ICompassService compassService = null,
             IAbroBrowserService abroBrowserService = null)
         {
             _clockService = clockService;
             _languageService = languageService;
             _feedbackService = feedbackService;
+            _noteRepository = noteRepository;
+            _repositoryStorageService = repositoryStorageService;
             _compassService = compassService;
             _abroBrowserService = abroBrowserService;
 
@@ -108,6 +116,9 @@ namespace SilentNotes.ViewModels
             StartTimerCommand = new RelayCommand(StartTimer);
             PauseTimerCommand = new RelayCommand(PauseTimer);
             ResetTimerCommand = new RelayCommand(ResetTimer);
+            StartFocusCommand = new RelayCommand(StartFocus);
+            StartBreakCommand = new RelayCommand(StartBreak);
+            StartLongBreakCommand = new RelayCommand(StartLongBreak);
 
             StartPauseStopwatchCommand = new RelayCommand(StartPauseStopwatch);
             ResetStopwatchCommand = new RelayCommand(ResetStopwatch);
@@ -390,6 +401,32 @@ namespace SilentNotes.ViewModels
         public ICommand StartTimerCommand { get; }
         public ICommand PauseTimerCommand { get; }
         public ICommand ResetTimerCommand { get; }
+        public ICommand StartFocusCommand { get; }
+        public ICommand StartBreakCommand { get; }
+        public ICommand StartLongBreakCommand { get; }
+
+        /// <summary>Gets or sets the note that receives focus completion logs.</summary>
+        public Guid? LinkedNoteId
+        {
+            get { return (_data != null && _data.FocusLinkedNoteId != Guid.Empty) ? _data.FocusLinkedNoteId : (Guid?)null; }
+            set
+            {
+                if (_data == null)
+                    return;
+                Guid noteId = value ?? Guid.Empty;
+                if (_data.FocusLinkedNoteId == noteId)
+                    return;
+                _data.FocusLinkedNoteId = noteId;
+                _clockService.TrySaveData(_data);
+                OnPropertyChanged(nameof(LinkedNoteId));
+            }
+        }
+
+        /// <summary>Gets non-recycled notes that can be linked to a focus session.</summary>
+        public IReadOnlyList<FocusLinkNoteItem> LinkableNotes
+        {
+            get { return _linkableNotes; }
+        }
 
         // ---------------------------------------------------------------------------------------
         // Stopwatch
@@ -499,7 +536,7 @@ namespace SilentNotes.ViewModels
             if (_section == ClockSection.Clock)
                 RefreshCityTimes();
 
-            if (_section == ClockSection.Timer)
+            if (_section == ClockSection.Timer || _timerRunning)
                 RefreshTimer();
 
             if (_section == ClockSection.Stopwatch)
@@ -513,6 +550,8 @@ namespace SilentNotes.ViewModels
             Section = section;
             if (section == ClockSection.Clock)
                 RefreshCityTimes();
+            if (section == ClockSection.Timer)
+                RefreshLinkableNotes();
         }
 
         private void UpdateCompassListening()
@@ -550,6 +589,7 @@ namespace SilentNotes.ViewModels
 
             ReloadAlarms();
             RefreshCityTimes();
+            RefreshLinkableNotes();
         }
 
         private void ReloadAlarms()
@@ -756,6 +796,35 @@ namespace SilentNotes.ViewModels
             }
         }
 
+        private void StartFocus()
+        {
+            SetTimerPreset(0, 25, 0, FocusSessionHelper.ModeFocus, _languageService["clock_focus"]);
+            StartTimer();
+        }
+
+        private void StartBreak()
+        {
+            SetTimerPreset(0, 5, 0, FocusSessionHelper.ModeBreak, _languageService["clock_break"]);
+            StartTimer();
+        }
+
+        private void StartLongBreak()
+        {
+            SetTimerPreset(0, 15, 0, FocusSessionHelper.ModeLongBreak, _languageService["clock_long_break"]);
+            StartTimer();
+        }
+
+        private void SetTimerPreset(int hours, int minutes, int seconds, string mode, string label)
+        {
+            _timerHours = hours;
+            _timerMinutes = minutes;
+            _timerSeconds = seconds;
+            _timerMode = mode;
+            _timerLabel = label;
+            _timerTotalSeconds = InputTotalSeconds;
+            OnPropertyChanged(nameof(TimerHours), nameof(TimerMinutes), nameof(TimerSeconds), nameof(TimerDisplay));
+        }
+
         private void StartTimer()
         {
             int total = (CurrentTimerSeconds > 0) ? CurrentTimerSeconds : InputTotalSeconds;
@@ -764,7 +833,8 @@ namespace SilentNotes.ViewModels
 
             if (_timerTotalSeconds != total)
             {
-                _timerLabel = _languageService["clock_timer"];
+                if (string.IsNullOrEmpty(_timerMode))
+                    _timerLabel = _languageService["clock_timer"];
                 _timerTotalSeconds = total;
             }
 
@@ -795,6 +865,7 @@ namespace SilentNotes.ViewModels
             _timerPaused = false;
             _timerRemainingSeconds = 0;
             _timerTotalSeconds = 0;
+            _timerMode = null;
             PersistTimer();
             CancelTimerSafe();
             OnPropertyChanged(nameof(IsTimerRunning), nameof(TimerDisplay));
@@ -804,11 +875,17 @@ namespace SilentNotes.ViewModels
         {
             if (_timerRunning && (CurrentTimerSeconds <= 0))
             {
+                int completedSeconds = _timerTotalSeconds;
+                string completedMode = _timerMode;
+                Guid completedTimerId = _data.TimerId;
+
                 _timerRunning = false;
                 _timerPaused = false;
                 _timerRemainingSeconds = 0;
                 _timerTotalSeconds = 0;
+                _timerMode = null;
                 PersistTimer();
+                RecordFocusCompletionIfNeeded(completedMode, completedSeconds, completedTimerId);
                 _feedbackService?.ShowToast(_languageService["clock_timer_finished"]);
             }
             OnPropertyChanged(nameof(IsTimerRunning), nameof(TimerDisplay));
@@ -818,9 +895,13 @@ namespace SilentNotes.ViewModels
         {
             if ((_data.TimerId == Guid.Empty) || (_data.TimerEndUtc <= DateTime.UtcNow))
             {
+                if (_data.TimerId != Guid.Empty && _data.TimerEndUtc <= DateTime.UtcNow)
+                    RecordFocusCompletionIfNeeded(_data.TimerMode, _data.TimerSeconds, _data.TimerId);
+
                 if (_data.TimerId != Guid.Empty)
                 {
                     _data.TimerId = Guid.Empty;
+                    _data.TimerMode = null;
                     _clockService.TrySaveData(_data);
                 }
                 return;
@@ -830,6 +911,7 @@ namespace SilentNotes.ViewModels
             _timerEndUtc = _data.TimerEndUtc;
             _timerTotalSeconds = _data.TimerSeconds;
             _timerLabel = _data.TimerLabel;
+            _timerMode = _data.TimerMode;
         }
 
         private void PersistTimer()
@@ -840,12 +922,67 @@ namespace SilentNotes.ViewModels
                 _data.TimerEndUtc = _timerEndUtc;
                 _data.TimerSeconds = _timerTotalSeconds;
                 _data.TimerLabel = _timerLabel;
+                _data.TimerMode = _timerMode;
             }
             else
             {
                 _data.TimerId = Guid.Empty;
+                _data.TimerMode = null;
             }
             _clockService.TrySaveData(_data);
+        }
+
+        private void RecordFocusCompletionIfNeeded(string mode, int durationSeconds, Guid timerId)
+        {
+            if (timerId == Guid.Empty)
+                return;
+            if (_data.LastCompletedTimerId == timerId)
+                return;
+            if (!string.Equals(mode, FocusSessionHelper.ModeFocus, StringComparison.OrdinalIgnoreCase))
+                return;
+            if (_noteRepository == null || _repositoryStorageService == null)
+                return;
+
+            Guid? linked = _data.FocusLinkedNoteId == Guid.Empty ? (Guid?)null : _data.FocusLinkedNoteId;
+            FocusSessionHelper.RecordCompletion(_noteRepository, _repositoryStorageService, linked, durationSeconds);
+            _data.LastCompletedTimerId = timerId;
+            _clockService.TrySaveData(_data);
+        }
+
+        private void RefreshLinkableNotes()
+        {
+            if (_noteRepository?.Notes == null)
+            {
+                _linkableNotes = new List<FocusLinkNoteItem>();
+                OnPropertyChanged(nameof(LinkableNotes));
+                return;
+            }
+
+            string untitled = _languageService["clock_note_untitled"];
+            _linkableNotes = _noteRepository.Notes
+                .Where(note => !note.InRecyclingBin)
+                .Where(note => !IsInternalCaptureNote(note))
+                .Select(note =>
+                {
+                    string title = NoteHtmlUtils.GetTitle(note.HtmlContent);
+                    if (string.IsNullOrWhiteSpace(title))
+                        title = untitled;
+                    return new FocusLinkNoteItem(note.Id, title);
+                })
+                .OrderBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            OnPropertyChanged(nameof(LinkableNotes));
+        }
+
+        private static bool IsInternalCaptureNote(NoteModel note)
+        {
+            if (note.Tags == null || note.Tags.Count == 0)
+                return false;
+
+            return note.Tags.Any(tag =>
+                string.Equals(tag, CaptureNoteHelper.ScratchpadTag, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(tag, FocusSessionHelper.FocusLogTag, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(tag, VoiceNoteHelper.VoiceTag, StringComparison.OrdinalIgnoreCase));
         }
 
         private void ScheduleTimerSafe()
@@ -969,6 +1106,27 @@ namespace SilentNotes.ViewModels
         {
             get { return Model.Enabled; }
         }
+    }
+
+    /// <summary>
+    /// A note that can be linked to focus session logs.
+    /// </summary>
+    public class FocusLinkNoteItem
+    {
+        /// <summary>
+        /// Initializes a new instance of the <see cref="FocusLinkNoteItem"/> class.
+        /// </summary>
+        public FocusLinkNoteItem(Guid id, string title)
+        {
+            Id = id;
+            Title = title ?? string.Empty;
+        }
+
+        /// <summary>Gets the note id.</summary>
+        public Guid Id { get; }
+
+        /// <summary>Gets the display title.</summary>
+        public string Title { get; }
     }
 
     /// <summary>

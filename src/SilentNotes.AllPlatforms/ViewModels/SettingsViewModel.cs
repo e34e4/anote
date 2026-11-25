@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
@@ -52,6 +53,11 @@ namespace SilentNotes.ViewModels
         private readonly SliderStepConverter _noteMaxHeightConverter;
         private string _defaultFontFamilyLabel;
         private string _mediaToolsMessage;
+        private string _draftAutomationName;
+        private string _draftAutomationTrigger;
+        private string _draftAutomationKeyword;
+        private string _draftAutomationAction;
+        private string _draftAutomationParam;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SettingsViewModel"/> class.
@@ -133,6 +139,11 @@ namespace SilentNotes.ViewModels
             UpdateFfmpegCommand = new AsyncRelayCommand(UpdateFfmpegAsync);
             UpdateYtDlpCommand = new AsyncRelayCommand(UpdateYtDlpAsync);
             ClearPlayerUrlHistoryCommand = new RelayCommand(ClearPlayerUrlHistory);
+            AddAutomationRuleCommand = new RelayCommand(AddAutomationRule);
+            DeleteAutomationRuleCommand = new RelayCommand<AutomationRuleModel>(DeleteAutomationRule);
+            SetAutomationRuleEnabledCommand = new RelayCommand<AutomationRuleToggleArgs>(SetAutomationRuleEnabled);
+            _draftAutomationTrigger = AutomationTriggerTypes.SmsReceived;
+            _draftAutomationAction = AutomationActionTypes.OpenTab;
             RebuildMainTabOrderDisplayItems();
         }
 
@@ -157,6 +168,59 @@ namespace SilentNotes.ViewModels
 
         /// <summary>Gets the command to download/update yt-dlp.</summary>
         public ICommand UpdateYtDlpCommand { get; }
+
+        /// <summary>Gets the persisted automation rules.</summary>
+        public IList<AutomationRuleModel> AutomationRules => Model.AutomationRules;
+
+        /// <summary>Gets trigger options for the automation rule editor.</summary>
+        public IReadOnlyList<DropdownItemViewModel> AutomationTriggerOptions { get; } = BuildAutomationTriggerOptions();
+
+        /// <summary>Gets action options for the automation rule editor.</summary>
+        public IReadOnlyList<DropdownItemViewModel> AutomationActionOptions { get; } = BuildAutomationActionOptions();
+
+        /// <summary>Gets or sets the draft rule display name.</summary>
+        public string DraftAutomationName
+        {
+            get { return _draftAutomationName; }
+            set { SetProperty(ref _draftAutomationName, value); }
+        }
+
+        /// <summary>Gets or sets the draft trigger type.</summary>
+        public string DraftAutomationTrigger
+        {
+            get { return _draftAutomationTrigger; }
+            set { SetProperty(ref _draftAutomationTrigger, value); }
+        }
+
+        /// <summary>Gets or sets the draft match keyword.</summary>
+        public string DraftAutomationKeyword
+        {
+            get { return _draftAutomationKeyword; }
+            set { SetProperty(ref _draftAutomationKeyword, value); }
+        }
+
+        /// <summary>Gets or sets the draft action type.</summary>
+        public string DraftAutomationAction
+        {
+            get { return _draftAutomationAction; }
+            set { SetProperty(ref _draftAutomationAction, value); }
+        }
+
+        /// <summary>Gets or sets the draft action parameter.</summary>
+        public string DraftAutomationParam
+        {
+            get { return _draftAutomationParam; }
+            set { SetProperty(ref _draftAutomationParam, value); }
+        }
+
+        /// <summary>Gets the command that adds a draft automation rule.</summary>
+        public ICommand AddAutomationRuleCommand { get; }
+
+        /// <summary>Gets the command that deletes an automation rule.</summary>
+        public ICommand DeleteAutomationRuleCommand { get; }
+
+        /// <summary>Gets the command that sets rule enabled state.</summary>
+        public ICommand SetAutomationRuleEnabledCommand { get; }
 
         private async Task UpdateFfmpegAsync()
         {
@@ -394,7 +458,29 @@ namespace SilentNotes.ViewModels
                 string.GetHashCode(settings.Socks5Username),
                 string.GetHashCode(settings.Socks5Password),
                 settings.AiUseProxy.GetHashCode(),
+                GetAutomationRulesFingerprint(settings.AutomationRules),
             });
+        }
+
+        private static long GetAutomationRulesFingerprint(IList<AutomationRuleModel> rules)
+        {
+            if (rules == null || rules.Count == 0)
+                return 0;
+
+            var parts = new List<long> { rules.Count };
+            foreach (AutomationRuleModel rule in rules)
+            {
+                if (rule == null)
+                    continue;
+                parts.Add(rule.Id.GetHashCode());
+                parts.Add(rule.Enabled.GetHashCode());
+                parts.Add(string.GetHashCode(rule.TriggerType));
+                parts.Add(string.GetHashCode(rule.MatchKeyword));
+                parts.Add(string.GetHashCode(rule.ActionType));
+                parts.Add(string.GetHashCode(rule.ActionParam));
+            }
+
+            return ModificationDetector.CombineHashCodes(parts);
         }
 
         private static long GetMainTabOrderFingerprint(IList<int> mainTabOrder)
@@ -803,6 +889,7 @@ namespace SilentNotes.ViewModels
             options.Add(new DropdownItemViewModel { Value = ":screenshot_partial", Description = "✂️ " + Language["gui_floating_gesture_screenshot_partial"] });
             options.Add(new DropdownItemViewModel { Value = ":open_anote", Description = "📝 " + Language["gui_floating_gesture_open_anote"] });
             options.Add(new DropdownItemViewModel { Value = ":show_menu", Description = "🎛️ " + Language["gui_floating_gesture_show_menu"] });
+            options.Add(new DropdownItemViewModel { Value = ":mini_pad", Description = "📓 Mini-pad" });
             options.Add(new DropdownItemViewModel { Value = ":search", Description = "🔎 " + Language["global_search_title"] });
 
             foreach (MainViewTabCatalog.TabDescriptor tab in MainViewTabCatalog.AllTabs)
@@ -1518,6 +1605,101 @@ namespace SilentNotes.ViewModels
             RebuildMainTabOrderDisplayItems();
             OnPropertyChanged(nameof(MainTabOrderDisplayItems));
         }
+
+        private static List<DropdownItemViewModel> BuildAutomationTriggerOptions()
+        {
+            return new List<DropdownItemViewModel>
+            {
+                new DropdownItemViewModel { Value = AutomationTriggerTypes.SmsReceived, Description = "automation_trigger_sms" },
+                new DropdownItemViewModel { Value = AutomationTriggerTypes.AlarmFired, Description = "automation_trigger_alarm_fired" },
+                new DropdownItemViewModel { Value = AutomationTriggerTypes.AlarmDismissed, Description = "automation_trigger_alarm_dismissed" },
+                new DropdownItemViewModel { Value = AutomationTriggerTypes.TimerFinished, Description = "automation_trigger_timer" },
+                new DropdownItemViewModel { Value = AutomationTriggerTypes.RssKeywordMatch, Description = "automation_trigger_rss" },
+            };
+        }
+
+        private static List<DropdownItemViewModel> BuildAutomationActionOptions()
+        {
+            return new List<DropdownItemViewModel>
+            {
+                new DropdownItemViewModel { Value = AutomationActionTypes.OpenTab, Description = "automation_action_open_tab" },
+                new DropdownItemViewModel { Value = AutomationActionTypes.OpenDailyNote, Description = "automation_action_open_daily" },
+                new DropdownItemViewModel { Value = AutomationActionTypes.OpenRssTab, Description = "automation_action_open_rss" },
+                new DropdownItemViewModel { Value = AutomationActionTypes.AppendToNote, Description = "automation_action_append" },
+                new DropdownItemViewModel { Value = AutomationActionTypes.CreateNote, Description = "automation_action_create" },
+            };
+        }
+
+        private void AddAutomationRule()
+        {
+            if (string.IsNullOrWhiteSpace(DraftAutomationTrigger) || string.IsNullOrWhiteSpace(DraftAutomationAction))
+                return;
+
+            var rule = new AutomationRuleModel
+            {
+                Name = string.IsNullOrWhiteSpace(DraftAutomationName)
+                    ? DraftAutomationTrigger + " → " + DraftAutomationAction
+                    : DraftAutomationName.Trim(),
+                TriggerType = DraftAutomationTrigger,
+                MatchKeyword = DraftAutomationKeyword?.Trim(),
+                ActionType = DraftAutomationAction,
+                ActionParam = string.IsNullOrWhiteSpace(DraftAutomationParam) ? null : DraftAutomationParam.Trim(),
+            };
+            Model.AutomationRules.Add(rule);
+            _settingsService.TrySaveSettingsToLocalDevice(Model);
+            DraftAutomationName = string.Empty;
+            DraftAutomationKeyword = string.Empty;
+            DraftAutomationParam = string.Empty;
+            OnPropertyChanged(nameof(AutomationRules));
+        }
+
+        private void DeleteAutomationRule(AutomationRuleModel rule)
+        {
+            if (rule == null)
+                return;
+            Model.AutomationRules.Remove(rule);
+            _settingsService.TrySaveSettingsToLocalDevice(Model);
+            OnPropertyChanged(nameof(AutomationRules));
+        }
+
+        private void SetAutomationRuleEnabled(AutomationRuleToggleArgs args)
+        {
+            if (args?.Rule == null)
+                return;
+            args.Rule.Enabled = args.Enabled;
+            _settingsService.TrySaveSettingsToLocalDevice(Model);
+            OnPropertyChanged(nameof(AutomationRules));
+        }
+
+        /// <summary>Resolves a localized label for a trigger type in the settings UI.</summary>
+        public string DescribeAutomationTrigger(string triggerType)
+        {
+            DropdownItemViewModel item = AutomationTriggerOptions.FirstOrDefault(
+                candidate => string.Equals(candidate.Value, triggerType, StringComparison.OrdinalIgnoreCase));
+            if (item != null && !string.IsNullOrEmpty(item.Description))
+                return Language[item.Description];
+            return triggerType ?? string.Empty;
+        }
+
+        /// <summary>Resolves a localized label for an action type in the settings UI.</summary>
+        public string DescribeAutomationAction(string actionType)
+        {
+            DropdownItemViewModel item = AutomationActionOptions.FirstOrDefault(
+                candidate => string.Equals(candidate.Value, actionType, StringComparison.OrdinalIgnoreCase));
+            if (item != null && !string.IsNullOrEmpty(item.Description))
+                return Language[item.Description];
+            return actionType ?? string.Empty;
+        }
+    }
+
+    /// <summary>Payload for enabling or disabling an automation rule.</summary>
+    public sealed class AutomationRuleToggleArgs
+    {
+        /// <summary>Gets or sets the rule to update.</summary>
+        public AutomationRuleModel Rule { get; set; }
+
+        /// <summary>Gets or sets the new enabled flag.</summary>
+        public bool Enabled { get; set; }
     }
 
     /// <summary>One row in the main tab order settings list.</summary>

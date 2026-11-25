@@ -24,13 +24,13 @@ namespace SilentNotes.Models
         /// <summary>The current revision which is used to store a repository. This revision is
         /// increased whenever deserialization of the model becomes incompatible with previous
         /// versions.</summary>
-        public const int CurrentSavingRevision = 10;
+        public const int CurrentSavingRevision = 12;
 
         /// <summary>The highest revision of the repository which can be handled by this application.
         /// This revision can be higher than <see cref="CurrentSavingRevision"/>, so we can make
         /// the app ready for a new feature, but delay the introduction to a later version. Multiple
         /// installations across platforms will then already be ready for this feature.</summary>
-        public const int NewestSupportedRevision = 10;
+        public const int NewestSupportedRevision = 12;
 
 #if (DEBUG)
         public readonly string InstanceId = Guid.NewGuid().ToString();

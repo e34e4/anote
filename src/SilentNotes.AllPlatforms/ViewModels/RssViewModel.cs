@@ -680,8 +680,14 @@ namespace SilentNotes.ViewModels
                             .Select(item => ToCachedArticle(feed.Id, item))
                             .ToList();
 
+                        var knownKeys = new HashSet<string>(
+                            _articleCache.LoadArticles(new[] { feed.Id }).Select(c => c.ItemKey),
+                            StringComparer.Ordinal);
+
                         int merged = _articleCache.MergeArticles(feed.Id, fetched);
                         mergedTotal += merged;
+                        if (merged > 0)
+                            EvaluateAutomationForNewRssItems(feed, fetched, knownKeys);
 
                         // Rebuild this feed's in-memory list from cache so we keep older items
                         // that are no longer in the remote window.
@@ -756,6 +762,46 @@ namespace SilentNotes.ViewModels
             }
 
             RebuildAllArticles();
+        }
+
+        private static void EvaluateAutomationForNewRssItems(
+            RssFeedModel feed,
+            IReadOnlyList<RssCachedArticleModel> fetched,
+            HashSet<string> knownKeys)
+        {
+            if (fetched == null || fetched.Count == 0)
+                return;
+
+            try
+            {
+                IAutomationRulesEngine engine = Ioc.Instance.GetService<IAutomationRulesEngine>();
+                if (engine == null)
+                    return;
+
+                string feedTitle = feed?.Title ?? feed?.Url ?? string.Empty;
+                foreach (RssCachedArticleModel article in fetched)
+                {
+                    if (article == null || string.IsNullOrWhiteSpace(article.ItemKey))
+                        continue;
+                    if (knownKeys.Contains(article.ItemKey))
+                        continue;
+
+                    string text = (article.Title ?? string.Empty).Trim();
+                    if (!string.IsNullOrWhiteSpace(article.Summary))
+                        text = text + "\n" + article.Summary.Trim();
+
+                    engine.Evaluate(
+                        AutomationTriggerTypes.RssKeywordMatch,
+                        new AutomationRuleContext
+                        {
+                            FeedTitle = feedTitle,
+                            AppendText = text,
+                        });
+                }
+            }
+            catch (Exception)
+            {
+            }
         }
 
         private static RssCachedArticleModel ToCachedArticle(Guid feedId, RssFeedParser.ParsedItem item)

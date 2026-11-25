@@ -34,6 +34,7 @@ namespace SilentNotes.ViewModels
         private readonly IScreenshotGalleryService _screenshotGalleryService;
         private readonly ILanguageService _languageService;
         private readonly IFeedbackService _feedbackService;
+        private readonly IRecVoiceMemoLauncher _voiceMemoLauncher;
 
         private List<AudioRecordingItemViewModel> _recordings = new List<AudioRecordingItemViewModel>();
         private string _filter;
@@ -49,13 +50,15 @@ namespace SilentNotes.ViewModels
             ILanguageService languageService,
             IFeedbackService feedbackService,
             IScreenRecorderService screenRecorderService = null,
-            IScreenshotGalleryService screenshotGalleryService = null)
+            IScreenshotGalleryService screenshotGalleryService = null,
+            IRecVoiceMemoLauncher voiceMemoLauncher = null)
         {
             _recorderService = recorderService;
             _screenRecorderService = screenRecorderService;
             _screenshotGalleryService = screenshotGalleryService;
             _languageService = languageService;
             _feedbackService = feedbackService;
+            _voiceMemoLauncher = voiceMemoLauncher;
 
             _recorderService.StateChanged += OnRecorderStateChanged;
             if (_screenRecorderService != null)
@@ -79,6 +82,7 @@ namespace SilentNotes.ViewModels
             SaveToDeviceCommand = new AsyncRelayCommand<AudioRecordingItemViewModel>(SaveToDeviceAsync);
             ShareCommand = new AsyncRelayCommand<AudioRecordingItemViewModel>(ShareAsync);
             DeleteCommand = new AsyncRelayCommand<AudioRecordingItemViewModel>(DeleteAsync);
+            AddToVoiceNoteCommand = new RelayCommand<AudioRecordingItemViewModel>(AddToVoiceNote);
 
             Reload();
         }
@@ -102,6 +106,10 @@ namespace SilentNotes.ViewModels
         public ICommand SaveToDeviceCommand { get; }
         public ICommand ShareCommand { get; }
         public ICommand DeleteCommand { get; }
+        public ICommand AddToVoiceNoteCommand { get; }
+
+        /// <summary>True when dictation into the Voice note is available (Android audio list).</summary>
+        public bool SupportsVoiceMemoTranscribe => IsAudioSection && (_voiceMemoLauncher?.IsSupported == true);
 
         public RecSection Section
         {
@@ -114,6 +122,7 @@ namespace SilentNotes.ViewModels
                         nameof(IsAudioSection),
                         nameof(IsScreenSection),
                         nameof(IsShotsSection),
+                        nameof(SupportsVoiceMemoTranscribe),
                         nameof(ShowsRecorder),
                         nameof(IsSupported),
                         nameof(NeedsPermission),
@@ -399,6 +408,16 @@ namespace SilentNotes.ViewModels
                 await _screenRecorderService.ShareRecordingAsync(item.FileName);
             else
                 await _recorderService.ShareRecordingAsync(item.FileName);
+        }
+
+        private void AddToVoiceNote(AudioRecordingItemViewModel item)
+        {
+            if (item == null || !IsAudioSection || (_voiceMemoLauncher?.IsSupported != true))
+                return;
+
+            bool launched = _voiceMemoLauncher.TryLaunchTranscribe(item.Model.FilePath, item.FileName);
+            if (!launched)
+                _feedbackService?.ShowToast(_languageService["rec_voice_memo_failed"], FeedbackSeverity.Warning);
         }
 
         public async Task DeleteAsync(AudioRecordingItemViewModel item)

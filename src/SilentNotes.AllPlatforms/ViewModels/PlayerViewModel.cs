@@ -40,6 +40,10 @@ namespace SilentNotes.ViewModels
         private readonly List<string> _queue = new List<string>();
         private int _queueIndex = -1;
         private double _playbackSpeed = 1.0;
+        private FileBrowserSortMode _sortMode = FileBrowserSortMode.DateDesc;
+        private bool _isRenameOpen;
+        private string _renameTargetPath;
+        private string _renameDraft;
 
         public PlayerViewModel(
             IMediaPlayerService mediaService,
@@ -79,6 +83,10 @@ namespace SilentNotes.ViewModels
             QueueFolderCommand = new RelayCommand(QueueVisibleAudio);
             ClearQueueCommand = new RelayCommand(ClearQueue);
             SetSpeedCommand = new RelayCommand<double>(SetSpeed);
+            SetSortModeCommand = new RelayCommand<string>(SetSortMode);
+            StartRenameSelectedCommand = new RelayCommand(StartRenameSelected);
+            CancelRenameCommand = new RelayCommand(CancelRename);
+            ConfirmRenameCommand = new AsyncRelayCommand(ConfirmRenameAsync);
 
             MediaPlaybackCommands.Next = PlayNextTrack;
             MediaPlaybackCommands.Previous = PlayPreviousTrack;
@@ -113,6 +121,10 @@ namespace SilentNotes.ViewModels
         public ICommand QueueFolderCommand { get; }
         public ICommand ClearQueueCommand { get; }
         public ICommand SetSpeedCommand { get; }
+        public ICommand SetSortModeCommand { get; }
+        public ICommand StartRenameSelectedCommand { get; }
+        public ICommand CancelRenameCommand { get; }
+        public ICommand ConfirmRenameCommand { get; }
 
         /// <summary>Gets a value indicating whether a queue is active.</summary>
         public bool HasQueue => _queue.Count > 0;
@@ -188,6 +200,45 @@ namespace SilentNotes.ViewModels
         public bool IsKindVideo => string.Equals(_kindFilter, "video", StringComparison.OrdinalIgnoreCase);
         public bool IsKindImage => string.Equals(_kindFilter, "image", StringComparison.OrdinalIgnoreCase);
 
+        /// <summary>Gets or sets how items in the current directory are sorted.</summary>
+        public FileBrowserSortMode SortMode
+        {
+            get => _sortMode;
+            set
+            {
+                if (SetProperty(ref _sortMode, value))
+                {
+                    PersistSortMode();
+                    OnPropertyChanged(
+                        nameof(FilteredItems),
+                        nameof(HasNoMatches),
+                        nameof(CountText),
+                        nameof(IsSortName),
+                        nameof(IsSortDate),
+                        nameof(IsSortSize));
+                }
+            }
+        }
+
+        public bool IsSortName => _sortMode == FileBrowserSortMode.NameAsc;
+        public bool IsSortDate => _sortMode == FileBrowserSortMode.DateDesc;
+        public bool IsSortSize => _sortMode == FileBrowserSortMode.SizeDesc;
+
+        public bool IsRenameOpen
+        {
+            get => _isRenameOpen;
+            private set => SetProperty(ref _isRenameOpen, value);
+        }
+
+        public string RenameDraft
+        {
+            get => _renameDraft;
+            set => SetProperty(ref _renameDraft, value);
+        }
+
+        /// <summary>True when exactly one non-folder item is selected.</summary>
+        public bool CanRenameSelection => TryGetSingleSelectedFile(out _);
+
         public IReadOnlyList<MediaItemViewModel> FilteredItems
         {
             get
@@ -207,7 +258,7 @@ namespace SilentNotes.ViewModels
                 if (!string.IsNullOrEmpty(filter))
                     query = query.Where(i => i.Name.ToLowerInvariant().Contains(filter));
 
-                return query.ToList();
+                return SortItems(query);
             }
         }
 
@@ -262,7 +313,7 @@ namespace SilentNotes.ViewModels
                 return;
             if (!_selectedPaths.Add(item.Path))
                 _selectedPaths.Remove(item.Path);
-            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount));
+            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount), nameof(CanRenameSelection));
             RaiseStateChanged();
         }
 
@@ -273,7 +324,7 @@ namespace SilentNotes.ViewModels
                 if (!string.IsNullOrEmpty(item.Path))
                     _selectedPaths.Add(item.Path);
             }
-            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount));
+            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount), nameof(CanRenameSelection));
             RaiseStateChanged();
         }
 
@@ -282,7 +333,8 @@ namespace SilentNotes.ViewModels
             if (_selectedPaths.Count == 0)
                 return;
             _selectedPaths.Clear();
-            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount));
+            CancelRename();
+            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount), nameof(CanRenameSelection));
             RaiseStateChanged();
         }
 
@@ -329,9 +381,8 @@ namespace SilentNotes.ViewModels
             try
             {
                 IsBusy = true;
-                _items = _mediaService.ListCurrentDirectory()
-                    .Select(m => new MediaItemViewModel(m))
-                    .ToList();
+                _items = SortItems(_mediaService.ListCurrentDirectory()
+                    .Select(m => new MediaItemViewModel(m)));
                 OnPropertyChanged(
                     nameof(FilteredItems),
                     nameof(IsEmpty),
@@ -496,6 +547,7 @@ namespace SilentNotes.ViewModels
                     },
                 };
             _activePathTabIndex = Math.Clamp(settings.PlayerPathTabIndex, 0, _pathTabs.Count - 1);
+            _sortMode = FileBrowserSort.ParseOrDefault(settings.PlayerSortMode);
             string path = _pathTabs[_activePathTabIndex].Path;
             if (!string.IsNullOrEmpty(path))
                 _mediaService.EnterDirectory(path);
@@ -554,6 +606,108 @@ namespace SilentNotes.ViewModels
         {
             KindFilter = string.IsNullOrEmpty(kind) ? "all" : kind;
             RaiseStateChanged();
+        }
+
+        private void SetSortMode(string modeKey)
+        {
+            if (string.IsNullOrEmpty(modeKey))
+                return;
+            if (string.Equals(modeKey, "name", StringComparison.OrdinalIgnoreCase))
+                SortMode = FileBrowserSortMode.NameAsc;
+            else if (string.Equals(modeKey, "size", StringComparison.OrdinalIgnoreCase))
+                SortMode = FileBrowserSortMode.SizeDesc;
+            else
+                SortMode = FileBrowserSortMode.DateDesc;
+            RaiseStateChanged();
+        }
+
+        private void StartRenameSelected()
+        {
+            if (!TryGetSingleSelectedFile(out MediaItemViewModel item))
+                return;
+            _renameTargetPath = item.Path;
+            RenameDraft = item.Name;
+            IsRenameOpen = true;
+            OnPropertyChanged(nameof(CanRenameSelection));
+            RaiseStateChanged();
+        }
+
+        private void CancelRename()
+        {
+            _renameTargetPath = null;
+            RenameDraft = null;
+            IsRenameOpen = false;
+            RaiseStateChanged();
+        }
+
+        private async Task ConfirmRenameAsync()
+        {
+            string newName = RenameDraft?.Trim();
+            if (string.IsNullOrEmpty(_renameTargetPath) || string.IsNullOrWhiteSpace(newName))
+            {
+                CancelRename();
+                return;
+            }
+
+            if (string.Equals(newName, Path.GetFileName(_renameTargetPath), StringComparison.Ordinal))
+            {
+                CancelRename();
+                return;
+            }
+
+            bool ok = _mediaService.TryRenamePath(_renameTargetPath, newName);
+            if (!ok)
+                _feedbackService?.ShowToast(_languageService["browse_rename_failed"], FeedbackSeverity.Warning);
+            else
+            {
+                string dir = Path.GetDirectoryName(_renameTargetPath);
+                string newPath = string.IsNullOrEmpty(dir) ? newName : Path.Combine(dir, newName);
+                if (_selectedPaths.Remove(_renameTargetPath))
+                    _selectedPaths.Add(newPath);
+                for (int i = 0; i < _queue.Count; i++)
+                {
+                    if (string.Equals(_queue[i], _renameTargetPath, StringComparison.OrdinalIgnoreCase))
+                        _queue[i] = newPath;
+                }
+                PersistQueue();
+                _feedbackService?.ShowToast(_languageService.LoadTextFmt("browse_renamed", newName));
+            }
+
+            CancelRename();
+            Reload();
+            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount), nameof(CanRenameSelection));
+            await Task.CompletedTask;
+        }
+
+        private bool TryGetSingleSelectedFile(out MediaItemViewModel item)
+        {
+            item = null;
+            if (_selectedPaths.Count != 1)
+                return false;
+            string path = _selectedPaths.First();
+            item = _items.FirstOrDefault(i =>
+                string.Equals(i.Path, path, StringComparison.OrdinalIgnoreCase));
+            return item != null && item.Kind != MediaKind.Folder;
+        }
+
+        private List<MediaItemViewModel> SortItems(IEnumerable<MediaItemViewModel> items)
+        {
+            return FileBrowserSort.Apply(
+                items,
+                _sortMode,
+                i => i.Kind == MediaKind.Folder,
+                i => i.Name,
+                i => i.Model.ModifiedLocal,
+                i => i.Model.SizeBytes);
+        }
+
+        private void PersistSortMode()
+        {
+            if (_settingsService == null)
+                return;
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            settings.PlayerSortMode = _sortMode.ToString();
+            _settingsService.TrySaveSettingsToLocalDevice(settings);
         }
 
         private async Task EnterOrOpenAsync(MediaItemViewModel item)

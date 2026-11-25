@@ -12,6 +12,7 @@ using SilentNotes.Models;
 using SilentNotes.Platforms.Services;
 using SilentNotes.Services;
 using SilentNotes.Stories.SynchronizationStory;
+using SilentNotes.ViewModels;
 using SilentNotes.Workers;
 
 namespace SilentNotes.Platforms
@@ -68,6 +69,9 @@ namespace SilentNotes.Platforms
             // Check whether the app was started from the quick menu to open a Blazor route (e.g. System).
             ConsumeRouteIntent(activity.Intent);
 
+            // External anote:// deep links (Termux, Tasker, shortcuts).
+            ConsumeAnoteDeepLink(activity.Intent);
+
             // Check whether the app was started to open/play an audio or video file.
             ConsumeMediaIntent(activity.Intent);
 
@@ -100,6 +104,7 @@ namespace SilentNotes.Platforms
             ConsumeSmsIntent(intent);
             ConsumeTabIntent(intent);
             ConsumeRouteIntent(intent);
+            ConsumeAnoteDeepLink(intent);
             ConsumeMediaIntent(intent);
             ConsumeDocumentIntent(intent);
             ConsumeSharedDocumentPath(intent);
@@ -402,6 +407,139 @@ namespace SilentNotes.Platforms
             Ioc.Instance.GetService<IMessengerService>()?.Send(new RouteIntentMessage());
         }
 
+        /// <summary>
+        /// Handles exported <c>anote://</c> URIs from Termux, Tasker, or other apps.
+        /// </summary>
+        private void ConsumeAnoteDeepLink(Intent intent)
+        {
+            if (intent == null || intent.Data == null)
+                return;
+            if (!string.Equals(intent.Action, Intent.ActionView, StringComparison.Ordinal))
+                return;
+
+            global::Android.Net.Uri data = intent.Data;
+            if (!string.Equals(data.Scheme, "anote", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            // Consume so OnResume does not re-trigger the same deep link.
+            intent.SetData(null);
+
+            string host = (data.Host ?? string.Empty).Trim().ToLowerInvariant();
+            string path = (data.Path ?? string.Empty).Trim('/');
+            string full = data.ToString();
+
+            if (NoteLinkExpander.TryParseCustomUri(full, out string target, out Guid id))
+            {
+                if (string.Equals(target, "note", StringComparison.OrdinalIgnoreCase))
+                {
+                    RouteIntentRequest.Pending = new RouteIntentRequest
+                    {
+                        Route = RouteNames.Combine(RouteNames.Note, id),
+                    };
+                    Ioc.Instance.GetService<IMessengerService>()?.Send(new RouteIntentMessage());
+                    return;
+                }
+
+                if (string.Equals(target, "contact", StringComparison.OrdinalIgnoreCase))
+                {
+                    OpenTab(3);
+                    return;
+                }
+
+                if (string.Equals(target, "bookmark", StringComparison.OrdinalIgnoreCase))
+                {
+                    OpenTab(2);
+                    return;
+                }
+            }
+
+            switch (host)
+            {
+                case "note":
+                    if (string.Equals(path, "new", StringComparison.OrdinalIgnoreCase)
+                        || string.IsNullOrEmpty(path))
+                    {
+                        // Open notes; New Note shortcut uses ScratchCaptureActivity instead.
+                        OpenTab(0);
+                        return;
+                    }
+                    break;
+                case "clipboard":
+                    OpenTab(1);
+                    return;
+                case "booky":
+                case "bookmarks":
+                    OpenTab(2);
+                    return;
+                case "rss":
+                    OpenTab(RssViewModel.TabIndex);
+                    return;
+                case "clock":
+                case "timer":
+                    OpenTab(6);
+                    return;
+                case "scratch":
+                case "scratchpad":
+                    {
+                        RouteIntentRequest.Pending = new RouteIntentRequest
+                        {
+                            Route = RouteNames.Combine(RouteNames.Note, CaptureNoteHelper.ScratchpadNoteId),
+                        };
+                        Ioc.Instance.GetService<IMessengerService>()?.Send(new RouteIntentMessage());
+                        return;
+                    }
+                case "voice":
+                    OpenTab(VoiceViewModel.TabIndex);
+                    return;
+                case "daily":
+                case "journal":
+                    OpenDailyNote();
+                    return;
+                case "rec":
+                case "recorder":
+                    OpenTab(9);
+                    return;
+                case "abro":
+                    OpenTab(AbroViewModel.TabIndex);
+                    return;
+            }
+        }
+
+        private static void OpenDailyNote()
+        {
+            try
+            {
+                IRepositoryStorageService repositoryService = Ioc.Instance.GetService<IRepositoryStorageService>();
+                repositoryService.LoadRepositoryOrDefault(out NoteRepositoryModel repository);
+                NoteModel note = DailyNoteHelper.EnsureTodayWithoutCalendar(repository, out bool changed);
+                if (changed)
+                    repositoryService.TrySaveRepository(repository);
+                Ioc.Instance.GetService<IMessengerService>()?.Send(new NotesChangedMessage());
+                if (note != null && note.Id != Guid.Empty)
+                {
+                    RouteIntentRequest.Pending = new RouteIntentRequest
+                    {
+                        Route = RouteNames.Combine(RouteNames.Note, note.Id),
+                    };
+                    Ioc.Instance.GetService<IMessengerService>()?.Send(new RouteIntentMessage());
+                }
+                else
+                {
+                    OpenTab(0);
+                }
+            }
+            catch (Exception)
+            {
+                OpenTab(0);
+            }
+        }
+
+        private static void OpenTab(int tabIndex)
+        {
+            TabIntentRequest.Pending = new TabIntentRequest { TabIndex = tabIndex };
+            Ioc.Instance.GetService<IMessengerService>()?.Send(new TabIntentMessage());
+        }
+
         private void ConsumePhoneIntent(Intent intent)
         {
             if (intent == null)
@@ -683,6 +821,7 @@ namespace SilentNotes.Platforms
             {
                 ConsumeTabIntent(activity?.Intent);
                 ConsumeRouteIntent(activity?.Intent);
+                ConsumeAnoteDeepLink(activity?.Intent);
             }
             catch (Exception ex)
             {

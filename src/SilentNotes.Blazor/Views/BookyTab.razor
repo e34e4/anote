@@ -21,6 +21,12 @@
 	.booky-host {
 		word-break: break-all;
 	}
+	.booky-host-broken {
+		color: var(--mud-palette-error) !important;
+	}
+	.booky-link-warning {
+		margin-right: 4px;
+	}
 	.booky-draft-overlay {
 		z-index: 1300;
 	}
@@ -50,9 +56,28 @@
 </style>
 
 <div class="pa-2">
+	@if (!ViewModel.IsEmpty)
+	{
+		<MudStack Row="true" Spacing="1" Class="mb-2 flex-wrap">
+			<MudChip T="string" Variant="Variant.Outlined" Color="Color.Primary"
+			         Disabled="@ViewModel.IsLinkCheckBusy"
+			         OnClick="@RunLinkCheck">
+				@(ViewModel.IsLinkCheckBusy ? LanguageService["booky_link_check_busy"] : LanguageService["booky_link_check"])
+			</MudChip>
+			<MudChip T="string" Variant="Variant.Outlined"
+			         Color="@(ViewModel.FilterBrokenOnly ? Color.Error : Color.Default)"
+			         OnClick="@ToggleBrokenFilter">
+				@LanguageService["booky_filter_broken"]
+			</MudChip>
+		</MudStack>
+	}
 	@if (ViewModel.IsEmpty)
 	{
 		<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["booky_empty"]</MudText>
+	}
+	else if (ViewModel.FilterBrokenOnly && ViewModel.FilteredBookmarks.Count == 0)
+	{
+		<MudText Align="Align.Center" Class="ma-8 mud-text-secondary">@LanguageService["booky_no_broken"]</MudText>
 	}
 	else
 	{
@@ -132,16 +157,40 @@
 	[Parameter]
 	public BookyViewModel ViewModel { get; set; }
 
+	private void ToggleBrokenFilter()
+	{
+		ViewModel.FilterBrokenOnly = !ViewModel.FilterBrokenOnly;
+	}
+
+	private void RunLinkCheck()
+	{
+		bool hasListFilter = !string.IsNullOrWhiteSpace(ViewModel.Filter) || ViewModel.FilterBrokenOnly;
+		if (hasListFilter)
+			ViewModel.CheckSelectedLinksCommand.Execute(null);
+		else
+			ViewModel.CheckLinksCommand.Execute(null);
+	}
+
 	private RenderFragment RenderBookmark(BookmarkItemViewModel bookmark)
 	{
 		return @<MudPaper Elevation="1" Class="pa-2 my-2 booky-card d-flex align-start">
 			<div class="flex-grow-1 overflow-hidden" style="cursor:pointer" @onclick="() => ViewModel.OpenCommand.Execute(bookmark)">
-				<MudText Class="booky-title">@bookmark.Title @bookmark.OfflineBadge</MudText>
+				<MudText Class="booky-title">
+					@if (bookmark.IsBroken)
+					{
+						<span class="booky-link-warning" title="@bookmark.LinkStatusText">@bookmark.LinkWarningGlyph</span>
+					}
+					@bookmark.Title @bookmark.OfflineBadge
+				</MudText>
 				@if (!string.IsNullOrWhiteSpace(bookmark.Quote))
 				{
 					<MudText Class="booky-quote mud-text-secondary mt-1">@bookmark.Quote</MudText>
 				}
-				<MudText Typo="Typo.caption" Class="booky-host mud-text-secondary mt-1">@bookmark.Url</MudText>
+				<MudText Typo="Typo.caption" Class="@($"booky-host mud-text-secondary mt-1{(bookmark.IsBroken ? " booky-host-broken" : "")}")">@bookmark.Url</MudText>
+				@if (!string.IsNullOrWhiteSpace(bookmark.LinkStatusText))
+				{
+					<MudText Typo="Typo.caption" Class="mud-text-secondary">@bookmark.LinkStatusText</MudText>
+				}
 			</div>
 			<MudStack Row="true" Spacing="0" Class="flex-shrink-0">
 				@if (bookmark.IsOffline)

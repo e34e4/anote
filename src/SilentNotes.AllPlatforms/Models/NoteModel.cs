@@ -42,6 +42,7 @@ namespace SilentNotes.Models
             MetaModifiedAt = null;
             HtmlContent = string.Empty;
             Tags = new List<string>();
+            Status = string.Empty;
         }
 
         /// <summary>
@@ -72,6 +73,9 @@ namespace SilentNotes.Models
             target.ShoppingModeActive = this.ShoppingModeActive;
             target.IsPinned = this.IsPinned;
             target.AttachementKey = this.AttachementKey;
+            target.Status = this.Status;
+            target.Priority = this.Priority;
+            target.DueAt = this.DueAt;
         }
 
         /// <summary>
@@ -216,6 +220,43 @@ namespace SilentNotes.Models
         public string AttachementKey { get; set; }
 
         public bool AttachementKeySpecified { get { return !string.IsNullOrEmpty(AttachementKey); } }
+
+        /// <summary>
+        /// Workflow status: empty, todo, doing, done, or blocked.
+        /// </summary>
+        [XmlAttribute(AttributeName = "status")]
+        public string Status { get; set; }
+
+        public bool StatusSpecified { get { return !string.IsNullOrEmpty(Status); } }
+
+        /// <summary>
+        /// Priority from 0 (low) to 3 (urgent).
+        /// </summary>
+        [XmlAttribute(AttributeName = "priority")]
+        public int Priority { get; set; }
+
+        public bool PrioritySpecified { get { return Priority != 0; } }
+
+        private DateTime? _dueAt;
+
+        /// <summary>
+        /// Optional due date in UTC (date portion used for display).
+        /// </summary>
+        [XmlIgnore]
+        public DateTime? DueAt
+        {
+            get { return _dueAt; }
+            set { _dueAt = value; }
+        }
+
+        [XmlAttribute(AttributeName = "due_at")]
+        public DateTime DueAtSerializeable
+        {
+            get { return DueAt.Value; }
+            set { DueAt = DateTime.SpecifyKind(value, DateTimeKind.Utc); }
+        }
+
+        public bool DueAtSerializeableSpecified { get { return DueAt != null; } }
 
         /// <summary>
         /// Makes a deep copy of the note.

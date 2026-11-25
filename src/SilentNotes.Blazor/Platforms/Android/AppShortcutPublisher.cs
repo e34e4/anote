@@ -20,10 +20,10 @@ namespace SilentNotes.Platforms
     {
         public const string ExtraShortcutAction = "aNoteShortcutAction";
         public const string ActionVoice = "voice";
+        public const string ActionNewNote = "newnote";
         public const string ActionNotes = "notes";
         public const string ActionClipboard = "clipboard";
-        public const string ActionRec = "rec";
-        public const string ActionAbro = "abro";
+        public const string ActionRss = "rss";
 
         /// <summary>Publishes dynamic shortcuts; returns false when the OS rejects them.</summary>
         public static bool Publish(Context context)
@@ -36,10 +36,10 @@ namespace SilentNotes.Platforms
                 var shortcuts = new List<ShortcutInfoCompat>
                 {
                     BuildShortcut(context, ActionVoice, "Voice", "Capture voice + screenshot", VoiceViewModel.TabIndex, '#', unchecked((int)0xFF4285F4)),
+                    BuildNewNoteShortcut(context),
                     BuildShortcut(context, ActionNotes, "Notes", "Open notes", 0, 'N', unchecked((int)0xFFFBC02D)),
                     BuildShortcut(context, ActionClipboard, "Clipboard", "Open clipboard history", 1, 'C', unchecked((int)0xFF66BB6A)),
-                    BuildShortcut(context, ActionRec, "Rec", "Open recorder", 9, 'R', unchecked((int)0xFFEF5350)),
-                    BuildShortcut(context, ActionAbro, "Abro", "Open browser", AbroViewModel.TabIndex, 'A', unchecked((int)0xFF42A5F5)),
+                    BuildShortcut(context, ActionRss, "RSS", "Open unread RSS", RssViewModel.TabIndex, 'R', unchecked((int)0xFFFF7043)),
                 };
 
                 ShortcutManagerCompat.RemoveAllDynamicShortcuts(context);
@@ -50,6 +50,22 @@ namespace SilentNotes.Platforms
             {
                 return false;
             }
+        }
+
+        private static ShortcutInfoCompat BuildNewNoteShortcut(Context context)
+        {
+            var intent = new Intent(context, typeof(ScratchCaptureActivity));
+            intent.SetAction(Intent.ActionMain);
+            intent.PutExtra(ExtraShortcutAction, ActionNewNote);
+            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.ClearTop);
+
+            IconCompat icon = IconCompat.CreateWithBitmap(CreateGlyphBitmap('+', unchecked((int)0xFFFFA726)));
+            return new ShortcutInfoCompat.Builder(context, ActionNewNote)
+                .SetShortLabel("New Note")
+                .SetLongLabel("Quick scratchpad capture")
+                .SetIcon(icon)
+                .SetIntent(intent)
+                .Build();
         }
 
         private static ShortcutInfoCompat BuildShortcut(
@@ -65,11 +81,6 @@ namespace SilentNotes.Platforms
             if (actionId == ActionVoice)
             {
                 intent = new Intent(context, typeof(VoiceCaptureActivity));
-                intent.SetAction(Intent.ActionMain);
-            }
-            else if (actionId == ActionAbro)
-            {
-                intent = new Intent(context, typeof(AbroBrowserActivity));
                 intent.SetAction(Intent.ActionMain);
             }
             else

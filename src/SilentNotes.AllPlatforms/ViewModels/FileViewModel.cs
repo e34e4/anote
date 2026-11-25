@@ -55,6 +55,7 @@ namespace SilentNotes.ViewModels
         private string _lastError;
         private int _activePathTabIndex;
         private List<PathTabSessionModel> _pathTabs = new List<PathTabSessionModel>();
+        private FileBrowserSortMode _sortMode = FileBrowserSortMode.DateDesc;
 
         private string _editUrl;
         private string _editFolder;
@@ -122,6 +123,9 @@ namespace SilentNotes.ViewModels
             AddPathTabCommand = new AsyncRelayCommand(AddPathTabAsync);
             ClosePathTabCommand = new AsyncRelayCommand<int>(ClosePathTabAsync);
             SelectPathTabCommand = new AsyncRelayCommand<int>(SelectPathTabAsync);
+            SetSortModeCommand = new RelayCommand<string>(SetSortMode);
+
+            LoadSortModeFromSettings();
         }
 
         /// <summary>Raised when the UI should re-render (e.g. after OAuth redirect).</summary>
@@ -145,6 +149,7 @@ namespace SilentNotes.ViewModels
         public ICommand AddPathTabCommand { get; }
         public ICommand ClosePathTabCommand { get; }
         public ICommand SelectPathTabCommand { get; }
+        public ICommand SetSortModeCommand { get; }
 
         /// <summary>Gets the number of selected items.</summary>
         public int SelectedCount => _selectedNames.Count;
@@ -191,15 +196,39 @@ namespace SilentNotes.ViewModels
             }
         }
 
+        /// <summary>Gets or sets how items in the current directory are sorted.</summary>
+        public FileBrowserSortMode SortMode
+        {
+            get => _sortMode;
+            set
+            {
+                if (SetProperty(ref _sortMode, value))
+                {
+                    PersistSortMode();
+                    OnPropertyChanged(
+                        nameof(FilteredItems),
+                        nameof(HasNoMatches),
+                        nameof(IsSortName),
+                        nameof(IsSortDate),
+                        nameof(IsSortSize));
+                }
+            }
+        }
+
+        public bool IsSortName => _sortMode == FileBrowserSortMode.NameAsc;
+        public bool IsSortDate => _sortMode == FileBrowserSortMode.DateDesc;
+        public bool IsSortSize => _sortMode == FileBrowserSortMode.SizeDesc;
+
         /// <summary>Gets the filtered files and folders.</summary>
         public IReadOnlyList<WebdavFileItemViewModel> FilteredItems
         {
             get
             {
-                string query = _filter?.Trim().ToLowerInvariant();
-                if (string.IsNullOrEmpty(query))
-                    return _items;
-                return _items.Where(i => i.Name.ToLowerInvariant().Contains(query)).ToList();
+                IEnumerable<WebdavFileItemViewModel> query = _items;
+                string text = _filter?.Trim().ToLowerInvariant();
+                if (!string.IsNullOrEmpty(text))
+                    query = query.Where(i => i.Name.ToLowerInvariant().Contains(text));
+                return SortItems(query);
             }
         }
 
@@ -402,7 +431,6 @@ namespace SilentNotes.ViewModels
 
                     List<string> names = await client.ListFileNamesAsync(credentials);
                     _items = names
-                        .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
                         .Select(n => new WebdavFileItemViewModel(new WebdavFileItemModel
                         {
                             Name = n,
@@ -410,13 +438,14 @@ namespace SilentNotes.ViewModels
                             SizeBytes = 0,
                         }))
                         .ToList();
+                    _items = SortItems(_items);
                 }
                 else
                 {
                     string remoteFolder = CombinePaths(EffectiveFolder, _currentSubPath);
                     IReadOnlyList<WebdavFileItemModel> list = await _webdavService.ListDirectoryAsync(
                         EffectiveUrl, remoteFolder, EffectiveUsername, EffectivePassword);
-                    _items = list.Select(m => new WebdavFileItemViewModel(m)).ToList();
+                    _items = SortItems(list.Select(m => new WebdavFileItemViewModel(m)));
                 }
                 _isLoadedOnce = true;
             }
@@ -1529,6 +1558,43 @@ namespace SilentNotes.ViewModels
             string trimmed = path.Trim('/').Trim();
             int slash = trimmed.LastIndexOf('/');
             return slash >= 0 ? trimmed.Substring(slash + 1) : trimmed;
+        }
+
+        private void SetSortMode(string modeKey)
+        {
+            if (string.IsNullOrEmpty(modeKey))
+                return;
+            if (string.Equals(modeKey, "name", StringComparison.OrdinalIgnoreCase))
+                SortMode = FileBrowserSortMode.NameAsc;
+            else if (string.Equals(modeKey, "size", StringComparison.OrdinalIgnoreCase))
+                SortMode = FileBrowserSortMode.SizeDesc;
+            else
+                SortMode = FileBrowserSortMode.DateDesc;
+            NotifyChanged();
+        }
+
+        private List<WebdavFileItemViewModel> SortItems(IEnumerable<WebdavFileItemViewModel> items)
+        {
+            return FileBrowserSort.Apply(
+                items,
+                _sortMode,
+                i => i.IsDirectory,
+                i => i.Name,
+                i => i.Model.LastModifiedUtc?.ToLocalTime() ?? DateTime.MinValue,
+                i => i.Model.SizeBytes);
+        }
+
+        private void LoadSortModeFromSettings()
+        {
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            _sortMode = FileBrowserSort.ParseOrDefault(settings.FileSortMode);
+        }
+
+        private void PersistSortMode()
+        {
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            settings.FileSortMode = _sortMode.ToString();
+            _settingsService.TrySaveSettingsToLocalDevice(settings);
         }
     }
 

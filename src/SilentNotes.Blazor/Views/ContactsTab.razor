@@ -37,9 +37,32 @@
 		margin: 0 !important;
 		padding: 6px !important;
 	}
+	.contact-crm {
+		border-top: 1px solid var(--mud-palette-lines-default);
+		margin-top: 8px;
+		padding-top: 8px;
+	}
+	.contact-follow-up-badge.overdue {
+		background-color: #f44336;
+		color: #ffffff;
+	}
+	.contact-interaction-line {
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
 </style>
 
 <div class="pa-2">
+	@if (!ViewModel.IsEmpty)
+	{
+		<MudStack Row="true" Spacing="1" Class="mb-2 flex-wrap">
+			<MudChip T="string" Variant="Variant.Outlined"
+				Color="@(ViewModel.FilterDueFollowUpOnly ? Color.Warning : Color.Default)"
+				OnClick="@ToggleDueFollowUpFilter">
+				@LanguageService["contact_filter_due_follow_up"]
+			</MudChip>
+		</MudStack>
+	}
 	<MudText Typo="Typo.caption" Class="contact-empty-number mb-1">@ViewModel.CountText</MudText>
 
 	@if (ViewModel.IsEmpty)
@@ -58,6 +81,18 @@
 				<MudPaper Elevation="1" Class="pa-2 my-2 contact-card" @key="contact.Id">
 					<div class="d-flex align-center">
 						<MudText Class="contact-index mr-2">@contact.Index</MudText>
+						@if (contact.IsFollowUpDue)
+						{
+							<MudChip T="string" Size="Size.Small" Class="contact-follow-up-badge overdue mr-2"
+							         title="@LanguageService["contact_follow_up_due"]">@LanguageService["contact_follow_up_due"]</MudChip>
+						}
+						else if (contact.HasNextFollowUp)
+						{
+							<MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="mr-2"
+							         title="@LanguageService.LoadTextFmt("contact_next_follow_up", contact.NextFollowUpText)">
+								@contact.NextFollowUpText
+							</MudChip>
+						}
 						<MudTextField @bind-Value="contact.Name"
 							Variant="Variant.Text" Margin="Margin.Dense" Class="flex-grow-1"
 							Placeholder="@LanguageService["contact_name"]" />
@@ -96,6 +131,40 @@
 							<MudText Class="contact-empty-number">@LanguageService["contact_no_number"]</MudText>
 						}
 					</div>
+
+					<div class="contact-crm pl-2">
+						<MudText Typo="Typo.caption" Class="contact-empty-number mb-1">@LanguageService["contact_notes"]</MudText>
+						<MudTextField @bind-Value="contact.Notes" Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" AutoGrow="true"
+							Placeholder="@LanguageService["contact_notes_placeholder"]" Class="mb-2" />
+
+						<MudText Typo="Typo.caption" Class="contact-empty-number mb-1">@LanguageService["contact_follow_up_interval"]</MudText>
+						<MudSelect T="int" @bind-Value="contact.FollowUpIntervalDays" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Class="mb-2">
+							@foreach (var days in ContactsViewModel.FollowUpIntervalChoices)
+							{
+								<MudSelectItem T="int" Value="days">@ViewModel.FormatFollowUpInterval(days)</MudSelectItem>
+							}
+						</MudSelect>
+
+						<MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap" Class="mb-2">
+							<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+								OnClick="@(() => ViewModel.MarkContactedCommand.Execute(contact))">@LanguageService["contact_mark_contacted"]</MudButton>
+							<MudTextField @bind-Value="contact.DraftLogSummary" Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1"
+								Placeholder="@LanguageService["contact_log_summary_placeholder"]" />
+							<MudButton Variant="Variant.Outlined" Size="Size.Small"
+								OnClick="@(() => ViewModel.LogInteractionCommand.Execute(contact))">@LanguageService["contact_log_interaction"]</MudButton>
+						</MudStack>
+
+						@if (contact.RecentInteractionLog.Count > 0)
+						{
+							<MudText Typo="Typo.caption" Class="contact-empty-number mb-1">@LanguageService["contact_interaction_log"]</MudText>
+							@foreach (var entry in contact.RecentInteractionLog)
+							{
+								<MudText Typo="Typo.caption" Class="contact-interaction-line mb-1">
+									@entry.Utc.ToLocalTime().ToString("g") — @(string.IsNullOrWhiteSpace(entry.Summary) ? LanguageService["contact_interaction_contacted"] : entry.Summary)
+								</MudText>
+							}
+						}
+					</div>
 				</MudPaper>
 			}
 		</div>
@@ -108,4 +177,9 @@
 	/// </summary>
 	[Parameter]
 	public ContactsViewModel ViewModel { get; set; }
+
+	private void ToggleDueFollowUpFilter()
+	{
+		ViewModel.FilterDueFollowUpOnly = !ViewModel.FilterDueFollowUpOnly;
+	}
 }

@@ -72,7 +72,7 @@ namespace SilentNotes.Workers
                     var bookmark = new AbroBookmarkItemModel();
                     if (TryGetGuid(item, "id", out Guid id))
                         bookmark.Id = id;
-                    bookmark.Url = GetString(item, "url") ?? string.Empty;
+                    bookmark.Url = UrlCheckUtils.CleanTrackingParams(GetString(item, "url") ?? string.Empty, out _);
                     bookmark.Title = GetString(item, "title") ?? string.Empty;
                     bookmark.Group = GetString(item, "group") ?? string.Empty;
                     if (TryGetUtcDateTime(item, "modifiedAt", out DateTime modifiedAt))

@@ -38,10 +38,12 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\NoteInsertionMode.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\NoteListModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\NoteModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\NotesRepositoryViewMode.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\DeletedNoteModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\NoteRepositoryModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\NoteType.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\NotificationTriggerModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\AutomationRuleModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\SafeListModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\SafeModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\SafeOpenResult.cs" />
@@ -75,6 +77,9 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\INativeBrowserService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\INavigationService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\INotificationService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IAutomationRulesEngine.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\AutomationRuleContext.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\AutomationRulesEngine.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IRepositoryStorageService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\ISafeKeyService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IScreenshots.cs" />
@@ -165,12 +170,14 @@
     <Compile Include="$(MSBuildThisFileDirectory)Workers\ByteArrayExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\ColorExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\CompressUtils.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\FileBrowserSort.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\DictionaryExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\FloatingPointUtils.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\HtmlShortener.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\INoteRepositoryUpdater.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\KeyValueList.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteFilter.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteMetadata.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteMover.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteRepositoryMerger.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteRepositoryUpdater.cs" />
@@ -198,6 +205,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\BookyViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\BookyUrlUtils.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\TextFragmentBuilder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\ContactInteractionEntryModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\ContactModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\PathTabSessionModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\CloudFileLocationModel.cs" />
@@ -232,12 +240,16 @@
     <Compile Include="$(MSBuildThisFileDirectory)Workers\DateIntervalEngine.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\ReadabilityParser.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\CaptureNoteHelper.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\FocusSessionHelper.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\DeviceCalendarModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\DeviceEventModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\CalendarIntentRequest.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IDeviceCalendarService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\BookyJsonFormat.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\BookmarkLinkChecker.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IBookySyncService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IBookmarkLinkCheckService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\NullBookmarkLinkCheckService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\BookySyncService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\ClockDataModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\ClockIntentRequest.cs" />
@@ -270,6 +282,8 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAssistantService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\VoiceViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\VoiceNoteHelper.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\NoteVoiceMemoHelper.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Workers\DailyNoteHelper.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\WidgetNoteHelper.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\SystemInfoModels.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\ScreenRecordIntentRequest.cs" />
@@ -277,6 +291,8 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\IWebdavFileService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\WebdavFileServiceBase.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IImageEditorService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IDocumentCropService.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\NullDocumentCropService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IWebdavQuickSaveService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\WebdavQuickSaveService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IDevicePhoneService.cs" />
@@ -304,6 +320,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Services\IMediaPlayerService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroBrowserService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IAbroAiChatLauncher.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Services\IRecVoiceMemoLauncher.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\AbroLaunchGate.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiProviderModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\AbroAiMessageModel.cs" />
@@ -352,6 +369,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\PlayerViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ViewModels\AbroViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\DocumentItemModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\FileBrowserSortMode.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\DocumentIntentRequest.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Services\IDocumentReaderService.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Workers\DocumentTextExtractor.cs" />

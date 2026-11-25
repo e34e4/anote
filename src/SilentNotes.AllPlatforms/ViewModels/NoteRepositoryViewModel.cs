@@ -116,6 +116,14 @@ namespace SilentNotes.ViewModels
             SettingsModel settings = _settingsService?.LoadSettingsOrDefault();
             foreach (string filterTag in settings.FilterTags)
                 result = ModificationDetector.CombineWithStringHash(filterTag, result);
+            result = ModificationDetector.CombineHashCodes(new long[]
+            {
+                result,
+                (int)settings.NotesViewMode,
+                settings.NotesFilterPriority,
+                settings.NotesFilterOverdueOnly.GetHashCode(),
+            });
+            result = ModificationDetector.CombineWithStringHash(settings.NotesFilterStatus, result);
             return result;
         }
 
@@ -170,6 +178,10 @@ namespace SilentNotes.ViewModels
             {
                 SettingsModel settings = _settingsService.LoadSettingsOrDefault();
                 settings.StartWithTagsOpen = IsDrawerOpen;
+                settings.NotesViewMode = ViewMode;
+                settings.NotesFilterStatus = MetadataFilterStatus ?? string.Empty;
+                settings.NotesFilterPriority = MetadataFilterPriority;
+                settings.NotesFilterOverdueOnly = MetadataFilterOverdueOnly;
                 _settingsService.TrySaveSettingsToLocalDevice(settings);
                 SettingsModifications.MemorizeCurrentState();
             }
@@ -336,6 +348,141 @@ namespace SilentNotes.ViewModels
             get { return !string.IsNullOrEmpty(Filter); }
         }
 
+        /// <summary>
+        /// Gets or sets the notes tab layout mode.
+        /// </summary>
+        public NotesRepositoryViewMode ViewMode
+        {
+            get
+            {
+                return _settingsService != null
+                    ? _settingsService.LoadSettingsOrDefault().NotesViewMode
+                    : NotesRepositoryViewMode.List;
+            }
+
+            set
+            {
+                SettingsModel settings = _settingsService?.LoadSettingsOrDefault();
+                if (settings == null)
+                    return;
+                if (SetProperty(settings.NotesViewMode, value, v => settings.NotesViewMode = v))
+                {
+                    OnPropertyChanged(nameof(ViewMode));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the metadata status filter (empty = all).
+        /// </summary>
+        public string MetadataFilterStatus
+        {
+            get { return _settingsService?.LoadSettingsOrDefault().NotesFilterStatus ?? string.Empty; }
+
+            set
+            {
+                SettingsModel settings = _settingsService?.LoadSettingsOrDefault();
+                string normalized = NoteMetadata.NormalizeStatus(value);
+                if (SetProperty(settings.NotesFilterStatus ?? string.Empty, normalized, v => settings.NotesFilterStatus = v))
+                {
+                    OnPropertyChanged(nameof(MetadataFilterStatus));
+                    OnPropertyChanged(nameof(IsFilteredByMetadata));
+                    ApplyFilter();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the metadata priority filter (<see cref="NoteMetadata.FilterPriorityAny"/> = all).
+        /// </summary>
+        public int MetadataFilterPriority
+        {
+            get
+            {
+                return _settingsService != null
+                    ? _settingsService.LoadSettingsOrDefault().NotesFilterPriority
+                    : NoteMetadata.FilterPriorityAny;
+            }
+
+            set
+            {
+                SettingsModel settings = _settingsService?.LoadSettingsOrDefault();
+                if (settings == null)
+                    return;
+                if (SetProperty(settings.NotesFilterPriority, value, v => settings.NotesFilterPriority = v))
+                {
+                    OnPropertyChanged(nameof(MetadataFilterPriority));
+                    OnPropertyChanged(nameof(IsFilteredByMetadata));
+                    ApplyFilter();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether only overdue notes are shown.
+        /// </summary>
+        public bool MetadataFilterOverdueOnly
+        {
+            get
+            {
+                return _settingsService != null
+                    && _settingsService.LoadSettingsOrDefault().NotesFilterOverdueOnly;
+            }
+
+            set
+            {
+                SettingsModel settings = _settingsService?.LoadSettingsOrDefault();
+                if (settings == null)
+                    return;
+                if (SetProperty(settings.NotesFilterOverdueOnly, value, v => settings.NotesFilterOverdueOnly = v))
+                {
+                    OnPropertyChanged(nameof(MetadataFilterOverdueOnly));
+                    OnPropertyChanged(nameof(IsFilteredByMetadata));
+                    ApplyFilter();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether metadata filters are active.
+        /// </summary>
+        public bool IsFilteredByMetadata
+        {
+            get
+            {
+                return !string.IsNullOrEmpty(MetadataFilterStatus)
+                    || MetadataFilterPriority != NoteMetadata.FilterPriorityAny
+                    || MetadataFilterOverdueOnly;
+            }
+        }
+
+        /// <summary>
+        /// Clears status, priority, and overdue metadata filters.
+        /// </summary>
+        public void ClearMetadataFilters()
+        {
+            MetadataFilterStatus = string.Empty;
+            MetadataFilterPriority = NoteMetadata.FilterPriorityAny;
+            MetadataFilterOverdueOnly = false;
+        }
+
+        /// <summary>
+        /// Sets a note's status from the board view and persists the repository.
+        /// </summary>
+        public void SetNoteStatus(Guid noteId, string status)
+        {
+            NoteViewModelReadOnly note = AllNotes.Find(item => item.Id == noteId);
+            if (note == null)
+                return;
+            string normalized = NoteMetadata.NormalizeStatus(status);
+            if (!NoteMetadata.IsValidStatus(normalized))
+                normalized = string.Empty;
+            note.Model.Status = normalized;
+            note.Model.RefreshMetaModifiedAt();
+            ApplyFilter();
+            _repositoryService.TrySaveRepository(Model);
+        }
+
         private void ApplyFilter()
         {
             SettingsModel settings = _settingsService?.LoadSettingsOrDefault();
@@ -343,7 +490,13 @@ namespace SilentNotes.ViewModels
             var options = (SelectedTagNode is NoTagTreeItemViewModel)
                 ? NoteFilter.FilterOptions.NotesWithoutTags
                 : NoteFilter.FilterOptions.FilterByTagList;
-            NoteFilter noteFilter = new NoteFilter(normalizedFilter, GetFilterTags(), options);
+            NoteFilter noteFilter = new NoteFilter(
+                normalizedFilter,
+                GetFilterTags(),
+                options,
+                MetadataFilterStatus,
+                MetadataFilterPriority,
+                MetadataFilterOverdueOnly);
 
             FilteredNotes.Clear();
             foreach (NoteViewModelReadOnly noteViewModel in AllNotes)
@@ -352,6 +505,7 @@ namespace SilentNotes.ViewModels
                     noteViewModel.InRecyclingBin ||
                     (settings.HideClosedSafeNotes && noteViewModel.IsLocked) ||
                     !noteFilter.MatchTags(noteViewModel.Tags) ||
+                    !noteFilter.MatchMetadata(noteViewModel.Model) ||
                     !noteFilter.ContainsPattern(noteViewModel.SearchableContent);
 
                 if (!hideNote)

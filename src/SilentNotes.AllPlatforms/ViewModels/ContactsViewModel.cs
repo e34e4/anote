@@ -37,9 +37,13 @@ namespace SilentNotes.ViewModels
         private readonly IDevicePhoneService _phoneService;
 
         private string _filter;
+        private bool _filterDueFollowUpOnly;
         private Guid? _editingContactId;
         private string _draftNumbers;
         private List<ContactItemViewModel> _contacts = new List<ContactItemViewModel>();
+
+        /// <summary>Follow-up interval choices shown in the contact CRM editor.</summary>
+        public static readonly int[] FollowUpIntervalChoices = { 0, 7, 14, 30, 90 };
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ContactsViewModel"/> class.
@@ -84,6 +88,8 @@ namespace SilentNotes.ViewModels
             SaveNumbersCommand = new RelayCommand(SaveNumbers);
             CancelEditNumbersCommand = new RelayCommand(CancelEditNumbers);
             ImportCommand = new AsyncRelayCommand(ImportAsync);
+            MarkContactedCommand = new RelayCommand<ContactItemViewModel>(MarkContacted);
+            LogInteractionCommand = new RelayCommand<ContactItemViewModel>(LogInteraction);
 
             Reload();
         }
@@ -118,6 +124,12 @@ namespace SilentNotes.ViewModels
         /// <summary>Gets the command to import contacts from a file.</summary>
         public ICommand ImportCommand { get; }
 
+        /// <summary>Gets the command to mark a contact as contacted and advance follow-up.</summary>
+        public ICommand MarkContactedCommand { get; }
+
+        /// <summary>Gets the command to append a custom interaction log entry.</summary>
+        public ICommand LogInteractionCommand { get; }
+
         /// <summary>
         /// Gets or sets the search filter, matching the name or one of the phone numbers.
         /// </summary>
@@ -128,11 +140,21 @@ namespace SilentNotes.ViewModels
             {
                 if (SetProperty(ref _filter, value))
                 {
-                    OnPropertyChanged(nameof(FilteredContacts));
-                    OnPropertyChanged(nameof(IsFiltered));
-                    OnPropertyChanged(nameof(IsEmpty));
-                    OnPropertyChanged(nameof(CountText));
+                    NotifyContactListChanged();
                 }
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether only contacts with a due follow-up are shown.
+        /// </summary>
+        public bool FilterDueFollowUpOnly
+        {
+            get { return _filterDueFollowUpOnly; }
+            set
+            {
+                if (SetProperty(ref _filterDueFollowUpOnly, value))
+                    NotifyContactListChanged();
             }
         }
 
@@ -143,10 +165,14 @@ namespace SilentNotes.ViewModels
         {
             get
             {
+                IEnumerable<ContactItemViewModel> list = _contacts;
+                if (_filterDueFollowUpOnly)
+                    list = list.Where(c => c.IsFollowUpDue);
+
                 string query = _filter?.Trim().ToLowerInvariant();
                 if (string.IsNullOrEmpty(query))
-                    return _contacts;
-                return _contacts.Where(c => c.Matches(query)).ToList();
+                    return list.ToList();
+                return list.Where(c => c.Matches(query)).ToList();
             }
         }
 
@@ -155,7 +181,7 @@ namespace SilentNotes.ViewModels
         /// </summary>
         public bool IsFiltered
         {
-            get { return !string.IsNullOrWhiteSpace(_filter); }
+            get { return !string.IsNullOrWhiteSpace(_filter) || _filterDueFollowUpOnly; }
         }
 
         /// <summary>
@@ -236,12 +262,17 @@ namespace SilentNotes.ViewModels
                 .Select((contact, index) => new ContactItemViewModel(contact, Persist) { Index = index + 1 })
                 .ToList();
 
+            NotifyContactListChanged();
+            OnPropertyChanged(nameof(IsEditingNumbers));
+        }
+
+        private void NotifyContactListChanged()
+        {
             OnPropertyChanged(nameof(FilteredContacts));
             OnPropertyChanged(nameof(IsFiltered));
             OnPropertyChanged(nameof(IsEmpty));
             OnPropertyChanged(nameof(HasNoMatches));
             OnPropertyChanged(nameof(CountText));
-            OnPropertyChanged(nameof(IsEditingNumbers));
         }
 
         private void Persist()
@@ -411,6 +442,48 @@ namespace SilentNotes.ViewModels
         {
             return Uri.EscapeDataString(phone ?? string.Empty).Replace("%2B", "+");
         }
+
+        private void MarkContacted(ContactItemViewModel contact)
+        {
+            if (contact == null)
+                return;
+            ContactModel model = _model.Contacts.FindById(contact.Id);
+            if (model == null)
+                return;
+
+            model.RecordInteraction(_languageService["contact_interaction_contacted"]);
+            Persist();
+            contact.NotifyCrmChanged();
+            NotifyContactListChanged();
+        }
+
+        private void LogInteraction(ContactItemViewModel contact)
+        {
+            if (contact == null)
+                return;
+            if (string.IsNullOrWhiteSpace(contact.DraftLogSummary))
+                return;
+
+            ContactModel model = _model.Contacts.FindById(contact.Id);
+            if (model == null)
+                return;
+
+            model.RecordInteraction(contact.DraftLogSummary);
+            contact.DraftLogSummary = string.Empty;
+            Persist();
+            contact.NotifyCrmChanged();
+            NotifyContactListChanged();
+        }
+
+        /// <summary>
+        /// Returns localized label text for a follow-up interval choice.
+        /// </summary>
+        public string FormatFollowUpInterval(int days)
+        {
+            if (days <= 0)
+                return _languageService["contact_follow_up_none"];
+            return _languageService.LoadTextFmt("contact_follow_up_days", days);
+        }
     }
 
     /// <summary>
@@ -420,6 +493,7 @@ namespace SilentNotes.ViewModels
     {
         private readonly ContactModel _model;
         private readonly Action _persist;
+        private string _draftLogSummary;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ContactItemViewModel"/> class.
@@ -462,6 +536,94 @@ namespace SilentNotes.ViewModels
         public IReadOnlyList<string> Phones
         {
             get { return _model.Phones; }
+        }
+
+        /// <summary>Local-only CRM notes about the contact.</summary>
+        public string Notes
+        {
+            get { return _model.Notes; }
+            set
+            {
+                string normalized = value;
+                if (_model.Notes != normalized)
+                {
+                    _model.Notes = normalized;
+                    _model.RefreshModifiedAt();
+                    _persist();
+                    OnPropertyChanged(nameof(Notes));
+                }
+            }
+        }
+
+        /// <summary>Gets or sets the follow-up interval in days (0 = none).</summary>
+        public int FollowUpIntervalDays
+        {
+            get { return _model.FollowUpIntervalDays; }
+            set
+            {
+                if (_model.FollowUpIntervalDays != value)
+                {
+                    _model.FollowUpIntervalDays = value;
+                    _model.RefreshFollowUpSchedule();
+                    _model.RefreshModifiedAt();
+                    _persist();
+                    NotifyCrmChanged();
+                }
+            }
+        }
+
+        /// <summary>Gets whether a follow-up is due today or overdue.</summary>
+        public bool IsFollowUpDue
+        {
+            get { return ContactModel.IsFollowUpDue(_model.NextFollowUpUtc); }
+        }
+
+        /// <summary>Gets whether a follow-up date is scheduled.</summary>
+        public bool HasNextFollowUp
+        {
+            get { return _model.NextFollowUpUtc.HasValue; }
+        }
+
+        /// <summary>Localized next follow-up date for display, or null.</summary>
+        public string NextFollowUpText
+        {
+            get
+            {
+                if (!_model.NextFollowUpUtc.HasValue)
+                    return null;
+                return _model.NextFollowUpUtc.Value.ToLocalTime().ToString("d");
+            }
+        }
+
+        /// <summary>Gets the local interaction log entries, newest first.</summary>
+        public IReadOnlyList<ContactInteractionEntryModel> RecentInteractionLog
+        {
+            get
+            {
+                return _model.InteractionLog
+                    .OrderByDescending(entry => entry.Utc)
+                    .Take(8)
+                    .ToList();
+            }
+        }
+
+        /// <summary>Gets or sets the draft text for a custom log interaction entry.</summary>
+        public string DraftLogSummary
+        {
+            get { return _draftLogSummary; }
+            set { SetProperty(ref _draftLogSummary, value); }
+        }
+
+        /// <summary>
+        /// Raises property-change notifications for CRM-bound UI.
+        /// </summary>
+        public void NotifyCrmChanged()
+        {
+            OnPropertyChanged(nameof(FollowUpIntervalDays));
+            OnPropertyChanged(nameof(IsFollowUpDue));
+            OnPropertyChanged(nameof(HasNextFollowUp));
+            OnPropertyChanged(nameof(NextFollowUpText));
+            OnPropertyChanged(nameof(RecentInteractionLog));
         }
 
         /// <summary>

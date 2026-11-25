@@ -116,6 +116,8 @@ namespace SilentNotes.ViewModels
                 result = ModificationDetector.CombineWithStringHash(tag, result);
             }
             result = ModificationDetector.CombineWithStringHash(noteViewModel.UnlockedHtmlContent, result);
+            result = ModificationDetector.CombineWithStringHash(noteViewModel.Status, result);
+            result = ModificationDetector.CombineHashCodes(new long[] { result, noteViewModel.Priority, noteViewModel.DueAt?.GetHashCode() ?? 0 });
             return result;
         }
 
@@ -184,6 +186,98 @@ namespace SilentNotes.ViewModels
         public IEnumerable<string> TagSuggestions
         {
             get { return _allDistinctAndSortedTags.Where(tag => !Tags.Contains(tag, StringComparer.InvariantCultureIgnoreCase)); }
+        }
+
+        /// <summary>
+        /// Gets or sets the workflow status (empty, todo, doing, done, blocked).
+        /// </summary>
+        public new string Status
+        {
+            get { return NoteMetadata.NormalizeStatus(Model.Status); }
+
+            set
+            {
+                string normalized = NoteMetadata.NormalizeStatus(value);
+                if (!NoteMetadata.IsValidStatus(normalized))
+                    normalized = string.Empty;
+                if (SetProperty(Model.Status ?? string.Empty, normalized, v =>
+                {
+                    Model.Status = v;
+                    Model.RefreshMetaModifiedAt();
+                    MarkSearchableContentAsDirty();
+                }))
+                {
+                    OnPropertyChanged(nameof(Status));
+                    OnPropertyChanged(nameof(IsDueOverdue));
+                    OnPropertyChanged(nameof(HasMetadataBadges));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the priority (0–3).
+        /// </summary>
+        public new int Priority
+        {
+            get { return Model.Priority; }
+
+            set
+            {
+                int clamped = Math.Max(NoteMetadata.PriorityLow, Math.Min(NoteMetadata.PriorityUrgent, value));
+                if (SetProperty(Model.Priority, clamped, v =>
+                {
+                    Model.Priority = v;
+                    Model.RefreshMetaModifiedAt();
+                    MarkSearchableContentAsDirty();
+                }))
+                {
+                    OnPropertyChanged(nameof(Priority));
+                    OnPropertyChanged(nameof(HasMetadataBadges));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the due date as UTC date (time cleared).
+        /// </summary>
+        public new DateTime? DueAt
+        {
+            get { return Model.DueAt; }
+
+            set
+            {
+                DateTime? utcDate = value.HasValue
+                    ? DateTime.SpecifyKind(value.Value.Date, DateTimeKind.Utc)
+                    : (DateTime?)null;
+                if (SetProperty(Model.DueAt, utcDate, v =>
+                {
+                    Model.DueAt = v;
+                    Model.RefreshMetaModifiedAt();
+                }))
+                {
+                    OnPropertyChanged(nameof(DueAt));
+                    OnPropertyChanged(nameof(IsDueOverdue));
+                    OnPropertyChanged(nameof(HasMetadataBadges));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the due date for date-picker binding (local calendar date).
+        /// </summary>
+        public DateTime? DueAtLocal
+        {
+            get
+            {
+                if (!DueAt.HasValue)
+                    return null;
+                return DueAt.Value.Date;
+            }
+
+            set
+            {
+                DueAt = value;
+            }
         }
 
         /// <inheritdoc/>

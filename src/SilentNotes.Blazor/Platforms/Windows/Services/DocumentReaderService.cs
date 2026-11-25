@@ -97,5 +97,8 @@ namespace SilentNotes.Platforms.Services
 
         /// <inheritdoc/>
         public bool TryDeletePath(string path, bool isDirectory) => false;
+
+        /// <inheritdoc/>
+        public bool TryRenamePath(string path, string newFileName) => false;
     }
 }

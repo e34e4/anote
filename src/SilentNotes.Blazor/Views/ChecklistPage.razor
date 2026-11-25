@@ -211,6 +211,8 @@ div.note-dark .detail-view.checklist .ProseMirror p::after { content: @(IconServ
 			<div @ref="_editorContainer" id="myeditor" class="note-viewer detail-view @ViewModel.CssClassNoteType"></div>
 		</div>
 
+		<NoteMetadataEditor ViewModel="ViewModel" />
+
 		@* Tags *@
 		<div id="tag-container" class="flex-none pa-2 mud-elevation-5">
 			<MudPaper Class="ml-1 pa-0" Style="float:right; width:45%; max-width:240px" Elevation="0">

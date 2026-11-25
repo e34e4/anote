@@ -145,6 +145,8 @@ namespace SilentNotes.Services
             if (string.IsNullOrWhiteSpace(url))
                 return false;
 
+            url = UrlCheckUtils.CleanTrackingParams(url.Trim(), out _);
+
             lock (_lock)
             {
                 AbroBookmarkStoreModel store = LoadOrDefault();
@@ -166,7 +168,7 @@ namespace SilentNotes.Services
                 {
                     store.Items.Insert(0, new AbroBookmarkItemModel
                     {
-                        Url = url.Trim(),
+                        Url = url,
                         Title = (title ?? string.Empty).Trim(),
                         ModifiedAt = DateTime.UtcNow,
                     });

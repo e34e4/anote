@@ -90,6 +90,7 @@ namespace SilentNotes.Platforms
                     return;
                 }
 
+                url = UrlCheckUtils.CleanTrackingParams(url, out _);
                 string title = text.Replace(url, string.Empty).Trim();
                 if (string.IsNullOrWhiteSpace(title))
                     title = new Uri(url).Host;

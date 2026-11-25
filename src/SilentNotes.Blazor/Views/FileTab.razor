@@ -16,12 +16,40 @@
 		padding: 10px;
 		color: #ffffff;
 	}
+	.file-sticky-header {
+		position: sticky;
+		top: 0;
+		z-index: 8;
+		background-color: #000000;
+	}
 	.file-toolbar {
 		display: flex;
 		align-items: center;
 		gap: 6px;
 		padding: 2px 4px 10px 4px;
 		border-bottom: 1px solid #202020;
+	}
+	.file-sort-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		padding: 0 4px 8px 4px;
+		border-bottom: 1px solid #202020;
+		align-items: center;
+	}
+	.file-sort-chip {
+		border: 1px solid #2b2b2b;
+		border-radius: 8px;
+		background-color: #000000;
+		color: #bdbdbd;
+		font-size: 0.78rem;
+		padding: 4px 10px;
+		cursor: pointer;
+		touch-action: manipulation;
+	}
+	.file-sort-chip.active {
+		border-color: var(--mud-palette-primary);
+		color: var(--mud-palette-primary);
 	}
 	.file-path {
 		font-family: ui-monospace, "Cascadia Code", monospace;
@@ -63,7 +91,7 @@
 	}
 	.file-row {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		padding: 10px 6px;
 		border-bottom: 1px solid #202020;
 		gap: 8px;
@@ -78,9 +106,12 @@
 	}
 	.file-row-name {
 		font-weight: 600;
-		white-space: nowrap;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
 		overflow: hidden;
-		text-overflow: ellipsis;
+		white-space: normal;
+		word-break: break-word;
 	}
 	.file-row-meta {
 		font-size: 0.8rem;
@@ -118,73 +149,81 @@
 </style>
 
 <div class="file-root">
-	<div class="file-toolbar" style="flex-wrap:wrap;">
-		@for (int i = 0; i < ViewModel.PathTabs.Count; i++)
-		{
-			int tabIndex = i;
-			<button class="file-btn @(tabIndex == ViewModel.ActivePathTabIndex ? "primary" : null)"
-				@onclick="() => SelectPathTabAsync(tabIndex)"
-				title="@(ViewModel.PathTabs[tabIndex].Path)">
-				<span>@(string.IsNullOrEmpty(ViewModel.PathTabs[tabIndex].Label) ? "/" : ViewModel.PathTabs[tabIndex].Label)</span>
-				@if (ViewModel.PathTabs.Count > 1)
-				{
-					<span @onclick:stopPropagation="true" @onclick="() => ClosePathTabAsync(tabIndex)">✕</span>
-				}
-			</button>
-		}
-		<button class="file-btn" @onclick="AddPathTabAsync" title="@LanguageService["path_tab_add"]">+</button>
-	</div>
-
-	<div class="file-toolbar">
-		@if (ViewModel.CanNavigateUp)
-		{
-			<MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small" Color="Color.Inherit"
-				Disabled="@ViewModel.IsBusy" OnClick="NavigateUpAsync" title="@LanguageService["file_up"]" />
-		}
-		<div class="file-path" title="@ViewModel.CurrentPathDisplay">@ViewModel.CurrentPathDisplay</div>
-
-		<MudIconButton Icon="@Icons.Material.Filled.UploadFile" Size="Size.Small" Color="Color.Primary"
-			Disabled="@ViewModel.IsBusy" OnClick="UploadFileAsync" title="@LanguageService["file_upload"]" />
-		<MudIconButton Icon="@Icons.Material.Filled.NoteAdd" Size="Size.Small" Color="Color.Inherit"
-			Disabled="@(!ViewModel.IsConfigured || ViewModel.IsBusy)" OnClick="() => ViewModel.OpenNewTextFileCommand.Execute(null)" title="@LanguageService["file_new_txt"]" />
-		<MudIconButton Icon="@Icons.Material.Filled.CreateNewFolder" Size="Size.Small" Color="Color.Inherit"
-			Disabled="@(!ViewModel.IsConfigured || ViewModel.IsBusy)" OnClick="() => ViewModel.OpenNewFolderCommand.Execute(null)" title="@LanguageService["file_new_folder"]" />
-		<MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Color="Color.Inherit"
-			Disabled="@(!ViewModel.IsConfigured || ViewModel.IsBusy)" OnClick="RefreshAsync" title="@LanguageService["file_refresh"]" />
-		<MudIconButton Icon="@Icons.Material.Filled.Settings" Size="Size.Small" Color="Color.Inherit"
-			OnClick="() => ViewModel.OpenSettingsCommand.Execute(null)" title="@LanguageService["file_settings"]" />
-	</div>
-
-	<div class="file-locations-bar">
-		<MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Color="Color.Inherit"
-			AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
-			title="@LanguageService["file_cloud_locations_menu"]">
-			<MudMenuItem OnClick="() => OpenCloudLocationTabAsync(null)">
-				@LanguageService["file_cloud_location_primary"]
-			</MudMenuItem>
-			@foreach (var location in ViewModel.ExtraCloudLocations)
+	<div class="file-sticky-header">
+		<div class="file-toolbar" style="flex-wrap:wrap;">
+			@for (int i = 0; i < ViewModel.PathTabs.Count; i++)
 			{
-				if (location == null)
-				{
-					continue;
-				}
-				<MudMenuItem OnClick="() => OpenCloudLocationTabAsync(location.Id)">
-					@location.DisplayName
-				</MudMenuItem>
+				int tabIndex = i;
+				<button class="file-btn @(tabIndex == ViewModel.ActivePathTabIndex ? "primary" : null)"
+					@onclick="() => SelectPathTabAsync(tabIndex)"
+					title="@(ViewModel.PathTabs[tabIndex].Path)">
+					<span>@(string.IsNullOrEmpty(ViewModel.PathTabs[tabIndex].Label) ? "/" : ViewModel.PathTabs[tabIndex].Label)</span>
+					@if (ViewModel.PathTabs.Count > 1)
+					{
+						<span @onclick:stopPropagation="true" @onclick="() => ClosePathTabAsync(tabIndex)">✕</span>
+					}
+				</button>
 			}
-		</MudMenu>
-	</div>
-
-	@if (ViewModel.HasSelection)
-	{
-		<div class="file-selection-bar">
-			<span>@ViewModel.SelectedCount</span>
-			<button class="file-btn" disabled="@ViewModel.IsBusy" @onclick="ZipSelectedAsync">@LanguageService["file_zip"]</button>
-			<button class="file-btn" disabled="@ViewModel.IsBusy" @onclick="UnzipSelectedAsync">@LanguageService["file_unzip"]</button>
-			<button class="file-btn" disabled="@ViewModel.IsBusy" @onclick="SplitSelectedAsync">@LanguageService["file_split"]</button>
-			<button class="file-btn" @onclick="ClearSelection">@LanguageService["file_clear_selection"]</button>
+			<button class="file-btn" @onclick="AddPathTabAsync" title="@LanguageService["path_tab_add"]">+</button>
 		</div>
-	}
+
+		<div class="file-toolbar">
+			@if (ViewModel.CanNavigateUp)
+			{
+				<MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small" Color="Color.Inherit"
+					Disabled="@ViewModel.IsBusy" OnClick="NavigateUpAsync" title="@LanguageService["file_up"]" />
+			}
+			<div class="file-path" title="@ViewModel.CurrentPathDisplay">@ViewModel.CurrentPathDisplay</div>
+
+			<MudIconButton Icon="@Icons.Material.Filled.UploadFile" Size="Size.Small" Color="Color.Primary"
+				Disabled="@ViewModel.IsBusy" OnClick="UploadFileAsync" title="@LanguageService["file_upload"]" />
+			<MudIconButton Icon="@Icons.Material.Filled.NoteAdd" Size="Size.Small" Color="Color.Inherit"
+				Disabled="@(!ViewModel.IsConfigured || ViewModel.IsBusy)" OnClick="() => ViewModel.OpenNewTextFileCommand.Execute(null)" title="@LanguageService["file_new_txt"]" />
+			<MudIconButton Icon="@Icons.Material.Filled.CreateNewFolder" Size="Size.Small" Color="Color.Inherit"
+				Disabled="@(!ViewModel.IsConfigured || ViewModel.IsBusy)" OnClick="() => ViewModel.OpenNewFolderCommand.Execute(null)" title="@LanguageService["file_new_folder"]" />
+			<MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Color="Color.Inherit"
+				Disabled="@(!ViewModel.IsConfigured || ViewModel.IsBusy)" OnClick="RefreshAsync" title="@LanguageService["file_refresh"]" />
+			<MudIconButton Icon="@Icons.Material.Filled.Settings" Size="Size.Small" Color="Color.Inherit"
+				OnClick="() => ViewModel.OpenSettingsCommand.Execute(null)" title="@LanguageService["file_settings"]" />
+		</div>
+
+		<div class="file-locations-bar">
+			<MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Color="Color.Inherit"
+				AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
+				title="@LanguageService["file_cloud_locations_menu"]">
+				<MudMenuItem OnClick="() => OpenCloudLocationTabAsync(null)">
+					@LanguageService["file_cloud_location_primary"]
+				</MudMenuItem>
+				@foreach (var location in ViewModel.ExtraCloudLocations)
+				{
+					if (location == null)
+					{
+						continue;
+					}
+					<MudMenuItem OnClick="() => OpenCloudLocationTabAsync(location.Id)">
+						@location.DisplayName
+					</MudMenuItem>
+				}
+			</MudMenu>
+		</div>
+
+		<div class="file-sort-row">
+			<button type="button" class="file-sort-chip @(ViewModel.IsSortDate ? "active" : null)" @onclick='() => ViewModel.SetSortModeCommand.Execute("date")'>@LanguageService["browse_sort_date"]</button>
+			<button type="button" class="file-sort-chip @(ViewModel.IsSortName ? "active" : null)" @onclick='() => ViewModel.SetSortModeCommand.Execute("name")'>@LanguageService["browse_sort_name"]</button>
+			<button type="button" class="file-sort-chip @(ViewModel.IsSortSize ? "active" : null)" @onclick='() => ViewModel.SetSortModeCommand.Execute("size")'>@LanguageService["browse_sort_size"]</button>
+		</div>
+
+		@if (ViewModel.HasSelection)
+		{
+			<div class="file-selection-bar">
+				<span>@ViewModel.SelectedCount</span>
+				<button class="file-btn" disabled="@ViewModel.IsBusy" @onclick="ZipSelectedAsync">@LanguageService["file_zip"]</button>
+				<button class="file-btn" disabled="@ViewModel.IsBusy" @onclick="UnzipSelectedAsync">@LanguageService["file_unzip"]</button>
+				<button class="file-btn" disabled="@ViewModel.IsBusy" @onclick="SplitSelectedAsync">@LanguageService["file_split"]</button>
+				<button class="file-btn" @onclick="ClearSelection">@LanguageService["file_clear_selection"]</button>
+			</div>
+		}
+	</div>
 
 	@if (ViewModel.IsNewFolderOpen)
 	{

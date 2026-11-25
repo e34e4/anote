@@ -58,6 +58,18 @@ namespace SilentNotes.Models
         /// <summary>Gets or sets the label of the running timer.</summary>
         [XmlAttribute(AttributeName = "timer_label")]
         public string TimerLabel { get; set; }
+
+        /// <summary>Gets or sets the Pomodoro mode of the running timer (focus, break, longbreak).</summary>
+        [XmlAttribute(AttributeName = "timer_mode")]
+        public string TimerMode { get; set; }
+
+        /// <summary>Gets or sets the note id to receive focus session logs, or empty when using the focus log note.</summary>
+        [XmlAttribute(AttributeName = "focus_linked_note")]
+        public Guid FocusLinkedNoteId { get; set; }
+
+        /// <summary>Gets or sets the timer id for which a focus completion was already logged.</summary>
+        [XmlAttribute(AttributeName = "last_completed_timer")]
+        public Guid LastCompletedTimerId { get; set; }
     }
 
     /// <summary>

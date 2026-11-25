@@ -510,6 +510,29 @@ namespace SilentNotes.Platforms.Services
             return ResolvePhotoPath(fileName);
         }
 
+        private static List<string> GetSiblingPhotoPaths(string path)
+        {
+            var result = new List<string>();
+            try
+            {
+                string dir = Path.GetDirectoryName(path);
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+                    return result;
+
+                foreach (string file in Directory.EnumerateFiles(dir).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+                {
+                    string ext = Path.GetExtension(file)?.ToLowerInvariant();
+                    if (ext is ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif" or ".bmp" or ".heic")
+                        result.Add(file);
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            return result;
+        }
+
         /// <inheritdoc/>
         public Task<bool> OpenPhotoAsync(string fileName)
         {
@@ -535,19 +558,23 @@ namespace SilentNotes.Platforms.Services
                     }
 
                     Context context = _appContext.Context;
-                    var shareDir = new Java.IO.File(context.CacheDir, ShareFolder);
-                    shareDir.Mkdirs();
-                    var shareFile = new Java.IO.File(shareDir, Path.GetFileName(fileName));
-                    File.Copy(sourcePath, shareFile.AbsolutePath, overwrite: true);
+                    List<string> gallery = GetSiblingPhotoPaths(sourcePath);
+                    int index = gallery.FindIndex(p => string.Equals(p, sourcePath, StringComparison.OrdinalIgnoreCase));
+                    if (index < 0)
+                    {
+                        gallery.Add(sourcePath);
+                        index = gallery.Count - 1;
+                    }
 
-                    global::Android.Net.Uri uri = AndroidX.Core.Content.FileProvider.GetUriForFile(
-                        context, context.PackageName + ".fileprovider", shareFile);
-
-                    string mime = GetMimeTypeForExtension(Path.GetExtension(fileName));
-                    var intent = new Intent(Intent.ActionView);
-                    intent.SetDataAndType(uri, mime);
-                    intent.AddFlags(ActivityFlags.GrantReadUriPermission | ActivityFlags.NewTask);
-                    context.StartActivity(intent);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SilentNotes.ImageViewerActivity.Start(
+                            context,
+                            sourcePath,
+                            Path.GetFileNameWithoutExtension(fileName),
+                            gallery,
+                            index);
+                    });
                     return true;
                 }
                 catch (Exception)

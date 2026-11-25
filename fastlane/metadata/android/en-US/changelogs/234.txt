@@ -1,0 +1,6 @@
+• Ambient Android: anote:// deep links, launcher shortcuts, clipboard widget, floating mini-pad.
+• Notes: daily journals, status/priority/due + list/table/board views, focus timer logging.
+• Booky: auto strip tracking params, dead-link checker; Calc custom rates; Rec voice memos.
+• Camera: document scan OCR with perspective crop; in-app image viewer with pinch zoom.
+• File/Player/Reader: sort by date/name/size, sticky path bars, rename, two-line names.
+• Contacts CRM (local notes, follow-ups, interaction log) and Settings automation rules (SMS/alarm/RSS → actions).

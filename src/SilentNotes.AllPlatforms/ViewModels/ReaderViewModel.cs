@@ -13,6 +13,7 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.ViewModels
 {
@@ -33,6 +34,10 @@ namespace SilentNotes.ViewModels
         private int _activePathTabIndex;
         private List<PathTabSessionModel> _pathTabs = new List<PathTabSessionModel>();
         private readonly HashSet<string> _selectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private FileBrowserSortMode _sortMode = FileBrowserSortMode.DateDesc;
+        private bool _isRenameOpen;
+        private string _renameTargetPath;
+        private string _renameDraft;
 
         public ReaderViewModel(
             IDocumentReaderService readerService,
@@ -64,6 +69,10 @@ namespace SilentNotes.ViewModels
             DeleteSelectedCommand = new AsyncRelayCommand(DeleteSelectedAsync);
             SelectAllVisibleCommand = new RelayCommand(SelectAllVisible);
             ClearSelectionCommand = new RelayCommand(ClearSelection);
+            SetSortModeCommand = new RelayCommand<string>(SetSortMode);
+            StartRenameSelectedCommand = new RelayCommand(StartRenameSelected);
+            CancelRenameCommand = new RelayCommand(CancelRename);
+            ConfirmRenameCommand = new AsyncRelayCommand(ConfirmRenameAsync);
 
             LoadPathTabsFromSettings();
             Reload();
@@ -89,6 +98,10 @@ namespace SilentNotes.ViewModels
         public ICommand DeleteSelectedCommand { get; }
         public ICommand SelectAllVisibleCommand { get; }
         public ICommand ClearSelectionCommand { get; }
+        public ICommand SetSortModeCommand { get; }
+        public ICommand StartRenameSelectedCommand { get; }
+        public ICommand CancelRenameCommand { get; }
+        public ICommand ConfirmRenameCommand { get; }
 
         public bool HasSelection => _selectedPaths.Count > 0;
 
@@ -151,6 +164,45 @@ namespace SilentNotes.ViewModels
         public bool IsKindPdf => string.Equals(_kindFilter, "pdf", StringComparison.OrdinalIgnoreCase);
         public bool IsKindEbook => string.Equals(_kindFilter, "ebook", StringComparison.OrdinalIgnoreCase);
 
+        /// <summary>Gets or sets how items in the current directory are sorted.</summary>
+        public FileBrowserSortMode SortMode
+        {
+            get => _sortMode;
+            set
+            {
+                if (SetProperty(ref _sortMode, value))
+                {
+                    PersistSortMode();
+                    OnPropertyChanged(
+                        nameof(FilteredItems),
+                        nameof(HasNoMatches),
+                        nameof(CountText),
+                        nameof(IsSortName),
+                        nameof(IsSortDate),
+                        nameof(IsSortSize));
+                }
+            }
+        }
+
+        public bool IsSortName => _sortMode == FileBrowserSortMode.NameAsc;
+        public bool IsSortDate => _sortMode == FileBrowserSortMode.DateDesc;
+        public bool IsSortSize => _sortMode == FileBrowserSortMode.SizeDesc;
+
+        public bool IsRenameOpen
+        {
+            get => _isRenameOpen;
+            private set => SetProperty(ref _isRenameOpen, value);
+        }
+
+        public string RenameDraft
+        {
+            get => _renameDraft;
+            set => SetProperty(ref _renameDraft, value);
+        }
+
+        /// <summary>True when exactly one non-folder item is selected.</summary>
+        public bool CanRenameSelection => TryGetSingleSelectedFile(out _);
+
         public IReadOnlyList<DocumentItemViewModel> FilteredItems
         {
             get
@@ -171,7 +223,7 @@ namespace SilentNotes.ViewModels
                 if (!string.IsNullOrEmpty(filter))
                     query = query.Where(i => i.Name.ToLowerInvariant().Contains(filter));
 
-                return query.ToList();
+                return SortItems(query);
             }
         }
 
@@ -236,7 +288,7 @@ namespace SilentNotes.ViewModels
                 return;
             if (!_selectedPaths.Add(item.Path))
                 _selectedPaths.Remove(item.Path);
-            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount));
+            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount), nameof(CanRenameSelection));
             RaiseStateChanged();
         }
 
@@ -247,7 +299,7 @@ namespace SilentNotes.ViewModels
                 if (!string.IsNullOrEmpty(item.Path))
                     _selectedPaths.Add(item.Path);
             }
-            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount));
+            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount), nameof(CanRenameSelection));
             RaiseStateChanged();
         }
 
@@ -256,7 +308,8 @@ namespace SilentNotes.ViewModels
             if (_selectedPaths.Count == 0)
                 return;
             _selectedPaths.Clear();
-            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount));
+            CancelRename();
+            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount), nameof(CanRenameSelection));
             RaiseStateChanged();
         }
 
@@ -303,9 +356,8 @@ namespace SilentNotes.ViewModels
             try
             {
                 IsBusy = true;
-                _items = _readerService.ListCurrentDirectory()
-                    .Select(m => new DocumentItemViewModel(m))
-                    .ToList();
+                _items = SortItems(_readerService.ListCurrentDirectory()
+                    .Select(m => new DocumentItemViewModel(m)));
                 OnPropertyChanged(
                     nameof(FilteredItems),
                     nameof(IsEmpty),
@@ -448,6 +500,7 @@ namespace SilentNotes.ViewModels
                     },
                 };
             _activePathTabIndex = Math.Clamp(settings.ReaderPathTabIndex, 0, _pathTabs.Count - 1);
+            _sortMode = FileBrowserSort.ParseOrDefault(settings.ReaderSortMode);
             string path = _pathTabs[_activePathTabIndex].Path;
             if (!string.IsNullOrEmpty(path))
                 _readerService.EnterDirectory(path);
@@ -508,6 +561,102 @@ namespace SilentNotes.ViewModels
         {
             KindFilter = string.IsNullOrEmpty(kind) ? "all" : kind;
             RaiseStateChanged();
+        }
+
+        private void SetSortMode(string modeKey)
+        {
+            if (string.IsNullOrEmpty(modeKey))
+                return;
+            if (string.Equals(modeKey, "name", StringComparison.OrdinalIgnoreCase))
+                SortMode = FileBrowserSortMode.NameAsc;
+            else if (string.Equals(modeKey, "size", StringComparison.OrdinalIgnoreCase))
+                SortMode = FileBrowserSortMode.SizeDesc;
+            else
+                SortMode = FileBrowserSortMode.DateDesc;
+            RaiseStateChanged();
+        }
+
+        private void StartRenameSelected()
+        {
+            if (!TryGetSingleSelectedFile(out DocumentItemViewModel item))
+                return;
+            _renameTargetPath = item.Path;
+            RenameDraft = item.Name;
+            IsRenameOpen = true;
+            OnPropertyChanged(nameof(CanRenameSelection));
+            RaiseStateChanged();
+        }
+
+        private void CancelRename()
+        {
+            _renameTargetPath = null;
+            RenameDraft = null;
+            IsRenameOpen = false;
+            RaiseStateChanged();
+        }
+
+        private async Task ConfirmRenameAsync()
+        {
+            string newName = RenameDraft?.Trim();
+            if (string.IsNullOrEmpty(_renameTargetPath) || string.IsNullOrWhiteSpace(newName))
+            {
+                CancelRename();
+                return;
+            }
+
+            if (string.Equals(newName, Path.GetFileName(_renameTargetPath), StringComparison.Ordinal))
+            {
+                CancelRename();
+                return;
+            }
+
+            bool ok = _readerService.TryRenamePath(_renameTargetPath, newName);
+            if (!ok)
+                _feedbackService?.ShowToast(_languageService["browse_rename_failed"], FeedbackSeverity.Warning);
+            else
+            {
+                string dir = Path.GetDirectoryName(_renameTargetPath);
+                string newPath = string.IsNullOrEmpty(dir) ? newName : Path.Combine(dir, newName);
+                if (_selectedPaths.Remove(_renameTargetPath))
+                    _selectedPaths.Add(newPath);
+                _feedbackService?.ShowToast(_languageService.LoadTextFmt("browse_renamed", newName));
+            }
+
+            CancelRename();
+            Reload();
+            OnPropertyChanged(nameof(HasSelection), nameof(SelectedCount), nameof(CanRenameSelection));
+            await Task.CompletedTask;
+        }
+
+        private bool TryGetSingleSelectedFile(out DocumentItemViewModel item)
+        {
+            item = null;
+            if (_selectedPaths.Count != 1)
+                return false;
+            string path = _selectedPaths.First();
+            item = _items.FirstOrDefault(i =>
+                string.Equals(i.Path, path, StringComparison.OrdinalIgnoreCase));
+            return item != null && item.Kind != DocumentKind.Folder;
+        }
+
+        private List<DocumentItemViewModel> SortItems(IEnumerable<DocumentItemViewModel> items)
+        {
+            return FileBrowserSort.Apply(
+                items,
+                _sortMode,
+                i => i.Kind == DocumentKind.Folder,
+                i => i.Name,
+                i => i.Model.ModifiedLocal,
+                i => i.Model.SizeBytes);
+        }
+
+        private void PersistSortMode()
+        {
+            if (_settingsService == null)
+                return;
+            SettingsModel settings = _settingsService.LoadSettingsOrDefault();
+            settings.ReaderSortMode = _sortMode.ToString();
+            _settingsService.TrySaveSettingsToLocalDevice(settings);
         }
 
         private async Task EnterOrOpenAsync(DocumentItemViewModel item)

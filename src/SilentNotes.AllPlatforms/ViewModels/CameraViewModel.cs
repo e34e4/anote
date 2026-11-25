@@ -25,6 +25,7 @@ namespace SilentNotes.ViewModels
     {
         private readonly ICameraService _cameraService;
         private readonly IImageEditorService _imageEditorService;
+        private readonly IDocumentCropService _documentCropService;
         private readonly ISettingsService _settingsService;
         private readonly IFilePickerService _filePickerService;
         private readonly ILanguageService _languageService;
@@ -51,6 +52,7 @@ namespace SilentNotes.ViewModels
             ILanguageService languageService,
             IFeedbackService feedbackService,
             IImageEditorService imageEditorService = null,
+            IDocumentCropService documentCropService = null,
             IOcrService ocrService = null,
             IClipboardService clipboardService = null,
             IRepositoryStorageService repositoryService = null,
@@ -62,6 +64,7 @@ namespace SilentNotes.ViewModels
             _languageService = languageService;
             _feedbackService = feedbackService;
             _imageEditorService = imageEditorService;
+            _documentCropService = documentCropService;
             _ocrService = ocrService;
             _clipboardService = clipboardService;
             _repositoryService = repositoryService;
@@ -88,6 +91,7 @@ namespace SilentNotes.ViewModels
             CancelRenameCommand = new RelayCommand(CancelRename);
             DeletePhotoCommand = new AsyncRelayCommand<CameraPhotoItemViewModel>(DeletePhotoAsync);
             OcrPhotoCommand = new AsyncRelayCommand<CameraPhotoItemViewModel>(OcrPhotoAsync);
+            ScanDocumentOcrCommand = new AsyncRelayCommand<CameraPhotoItemViewModel>(ScanDocumentOcrAsync);
             CopyOcrCommand = new AsyncRelayCommand(CopyOcrAsync);
             SaveOcrNoteCommand = new AsyncRelayCommand(SaveOcrNoteAsync);
             CloseOcrCommand = new RelayCommand(CloseOcr);
@@ -117,6 +121,7 @@ namespace SilentNotes.ViewModels
         public ICommand CancelRenameCommand { get; }
         public ICommand DeletePhotoCommand { get; }
         public ICommand OcrPhotoCommand { get; }
+        public ICommand ScanDocumentOcrCommand { get; }
         public ICommand CopyOcrCommand { get; }
         public ICommand SaveOcrNoteCommand { get; }
         public ICommand CloseOcrCommand { get; }
@@ -141,6 +146,11 @@ namespace SilentNotes.ViewModels
             get => _ocrText;
             private set => SetProperty(ref _ocrText, value);
         }
+
+        /// <summary>Gets a value indicating whether perspective document scan + OCR is available.</summary>
+        public bool IsDocumentScanOcrAvailable =>
+            _ocrService != null && _ocrService.IsSupported
+            && _documentCropService != null && _documentCropService.IsSupported;
 
         /// <summary>Gets a value indicating whether camera capture is supported on this platform.</summary>
         public bool IsSupported => _cameraService.IsSupported;
@@ -709,6 +719,23 @@ namespace SilentNotes.ViewModels
         {
             if (item == null)
                 return;
+            byte[] bytes = await LoadPhotoBytesForOcrAsync(item);
+            if (bytes == null)
+                return;
+
+            await RecognizeAndShowOcrAsync(bytes);
+        }
+
+        public async Task ScanDocumentOcrAsync(CameraPhotoItemViewModel item)
+        {
+            if (item == null)
+                return;
+            if (_documentCropService == null || !_documentCropService.IsSupported)
+            {
+                await OcrPhotoAsync(item);
+                return;
+            }
+
             if (_ocrService == null || !_ocrService.IsSupported)
             {
                 _feedbackService?.ShowToast(_languageService["camera_ocr_unsupported"], FeedbackSeverity.Warning);
@@ -725,7 +752,61 @@ namespace SilentNotes.ViewModels
                     return;
                 }
 
-                byte[] bytes = await File.ReadAllBytesAsync(path);
+                byte[] bytes = await _documentCropService.CropDocumentAsync(path);
+                if (bytes == null || bytes.Length == 0)
+                    return;
+
+                await RecognizeAndShowOcrAsync(bytes);
+            }
+            catch (Exception)
+            {
+                _feedbackService?.ShowToast(_languageService["camera_ocr_failed"], FeedbackSeverity.Warning);
+            }
+            finally
+            {
+                IsOcrBusy = false;
+            }
+        }
+
+        private async Task<byte[]> LoadPhotoBytesForOcrAsync(CameraPhotoItemViewModel item)
+        {
+            if (_ocrService == null || !_ocrService.IsSupported)
+            {
+                _feedbackService?.ShowToast(_languageService["camera_ocr_unsupported"], FeedbackSeverity.Warning);
+                return null;
+            }
+
+            try
+            {
+                IsOcrBusy = true;
+                string path = _cameraService.GetPhotoFilePath(item.FileName);
+                if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                {
+                    _feedbackService?.ShowToast(_languageService["camera_ocr_failed"], FeedbackSeverity.Warning);
+                    return null;
+                }
+
+                return await File.ReadAllBytesAsync(path);
+            }
+            catch (Exception)
+            {
+                _feedbackService?.ShowToast(_languageService["camera_ocr_failed"], FeedbackSeverity.Warning);
+                return null;
+            }
+            finally
+            {
+                IsOcrBusy = false;
+            }
+        }
+
+        private async Task RecognizeAndShowOcrAsync(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length == 0)
+                return;
+
+            try
+            {
+                IsOcrBusy = true;
                 string text = await _ocrService.RecognizeTextAsync(bytes);
                 if (string.IsNullOrWhiteSpace(text))
                 {

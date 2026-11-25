@@ -9,6 +9,7 @@ using Android.App;
 using Android.Content;
 using Android.Provider;
 using Android.Telephony;
+using SilentNotes.Models;
 using SilentNotes.Services;
 
 namespace SilentNotes
@@ -38,6 +39,7 @@ namespace SilentNotes
                 string text = body.ToString();
                 StoreInboxMessage(context, address, text);
                 ShowNotification(context, address, text);
+                RunAutomationRules(address, text);
                 NotifyRunningApp();
             }
             catch (Exception)
@@ -70,6 +72,25 @@ namespace SilentNotes
             builder.SetContentIntent(AppNotifications.BuildOpenAppIntent(context, AppNotifications.SmsNotificationId));
 
             AppNotifications.GetManager(context)?.Notify(AppNotifications.SmsNotificationId, builder.Build());
+        }
+
+        private static void RunAutomationRules(string address, string text)
+        {
+            try
+            {
+                IAutomationRulesEngine engine = Ioc.Instance.GetService<IAutomationRulesEngine>();
+                engine?.Evaluate(
+                    AutomationTriggerTypes.SmsReceived,
+                    new AutomationRuleContext
+                    {
+                        SmsPhone = address,
+                        SmsBody = text,
+                        AppendText = text,
+                    });
+            }
+            catch (Exception)
+            {
+            }
         }
 
         private static void NotifyRunningApp()

@@ -80,7 +80,7 @@ namespace SilentNotes.Workers
                     bookmark.ModifiedAt = updatedAt;
 
                 bookmark.Title = GetString(item, TitleField);
-                bookmark.Url = GetString(item, UrlField);
+                bookmark.Url = UrlCheckUtils.CleanTrackingParams(GetString(item, UrlField), out _);
                 bookmark.Note = GetString(item, NoteField);
                 bookmark.FavIconUrl = GetString(item, FavIconUrlField);
 

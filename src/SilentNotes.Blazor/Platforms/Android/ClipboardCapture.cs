@@ -121,7 +121,15 @@ namespace SilentNotes.Platforms
             Task.Run(() =>
             {
                 _serviceProvider?.GetService<IClipboardHistoryService>()?.AddText(text, limit);
+                ClipboardWidgetPersist.CacheLatestText(_context, text);
                 NotifyClipboardChanged();
+                try
+                {
+                    global::SilentNotes.ClipboardWidgetProvider.RefreshAll(_context);
+                }
+                catch (Exception)
+                {
+                }
             });
         }
 
@@ -155,7 +163,15 @@ namespace SilentNotes.Platforms
                     }
 
                     _serviceProvider?.GetService<IClipboardHistoryService>()?.AddImage(fullImage, thumbnail, GetHistorySizeLimit());
+                    ClipboardWidgetPersist.CacheLatestImage(_context);
                     NotifyClipboardChanged();
+                    try
+                    {
+                        global::SilentNotes.ClipboardWidgetProvider.RefreshAll(_context);
+                    }
+                    catch (Exception)
+                    {
+                    }
                 }
                 catch (Exception ex)
                 {

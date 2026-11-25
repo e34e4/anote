@@ -87,6 +87,24 @@ namespace SilentNotes.Models
         public string AnchorJson { get; set; }
 
         /// <summary>
+        /// Gets or sets the result of the last dead-link check: unknown, ok, broken, or redirect.
+        /// </summary>
+        [XmlAttribute("link_check_status")]
+        public string LinkCheckStatus { get; set; }
+
+        /// <summary>
+        /// Gets or sets the UTC time when <see cref="LinkCheckStatus"/> was last updated.
+        /// </summary>
+        [XmlAttribute("link_checked_at")]
+        public DateTime? LinkCheckedAt { get; set; }
+
+        /// <summary>
+        /// Gets or sets the HTTP status code from the last link check, or 0 if unknown.
+        /// </summary>
+        [XmlAttribute("link_http_status")]
+        public int LinkHttpStatus { get; set; }
+
+        /// <summary>
         /// Sets the <see cref="ModifiedAt"/> property to the current UTC time.
         /// </summary>
         public void RefreshModifiedAt()
@@ -114,6 +132,9 @@ namespace SilentNotes.Models
             target.Note = this.Note;
             target.FavIconUrl = this.FavIconUrl;
             target.AnchorJson = this.AnchorJson;
+            target.LinkCheckStatus = this.LinkCheckStatus;
+            target.LinkCheckedAt = this.LinkCheckedAt;
+            target.LinkHttpStatus = this.LinkHttpStatus;
         }
 
         /// <summary>

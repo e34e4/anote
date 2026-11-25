@@ -118,5 +118,9 @@ namespace SilentNotes.Services
         /// <summary>Deletes a file or folder at <paramref name="path"/> on the device.</summary>
         /// <returns>True when the item was removed.</returns>
         bool TryDeletePath(string path, bool isDirectory);
+
+        /// <summary>Renames a file at <paramref name="path"/> to <paramref name="newFileName"/> (not a path).</summary>
+        /// <returns>True when the file was renamed.</returns>
+        bool TryRenamePath(string path, string newFileName);
     }
 }

@@ -101,6 +101,10 @@ namespace SilentNotes.Services
                 VoiceNoteHelper.EnsureVoiceNote(repositoryModel, out bool voiceChanged);
                 if (voiceChanged)
                     modelWasUpdated = true;
+
+                DailyNoteHelper.EnsureTodayWithoutCalendar(repositoryModel, out bool dailyChanged);
+                if (dailyChanged)
+                    modelWasUpdated = true;
             }
 
             // Automatically save settings if they where modified by an update

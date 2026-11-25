@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/clipboard_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#000000"
+    android:padding="8dp">
+
+    <TextView
+        android:id="@+id/clipboard_widget_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Clipboard"
+        android:textColor="#00FF00"
+        android:textSize="13sp"
+        android:fontFamily="monospace"
+        android:paddingBottom="4dp" />
+
+    <TextView
+        android:id="@+id/clipboard_widget_preview"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@android:color/transparent"
+        android:gravity="top|start"
+        android:hint="Open aNote to refresh"
+        android:textColor="#CCCCCC"
+        android:textColorHint="#666666"
+        android:textSize="12sp"
+        android:fontFamily="monospace"
+        android:maxLines="4"
+        android:ellipsize="end"
+        android:padding="4dp" />
+
+    <TextView
+        android:id="@+id/clipboard_widget_save"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:padding="8dp"
+        android:text="Save"
+        android:textColor="#00FF00"
+        android:textSize="13sp"
+        android:fontFamily="monospace" />
+</LinearLayout>

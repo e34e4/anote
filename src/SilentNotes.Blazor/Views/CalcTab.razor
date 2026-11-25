@@ -233,7 +233,53 @@
 					<MudSelectItem T="string" Value="@currencyCode">@currencyCode</MudSelectItem>
 				}
 			</MudSelect>
-			<MudText Typo="Typo.caption" Class="mud-text-secondary mt-2">Offline approximate rates</MudText>
+			<MudText Typo="Typo.caption" Class="mud-text-secondary mt-2">Offline approximate rates (custom USD rates override defaults)</MudText>
+
+			<div class="calc-var-list mt-2">
+				@foreach (var customCurrency in ViewModel.CustomCurrencyRates)
+				{
+					<div class="calc-var-chip">
+						<span class="calc-var-name">@customCurrency.DisplayText</span>
+						<button class="calc-var-del" @onclick="() => ViewModel.DeleteCustomCurrencyCommand.Execute(customCurrency)">×</button>
+					</div>
+				}
+			</div>
+			<div class="calc-var-form">
+				<input class="calc-date-input" placeholder="Code" value="@ViewModel.CustomCurrencyCode" @oninput="OnCustomCurrencyCodeChanged" />
+				<input class="calc-date-input" placeholder="USD rate" value="@ViewModel.CustomCurrencyUsdRate" @oninput="OnCustomCurrencyUsdRateChanged" />
+				<button class="calc-btn fn" style="width:64px;height:40px;" @onclick="() => ViewModel.SaveCustomCurrencyCommand.Execute(null)">Add</button>
+			</div>
+
+			@if (ViewModel.HasCustomRateProfiles)
+			{
+				<MudSelect T="string" Value="ViewModel.SelectedCustomRateProfileId" ValueChanged="OnCustomRateProfile" Label="Custom rate profile" Variant="Variant.Outlined" Dense="true" Class="mt-2 mb-2" Clearable="true">
+					@foreach (var profile in ViewModel.CustomRateProfiles)
+					{
+						<MudSelectItem T="string" Value="@profile.Id">@profile.DisplayText</MudSelectItem>
+					}
+				</MudSelect>
+				@if (!string.IsNullOrEmpty(ViewModel.CustomRateOutput))
+				{
+					<MudText Typo="Typo.body2" Class="mt-1">@ViewModel.CustomRateOutput</MudText>
+				}
+			}
+
+			<div class="calc-var-list mt-2">
+				@foreach (var profile in ViewModel.CustomRateProfiles)
+				{
+					<div class="calc-var-chip">
+						<span class="calc-var-name">@profile.DisplayText</span>
+						<button class="calc-var-del" @onclick="() => ViewModel.DeleteCustomRateProfileCommand.Execute(profile)">×</button>
+					</div>
+				}
+			</div>
+			<div class="calc-var-form">
+				<input class="calc-date-input" placeholder="Profile name" value="@ViewModel.CustomProfileName" @oninput="OnCustomProfileNameChanged" />
+				<input class="calc-date-input" placeholder="Base" value="@ViewModel.CustomProfileBaseLabel" @oninput="OnCustomProfileBaseChanged" />
+				<input class="calc-date-input" placeholder="Quote" value="@ViewModel.CustomProfileQuoteLabel" @oninput="OnCustomProfileQuoteChanged" />
+				<input class="calc-date-input" placeholder="Factor" value="@ViewModel.CustomProfileRate" @oninput="OnCustomProfileRateChanged" />
+				<button class="calc-btn fn" style="width:64px;height:40px;" @onclick="() => ViewModel.SaveCustomRateProfileCommand.Execute(null)">Add</button>
+			</div>
 		}
 		else if (ViewModel.IsCsConverter)
 		{
@@ -455,4 +501,11 @@
 	private void OnDateToChanged(ChangeEventArgs e) => ViewModel.DateTo = e?.Value?.ToString() ?? string.Empty;
 	private void OnDateAmountChanged(ChangeEventArgs e) => ViewModel.DateAmount = e?.Value?.ToString() ?? string.Empty;
 	private void OnDateUnitChanged(string value) => ViewModel.DateUnit = value;
+	private void OnCustomCurrencyCodeChanged(ChangeEventArgs e) => ViewModel.CustomCurrencyCode = e?.Value?.ToString() ?? string.Empty;
+	private void OnCustomCurrencyUsdRateChanged(ChangeEventArgs e) => ViewModel.CustomCurrencyUsdRate = e?.Value?.ToString() ?? string.Empty;
+	private void OnCustomProfileNameChanged(ChangeEventArgs e) => ViewModel.CustomProfileName = e?.Value?.ToString() ?? string.Empty;
+	private void OnCustomProfileBaseChanged(ChangeEventArgs e) => ViewModel.CustomProfileBaseLabel = e?.Value?.ToString() ?? string.Empty;
+	private void OnCustomProfileQuoteChanged(ChangeEventArgs e) => ViewModel.CustomProfileQuoteLabel = e?.Value?.ToString() ?? string.Empty;
+	private void OnCustomProfileRateChanged(ChangeEventArgs e) => ViewModel.CustomProfileRate = e?.Value?.ToString() ?? string.Empty;
+	private void OnCustomRateProfile(string value) => ViewModel.SelectedCustomRateProfileId = value ?? string.Empty;
 }

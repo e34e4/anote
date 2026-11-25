@@ -2826,12 +2826,13 @@ namespace SilentNotes.Platforms
                 }
 
                 repo.LoadRepositoryOrDefault(out NoteRepositoryModel model);
+                url = UrlCheckUtils.CleanTrackingParams(url.Trim(), out _);
                 string title = string.IsNullOrWhiteSpace(_current?.Title)
                     ? BookyUrlUtils.HostOf(url)
                     : _current.Title.Trim();
                 var bookmark = new BookmarkModel
                 {
-                    Url = url.Trim(),
+                    Url = url,
                     Title = title,
                     Quote = string.Empty,
                     Note = string.Empty,

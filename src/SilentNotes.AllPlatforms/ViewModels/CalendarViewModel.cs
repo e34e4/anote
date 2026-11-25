@@ -10,6 +10,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes.ViewModels
 {
@@ -28,6 +29,7 @@ namespace SilentNotes.ViewModels
         private readonly IDeviceCalendarService _calendarService;
         private readonly ILanguageService _languageService;
         private readonly IFeedbackService _feedbackService;
+        private readonly IRepositoryStorageService _repositoryService;
 
         private DateTime _visibleMonth;
         private DateTime? _selectedDate;
@@ -62,11 +64,16 @@ namespace SilentNotes.ViewModels
         /// <summary>
         /// Initializes a new instance of the <see cref="CalendarViewModel"/> class.
         /// </summary>
-        public CalendarViewModel(IDeviceCalendarService calendarService, ILanguageService languageService, IFeedbackService feedbackService)
+        public CalendarViewModel(
+            IDeviceCalendarService calendarService,
+            ILanguageService languageService,
+            IFeedbackService feedbackService,
+            IRepositoryStorageService repositoryService = null)
         {
             _calendarService = calendarService;
             _languageService = languageService;
             _feedbackService = feedbackService;
+            _repositoryService = repositoryService;
             _visibleMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
 
             Weekdays = BuildWeekdays();
@@ -320,6 +327,7 @@ namespace SilentNotes.ViewModels
 
             await ReloadCalendarsAsync();
             await RebuildMonthAsync();
+            await SyncTodayIntoDailyNoteAsync();
 
             _initialized = true;
             if (_pendingIntent != null)
@@ -483,6 +491,49 @@ namespace SilentNotes.ViewModels
             _visibleMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
             _selectedDate = DateTime.Today;
             await RebuildMonthAsync();
+            await SyncTodayIntoDailyNoteAsync();
+        }
+
+        /// <summary>
+        /// Injects today's calendar events into the daily journal note (once per day marker).
+        /// </summary>
+        private async Task SyncTodayIntoDailyNoteAsync()
+        {
+            if (_repositoryService == null || !HasPermission)
+                return;
+
+            try
+            {
+                DateTime today = DateTime.Today;
+                IReadOnlyList<DeviceEventModel> events = await _calendarService.GetEventsAsync(today, today.AddDays(1));
+                var lines = events
+                    .OrderBy(e => e.AllDay ? 0 : 1)
+                    .ThenBy(e => e.StartUtc)
+                    .Select(FormatDailyCalendarLine)
+                    .Where(line => !string.IsNullOrWhiteSpace(line))
+                    .ToList();
+
+                _repositoryService.LoadRepositoryOrDefault(out NoteRepositoryModel repository);
+                DailyNoteHelper.EnsureToday(repository, lines, out bool changed);
+                if (changed)
+                    _repositoryService.TrySaveRepository(repository);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private static string FormatDailyCalendarLine(DeviceEventModel item)
+        {
+            if (item == null)
+                return null;
+
+            string title = string.IsNullOrWhiteSpace(item.Title) ? "(no title)" : item.Title.Trim();
+            if (item.AllDay)
+                return "All day · " + title;
+
+            string time = item.StartUtc.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
+            return time + " · " + title;
         }
 
         private async Task ChangeMonthAsync(int offset)

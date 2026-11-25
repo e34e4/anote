@@ -10,6 +10,8 @@ using Android.Content.PM;
 using Android.Graphics.Drawables;
 using Android.Media;
 using Android.OS;
+using SilentNotes.Models;
+using SilentNotes.Services;
 
 namespace SilentNotes
 {
@@ -55,6 +57,7 @@ namespace SilentNotes
             string action = intent?.Action ?? ActionRing;
             if (action == ActionStop)
             {
+                RunAutomationDismissed(intent);
                 StopRinging();
                 return StartCommandResult.NotSticky;
             }
@@ -178,6 +181,21 @@ namespace SilentNotes
                     manager?.SetExactAndAllowWhileIdle(AlarmType.RtcWakeup, triggerMs, operation);
                 else
                     manager?.Set(AlarmType.RtcWakeup, triggerMs, operation);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private static void RunAutomationDismissed(Intent intent)
+        {
+            try
+            {
+                string label = intent?.GetStringExtra(AlarmReceiver.ExtraLabel);
+                IAutomationRulesEngine engine = Ioc.Instance.GetService<IAutomationRulesEngine>();
+                engine?.Evaluate(
+                    AutomationTriggerTypes.AlarmDismissed,
+                    new AutomationRuleContext { AppendText = label ?? string.Empty });
             }
             catch (Exception)
             {

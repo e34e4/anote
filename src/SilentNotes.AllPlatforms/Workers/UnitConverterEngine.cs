@@ -191,7 +191,15 @@ namespace SilentNotes.Workers
             },
         };
 
-        public static IReadOnlyList<string> CurrencyCodes => CurrencyToUsd.Keys.OrderBy(k => k).ToList();
+        public static IReadOnlyList<string> CurrencyCodes => GetCurrencyCodes(null);
+
+        /// <summary>
+        /// Returns currency codes from built-in rates merged with optional custom USD rates.
+        /// </summary>
+        public static IReadOnlyList<string> GetCurrencyCodes(IEnumerable<KeyValuePair<string, double>> customUsdRates)
+        {
+            return BuildCurrencyMap(customUsdRates).Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
+        }
 
         public static string ConvertLinear(double value, UnitOption from, UnitOption to)
         {
@@ -221,8 +229,21 @@ namespace SilentNotes.Workers
 
         public static string ConvertCurrency(double value, string fromCode, string toCode)
         {
-            if (!CurrencyToUsd.TryGetValue(fromCode, out double fromRate)
-                || !CurrencyToUsd.TryGetValue(toCode, out double toRate)
+            return ConvertCurrency(value, fromCode, toCode, null);
+        }
+
+        /// <summary>
+        /// Converts between currencies using built-in rates with optional custom overrides.
+        /// </summary>
+        public static string ConvertCurrency(
+            double value,
+            string fromCode,
+            string toCode,
+            IEnumerable<KeyValuePair<string, double>> customUsdRates)
+        {
+            Dictionary<string, double> rates = BuildCurrencyMap(customUsdRates);
+            if (!rates.TryGetValue(NormalizeCurrencyCode(fromCode), out double fromRate)
+                || !rates.TryGetValue(NormalizeCurrencyCode(toCode), out double toRate)
                 || toRate == 0)
             {
                 return string.Empty;
@@ -230,6 +251,41 @@ namespace SilentNotes.Workers
 
             double usd = value * fromRate;
             return FormatNumber(usd / toRate);
+        }
+
+        /// <summary>
+        /// Converts a value using a custom base-to-quote multiplier (e.g. kWh → cost).
+        /// </summary>
+        public static string ConvertCustomRate(double value, double rate)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value) || rate <= 0
+                || double.IsNaN(rate) || double.IsInfinity(rate))
+            {
+                return string.Empty;
+            }
+
+            return FormatNumber(value * rate);
+        }
+
+        private static Dictionary<string, double> BuildCurrencyMap(IEnumerable<KeyValuePair<string, double>> customUsdRates)
+        {
+            var rates = new Dictionary<string, double>(CurrencyToUsd, StringComparer.OrdinalIgnoreCase);
+            if (customUsdRates == null)
+                return rates;
+
+            foreach (KeyValuePair<string, double> entry in customUsdRates)
+            {
+                if (string.IsNullOrWhiteSpace(entry.Key) || entry.Value <= 0)
+                    continue;
+                rates[NormalizeCurrencyCode(entry.Key)] = entry.Value;
+            }
+
+            return rates;
+        }
+
+        private static string NormalizeCurrencyCode(string code)
+        {
+            return string.IsNullOrWhiteSpace(code) ? string.Empty : code.Trim().ToUpperInvariant();
         }
 
         public static string ConvertNumberBase(string input, int fromBase, int toBase)

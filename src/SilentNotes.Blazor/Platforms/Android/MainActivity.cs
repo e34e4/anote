@@ -21,6 +21,10 @@ namespace SilentNotes
         Exported = true,
         ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation)]
     [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataScheme = "anote")]
+    [IntentFilter(
         new[] { "android.intent.action.VIEW" },
         Categories = new[] { "android.intent.category.DEFAULT" },
         DataMimeType = "vnd.android.cursor.item/event")]

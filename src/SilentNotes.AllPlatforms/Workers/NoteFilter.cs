@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using SilentNotes.Models;
 
 namespace SilentNotes.Workers
 {
@@ -17,6 +18,9 @@ namespace SilentNotes.Workers
         private readonly string _pattern;
         private readonly HashSet<string> _userDefinedTags;
         private readonly FilterOptions _options;
+        private readonly string _filterStatus;
+        private readonly int _filterPriority;
+        private readonly bool _filterOverdueOnly;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NoteFilter"/> class.
@@ -24,7 +28,16 @@ namespace SilentNotes.Workers
         /// <param name="pattern">User defined search filter.</param>
         /// <param name="userDefinedTags">List of user defined tag to search for.</param>
         /// <param name="options">Options how to filter the notes.</param>
-        public NoteFilter(string pattern, IEnumerable<string> userDefinedTags, FilterOptions options)
+        /// <param name="filterStatus">When set, only notes with this status are shown.</param>
+        /// <param name="filterPriority">When not <see cref="NoteMetadata.FilterPriorityAny"/>, only notes with this priority are shown.</param>
+        /// <param name="filterOverdueOnly">When true, only overdue notes are shown.</param>
+        public NoteFilter(
+            string pattern,
+            IEnumerable<string> userDefinedTags,
+            FilterOptions options,
+            string filterStatus = null,
+            int filterPriority = NoteMetadata.FilterPriorityAny,
+            bool filterOverdueOnly = false)
         {
             _pattern = pattern;
             if (userDefinedTags == null)
@@ -33,6 +46,9 @@ namespace SilentNotes.Workers
                 userDefinedTags.Where(tag => !string.IsNullOrWhiteSpace(tag)),
                 StringComparer.InvariantCultureIgnoreCase);
             _options = options;
+            _filterStatus = NoteMetadata.NormalizeStatus(filterStatus);
+            _filterPriority = filterPriority;
+            _filterOverdueOnly = filterOverdueOnly;
         }
 
         /// <summary>
@@ -57,6 +73,29 @@ namespace SilentNotes.Workers
         /// </summary>
         /// <param name="noteTags">Tags of the note to test.</param>
         /// <returns>Returns true if the note contains the tags, otherwise false.</returns>
+        /// <summary>
+        /// Checks whether a note matches status, priority, and overdue filters.
+        /// </summary>
+        public bool MatchMetadata(NoteModel note)
+        {
+            if (note == null)
+                return false;
+
+            if (!string.IsNullOrEmpty(_filterStatus))
+            {
+                if (!string.Equals(NoteMetadata.NormalizeStatus(note.Status), _filterStatus, StringComparison.Ordinal))
+                    return false;
+            }
+
+            if (_filterPriority != NoteMetadata.FilterPriorityAny && note.Priority != _filterPriority)
+                return false;
+
+            if (_filterOverdueOnly && !NoteMetadata.IsOverdue(note.DueAt, note.Status))
+                return false;
+
+            return true;
+        }
+
         public bool MatchTags(List<string> noteTags)
         {
             switch (_options)

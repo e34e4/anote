@@ -378,6 +378,10 @@
 							}
 							<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => ViewModel.StartRenameCommand.Execute(item)" title="@LanguageService["camera_rename"]" />
 							<MudIconButton Icon="@Icons.Material.Filled.TextFields" Size="Size.Small" OnClick="() => ViewModel.OcrPhotoCommand.Execute(item)" title="@LanguageService["camera_ocr"]" />
+							@if (ViewModel.IsDocumentScanOcrAvailable && !item.IsVideo)
+							{
+								<MudIconButton Icon="@Icons.Material.Filled.DocumentScanner" Size="Size.Small" OnClick="() => ViewModel.ScanDocumentOcrCommand.Execute(item)" title="@LanguageService["camera_scan_ocr"]" />
+							}
 							<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="() => SaveToGalleryAsync(item)" title="@LanguageService["camera_save_gallery"]" />
 							<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small" OnClick="() => SaveToWebdavAsync(item)" title="@LanguageService["webdav_quick_save"]" />
 							<MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" OnClick="() => SharePhotoAsync(item)" title="@LanguageService["share"]" />

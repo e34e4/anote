@@ -917,6 +917,42 @@ namespace SilentNotes.Platforms.Services
         }
 
         /// <inheritdoc/>
+        public bool TryRenamePath(string path, string newFileName)
+        {
+            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(newFileName))
+                return false;
+
+            string trimmedName = Path.GetFileName(newFileName.Trim());
+            if (string.IsNullOrEmpty(trimmedName) || trimmedName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                return false;
+
+            try
+            {
+                if (!File.Exists(path))
+                    return false;
+
+                string dir = Path.GetDirectoryName(path);
+                if (string.IsNullOrEmpty(dir))
+                    return false;
+
+                string targetPath = Path.Combine(dir, trimmedName);
+                if (File.Exists(targetPath))
+                    return false;
+
+                File.Move(path, targetPath);
+
+                if (string.Equals(_activePath, path, StringComparison.OrdinalIgnoreCase))
+                    _activePath = targetPath;
+
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <inheritdoc/>
         public bool TryDeletePath(string path, bool isDirectory)
         {
             if (string.IsNullOrWhiteSpace(path))

@@ -301,11 +301,24 @@
 	{
 		<div class="clock-big clock-mono mt-6">@ViewModel.TimerDisplay</div>
 
+		<div class="clock-actions" style="flex-wrap: wrap; margin-top: 10px;">
+			<button class="clock-btn primary" @onclick="() => ViewModel.StartFocusCommand.Execute(null)">@LanguageService["clock_focus"] (25)</button>
+			<button class="clock-btn" @onclick="() => ViewModel.StartBreakCommand.Execute(null)">@LanguageService["clock_break"] (5)</button>
+			<button class="clock-btn" @onclick="() => ViewModel.StartLongBreakCommand.Execute(null)">@LanguageService["clock_long_break"] (15)</button>
+		</div>
+
 		<div class="clock-inputs">
 			<MudNumericField T="int" @bind-Value="ViewModel.TimerHours" Label="@LanguageService["clock_hours"]" Min="0" Max="23" Variant="Variant.Outlined" />
 			<MudNumericField T="int" @bind-Value="ViewModel.TimerMinutes" Label="@LanguageService["clock_minutes"]" Min="0" Max="59" Variant="Variant.Outlined" />
 			<MudNumericField T="int" @bind-Value="ViewModel.TimerSeconds" Label="@LanguageService["clock_seconds"]" Min="0" Max="59" Variant="Variant.Outlined" />
 		</div>
+
+		<MudSelect T="Guid?" @bind-Value="ViewModel.LinkedNoteId" Label="@LanguageService["clock_link_note"]" Variant="Variant.Outlined" Dense="true" Class="mt-3" Clearable="true">
+			@foreach (var note in ViewModel.LinkableNotes)
+			{
+				<MudSelectItem T="Guid?" Value="@note.Id">@note.Title</MudSelectItem>
+			}
+		</MudSelect>
 
 		<div class="clock-actions">
 			@if (ViewModel.IsTimerRunning)

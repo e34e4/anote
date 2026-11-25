@@ -1,0 +1,49 @@
+@using MudBlazor
+@using SilentNotes.Models
+@using SilentNotes.Services
+@using SilentNotes.ViewModels
+@using SilentNotes.Workers
+
+@inject ILanguageService LanguageService
+
+<div class="note-meta-row pa-2 mud-elevation-3">
+	<MudSelect T="string" @bind-Value="ViewModel.Status" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+		Label="@LanguageService["note_meta_status"]" Disabled="ViewModel.ShoppingModeActive" Class="note-meta-field">
+		<MudSelectItem T="string" Value="@string.Empty">@LanguageService["note_meta_status_none"]</MudSelectItem>
+		<MudSelectItem T="string" Value="@NoteMetadata.StatusTodo">@LanguageService["note_meta_status_todo"]</MudSelectItem>
+		<MudSelectItem T="string" Value="@NoteMetadata.StatusDoing">@LanguageService["note_meta_status_doing"]</MudSelectItem>
+		<MudSelectItem T="string" Value="@NoteMetadata.StatusDone">@LanguageService["note_meta_status_done"]</MudSelectItem>
+		<MudSelectItem T="string" Value="@NoteMetadata.StatusBlocked">@LanguageService["note_meta_status_blocked"]</MudSelectItem>
+	</MudSelect>
+
+	<MudSelect T="int" @bind-Value="ViewModel.Priority" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+		Label="@LanguageService["note_meta_priority"]" Disabled="ViewModel.ShoppingModeActive" Class="note-meta-field">
+		<MudSelectItem T="int" Value="@NoteMetadata.PriorityLow">@LanguageService["note_meta_priority_low"]</MudSelectItem>
+		<MudSelectItem T="int" Value="@NoteMetadata.PriorityNormal">@LanguageService["note_meta_priority_normal"]</MudSelectItem>
+		<MudSelectItem T="int" Value="@NoteMetadata.PriorityHigh">@LanguageService["note_meta_priority_high"]</MudSelectItem>
+		<MudSelectItem T="int" Value="@NoteMetadata.PriorityUrgent">@LanguageService["note_meta_priority_urgent"]</MudSelectItem>
+	</MudSelect>
+
+	<MudDatePicker @bind-Date="ViewModel.DueAtLocal" DateFormat="yyyy-MM-dd" Clearable="true" Dense="true" Variant="Variant.Outlined"
+		Label="@LanguageService["note_meta_due"]" Disabled="ViewModel.ShoppingModeActive" Class="note-meta-field" />
+</div>
+
+<style>
+	.note-meta-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		align-items: flex-end;
+		background: #0a0a0a;
+		border-top: 1px solid #1a1a1a;
+	}
+	.note-meta-field {
+		flex: 1 1 120px;
+		max-width: 220px;
+	}
+</style>
+
+@code {
+	[Parameter]
+	public NoteViewModel ViewModel { get; set; }
+}

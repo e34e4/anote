@@ -18,6 +18,12 @@
 		padding: 10px;
 		color: #ffffff;
 	}
+	.reader-sticky-header {
+		position: sticky;
+		top: 0;
+		z-index: 8;
+		background-color: #000000;
+	}
 	.reader-toolbar {
 		display: flex;
 		align-items: center;
@@ -58,7 +64,7 @@
 	}
 	.reader-row {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		padding: 10px 6px;
 		border-bottom: 1px solid #202020;
 		gap: 8px;
@@ -94,9 +100,12 @@
 	}
 	.reader-row-name {
 		font-weight: 600;
-		white-space: nowrap;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
 		overflow: hidden;
-		text-overflow: ellipsis;
+		white-space: normal;
+		word-break: break-word;
 	}
 	.reader-row-meta {
 		font-size: 0.8rem;
@@ -252,34 +261,66 @@
 			</MudAlert>
 		}
 
-		<div class="reader-roots">
-			@for (int i = 0; i < ViewModel.PathTabs.Count; i++)
-			{
-				int tabIndex = i;
-				<button class="reader-chip @(tabIndex == ViewModel.ActivePathTabIndex ? "active" : null)"
-					@onclick="() => ViewModel.SelectPathTabCommand.Execute(tabIndex)"
-					title="@(ViewModel.PathTabs[tabIndex].Path)">
-					@(string.IsNullOrEmpty(ViewModel.PathTabs[tabIndex].Label) ? "/" : ViewModel.PathTabs[tabIndex].Label)
-					@if (ViewModel.PathTabs.Count > 1)
-					{
-						<span @onclick:stopPropagation="true" @onclick="() => ViewModel.ClosePathTabCommand.Execute(tabIndex)"> ✕</span>
-					}
-				</button>
-			}
-			<button class="reader-chip" @onclick="() => ViewModel.AddPathTabCommand.Execute(null)" title="@LanguageService["path_tab_add"]">+</button>
-		</div>
+		<div class="reader-sticky-header">
+			<div class="reader-roots">
+				@for (int i = 0; i < ViewModel.PathTabs.Count; i++)
+				{
+					int tabIndex = i;
+					<button class="reader-chip @(tabIndex == ViewModel.ActivePathTabIndex ? "active" : null)"
+						@onclick="() => ViewModel.SelectPathTabCommand.Execute(tabIndex)"
+						title="@(ViewModel.PathTabs[tabIndex].Path)">
+						@(string.IsNullOrEmpty(ViewModel.PathTabs[tabIndex].Label) ? "/" : ViewModel.PathTabs[tabIndex].Label)
+						@if (ViewModel.PathTabs.Count > 1)
+						{
+							<span @onclick:stopPropagation="true" @onclick="() => ViewModel.ClosePathTabCommand.Execute(tabIndex)"> ✕</span>
+						}
+					</button>
+				}
+				<button class="reader-chip" @onclick="() => ViewModel.AddPathTabCommand.Execute(null)" title="@LanguageService["path_tab_add"]">+</button>
+			</div>
 
-		<div class="reader-toolbar">
-			@if (ViewModel.CanNavigateUp)
+			<div class="reader-toolbar">
+				@if (ViewModel.CanNavigateUp)
+				{
+					<MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small" Color="Color.Inherit"
+						OnClick="() => ViewModel.NavigateUpCommand.Execute(null)" title="@LanguageService["reader_up"]" />
+				}
+				<div class="reader-path" title="@ViewModel.CurrentPathDisplay">@ViewModel.CurrentPathDisplay</div>
+				<MudIconButton Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" Color="Color.Primary"
+					OnClick="PickFileAsync" title="@LanguageService["reader_pick"]" />
+				<MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Color="Color.Inherit"
+					OnClick="() => ViewModel.RefreshCommand.Execute(null)" title="@LanguageService["reader_refresh"]" />
+			</div>
+
+			<div class="reader-roots" style="padding-top:0;padding-bottom:8px;border-bottom:1px solid #202020;">
+				<button type="button" class="reader-chip @(ViewModel.IsSortDate ? "active" : null)" @onclick='() => ViewModel.SetSortModeCommand.Execute("date")'>@LanguageService["browse_sort_date"]</button>
+				<button type="button" class="reader-chip @(ViewModel.IsSortName ? "active" : null)" @onclick='() => ViewModel.SetSortModeCommand.Execute("name")'>@LanguageService["browse_sort_name"]</button>
+				<button type="button" class="reader-chip @(ViewModel.IsSortSize ? "active" : null)" @onclick='() => ViewModel.SetSortModeCommand.Execute("size")'>@LanguageService["browse_sort_size"]</button>
+			</div>
+
+			@if (ViewModel.HasSelection)
 			{
-				<MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small" Color="Color.Inherit"
-					OnClick="() => ViewModel.NavigateUpCommand.Execute(null)" title="@LanguageService["reader_up"]" />
+				<div class="reader-selection-bar">
+					<span>@ViewModel.SelectedCount</span>
+					@if (ViewModel.CanRenameSelection)
+					{
+						<button type="button" class="reader-sel-btn" @onclick="StartRenameSelected">@LanguageService["browse_rename"]</button>
+					}
+					<button type="button" class="reader-sel-btn" @onclick="DeleteSelectedAsync">@LanguageService["delete"]</button>
+					<button type="button" class="reader-sel-btn" @onclick="SelectAllVisible">@LanguageService["list_select_all"]</button>
+					<button type="button" class="reader-sel-btn" @onclick="ClearSelection">@LanguageService["file_clear_selection"]</button>
+				</div>
 			}
-			<div class="reader-path" title="@ViewModel.CurrentPathDisplay">@ViewModel.CurrentPathDisplay</div>
-			<MudIconButton Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" Color="Color.Primary"
-				OnClick="PickFileAsync" title="@LanguageService["reader_pick"]" />
-			<MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Color="Color.Inherit"
-				OnClick="() => ViewModel.RefreshCommand.Execute(null)" title="@LanguageService["reader_refresh"]" />
+
+			@if (ViewModel.IsRenameOpen)
+			{
+				<div class="d-flex align-center gap-2 px-1 py-2" style="border-bottom:1px solid #202020;">
+					<MudTextField T="string" @bind-Value="ViewModel.RenameDraft" Placeholder="@LanguageService["browse_rename"]"
+						Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1" Immediate="true" />
+					<MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Primary" Size="Size.Small" OnClick="ConfirmRenameAsync" />
+					<MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="CancelRename" />
+				</div>
+			}
 		</div>
 
 		<div class="reader-roots">
@@ -298,16 +339,6 @@
 		</div>
 
 		<MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">@ViewModel.CountText</MudText>
-
-		@if (ViewModel.HasSelection)
-		{
-			<div class="reader-selection-bar">
-				<span>@ViewModel.SelectedCount</span>
-				<button type="button" class="reader-sel-btn" @onclick="DeleteSelectedAsync">@LanguageService["delete"]</button>
-				<button type="button" class="reader-sel-btn" @onclick="SelectAllVisible">@LanguageService["list_select_all"]</button>
-				<button type="button" class="reader-sel-btn" @onclick="ClearSelection">@LanguageService["file_clear_selection"]</button>
-			</div>
-		}
 
 		@if (ViewModel.IsBusy)
 		{
@@ -465,6 +496,27 @@
 	private async Task DeleteSelectedAsync()
 	{
 		await ViewModel.DeleteSelectedAsync();
+		StateHasChanged();
+	}
+
+	private void StartRenameSelected()
+	{
+		ViewModel.StartRenameSelectedCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private void CancelRename()
+	{
+		ViewModel.CancelRenameCommand.Execute(null);
+		StateHasChanged();
+	}
+
+	private async Task ConfirmRenameAsync()
+	{
+		if (ViewModel.ConfirmRenameCommand is IAsyncRelayCommand asyncCmd)
+			await asyncCmd.ExecuteAsync(null);
+		else
+			ViewModel.ConfirmRenameCommand.Execute(null);
 		StateHasChanged();
 	}
 

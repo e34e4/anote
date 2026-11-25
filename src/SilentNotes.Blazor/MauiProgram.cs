@@ -196,6 +196,10 @@ public static class MauiProgram
         services.AddSingleton<IFontService>((serviceProvider) => new FontService());
         services.AddSingleton<IPhoneSpamService>((serviceProvider) => new PhoneSpamService(
             serviceProvider.GetService<ISettingsService>()));
+        services.AddSingleton<IAutomationRulesEngine>((serviceProvider) => new AutomationRulesEngine(
+            serviceProvider.GetService<ISettingsService>(),
+            serviceProvider.GetService<IRepositoryStorageService>(),
+            serviceProvider.GetService<IMessengerService>()));
         services.AddSingleton<IMediaToolsService>((serviceProvider) => new SilentNotes.Services.MediaToolsService());
 
         services.AddSingleton<IManualBackupService>((serviceProvider) => new ManualBackupService(
@@ -243,6 +247,7 @@ public static class MauiProgram
         services.AddSingleton<IFilePickerService>((serviceProvider) => new FilePickerService());
         services.AddSingleton<ISynchronizationService>((serviceProvider) => new SynchronizationService(
             serviceProvider.GetService<ISynchronizationState>()));
+        services.AddSingleton<IBookmarkLinkCheckService>((serviceProvider) => new NullBookmarkLinkCheckService());
         services.AddSingleton<ISharingService>((serviceProvider) => new SharingService());
         services.AddSingleton<IAttachmentFileService>((serviceProvider) => new AttachmentFileService());
         services.AddSingleton<IDeviceCalendarService>((serviceProvider) => new DeviceCalendarService());
@@ -251,6 +256,7 @@ public static class MauiProgram
         services.AddSingleton<IDeviceSmsService>((serviceProvider) => new DeviceSmsService());
         services.AddSingleton<IImageFileService>((serviceProvider) => new ImageFileService());
         services.AddSingleton<IImageEditorService>((serviceProvider) => new ImageEditorService());
+        services.AddSingleton<IDocumentCropService>((serviceProvider) => new DocumentCropService());
         services.AddSingleton<IQrService>((serviceProvider) => new QrService());
         services.AddSingleton<IQrHistoryService>((serviceProvider) => new QrHistoryService(
             serviceProvider.GetService<IXmlFileService>()));
@@ -271,6 +277,7 @@ public static class MauiProgram
         services.AddSingleton<IYtDlpDownloadPromptService>((serviceProvider) => new YtDlpDownloadPromptService());
         services.AddSingleton<IAbroBrowserService>((serviceProvider) => new AbroBrowserService());
         services.AddSingleton<IAbroAiChatLauncher>((serviceProvider) => new AbroAiChatLauncher());
+        services.AddSingleton<IRecVoiceMemoLauncher>((serviceProvider) => new RecVoiceMemoLauncher());
         services.AddSingleton<IDocumentReaderService>((serviceProvider) => new DocumentReaderService());
         services.AddSingleton<ITelegramService>((serviceProvider) => new TelegramService(
             serviceProvider.GetService<IXmlFileService>(),
@@ -324,6 +331,8 @@ public static class MauiProgram
             serviceProvider.GetService<IActivityResultAwaiter>()));
         services.AddSingleton<ISynchronizationService>((serviceProvider) => new SynchronizationService(
             serviceProvider.GetService<ISynchronizationState>()));
+        services.AddSingleton<IBookmarkLinkCheckService>((serviceProvider) => new BookmarkLinkCheckService(
+            serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<ISharingService>((serviceProvider) => new SharingService(
             serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<IAttachmentFileService>((serviceProvider) => new AttachmentFileService(
@@ -341,6 +350,9 @@ public static class MauiProgram
             serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<IImageEditorService>((serviceProvider) => new ImageEditorService(
             serviceProvider.GetService<IAppContextService>()));
+        services.AddSingleton<IDocumentCropService>((serviceProvider) => new DocumentCropService(
+            serviceProvider.GetService<IAppContextService>(),
+            serviceProvider.GetService<IActivityResultAwaiter>()));
         services.AddSingleton<IQrService>((serviceProvider) => new QrService(
             serviceProvider.GetService<IAppContextService>()));
         services.AddSingleton<IQrHistoryService>((serviceProvider) => new QrHistoryService(
@@ -386,6 +398,7 @@ public static class MauiProgram
             serviceProvider.GetService<IYtDlpDownloadService>()));
         services.AddSingleton<IAbroBrowserService>((serviceProvider) => new AbroBrowserService());
         services.AddSingleton<IAbroAiChatLauncher>((serviceProvider) => new AbroAiChatLauncher());
+        services.AddSingleton<IRecVoiceMemoLauncher>((serviceProvider) => new RecVoiceMemoLauncher());
         services.AddSingleton<IDocumentReaderService>((serviceProvider) => new DocumentReaderService(
             serviceProvider.GetService<IAppContextService>(),
             serviceProvider.GetService<IActivityResultAwaiter>()));

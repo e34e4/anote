@@ -9,6 +9,7 @@ using System.Linq;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
+using Android.Graphics;
 using Android.Graphics.Drawables;
 using Android.OS;
 using Android.Util;
@@ -28,8 +29,58 @@ namespace SilentNotes
     [Activity(
         Label = "aNote Gallery",
         Theme = "@android:style/Theme.DeviceDefault.Dialog.NoActionBar",
-        Exported = false,
+        Exported = true,
         ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize)]
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataMimeType = "image/*",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataMimeType = "image/*",
+        DataScheme = "file")]
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataMimeType = "image/jpeg",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataMimeType = "image/jpeg",
+        DataScheme = "file")]
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataMimeType = "image/png",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataMimeType = "image/png",
+        DataScheme = "file")]
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataMimeType = "image/webp",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataMimeType = "image/webp",
+        DataScheme = "file")]
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataMimeType = "image/gif",
+        DataScheme = "content")]
+    [IntentFilter(
+        new[] { Intent.ActionView },
+        Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+        DataMimeType = "image/gif",
+        DataScheme = "file")]
     public class ImageViewerActivity : Activity, GestureDetector.IOnGestureListener
     {
         public const string ExtraUri = "silentnotes.image.uri";
@@ -39,7 +90,7 @@ namespace SilentNotes
         public const string ExtraIndex = "silentnotes.image.index";
         public const string ExtraFloating = "silentnotes.image.floating";
 
-        private ImageView _imageView;
+        private ZoomableImageView _imageView;
         private TextView _titleView;
         private TextView _counterView;
         private GestureDetector _gestureDetector;
@@ -61,17 +112,17 @@ namespace SilentNotes
 
             FrameLayout root = new FrameLayout(this);
             root.SetBackgroundColor(Color.Black);
-            root.Touch += (_, e) =>
-            {
-                _gestureDetector.OnTouchEvent(e.Event);
-                e.Handled = true;
-            };
-
-            _imageView = new ImageView(this);
-            _imageView.SetScaleType(ImageView.ScaleType.FitCenter);
+            _imageView = new ZoomableImageView(this);
             _imageView.LayoutParameters = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MatchParent,
                 ViewGroup.LayoutParams.MatchParent);
+            _imageView.Touch += (_, e) =>
+            {
+                _imageView.HandleTouch(e.Event);
+                if (_imageView.IsAtDefaultZoom)
+                    _gestureDetector.OnTouchEvent(e.Event);
+                e.Handled = true;
+            };
 
             _titleView = new TextView(this)
             {
@@ -144,6 +195,9 @@ namespace SilentNotes
                     _paths = new[] { single };
             }
 
+            if (_paths.Length == 0 && Intent?.Data != null)
+                _paths = new[] { Intent.Data.ToString() };
+
             if (_paths.Length == 0)
             {
                 Toast.MakeText(this, "Image not found", ToastLength.Short).Show();
@@ -166,7 +220,7 @@ namespace SilentNotes
 
         public bool OnFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY)
         {
-            if (e1 == null || e2 == null || _paths.Length <= 1)
+            if (e1 == null || e2 == null || _paths.Length <= 1 || !_imageView.IsAtDefaultZoom)
                 return false;
 
             float dx = e2.GetX() - e1.GetX();
@@ -204,22 +258,41 @@ namespace SilentNotes
         private void ShowCurrent()
         {
             string pathOrUri = _paths[_index];
-            _titleView.Text = System.IO.Path.GetFileName(pathOrUri) ?? "Image";
+            _titleView.Text = ResolveDisplayTitle(pathOrUri);
             _counterView.Text = _paths.Length > 1
                 ? string.Format("{0} / {1}   ·   swipe for next/prev", _index + 1, _paths.Length)
                 : string.Empty;
 
             try
             {
-                if (pathOrUri.StartsWith("content:", StringComparison.OrdinalIgnoreCase) ||
-                    pathOrUri.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+                bool loaded = false;
+                if (pathOrUri.StartsWith("content:", StringComparison.OrdinalIgnoreCase))
+                {
+                    var androidUri = Uri.Parse(pathOrUri);
+                    using (var stream = ContentResolver?.OpenInputStream(androidUri))
+                    {
+                        if (stream != null)
+                        {
+                            Bitmap bitmap = BitmapFactory.DecodeStream(stream);
+                            if (bitmap != null)
+                            {
+                                _imageView.SetImageBitmap(bitmap);
+                                loaded = true;
+                            }
+                        }
+                    }
+
+                    if (!loaded)
+                        _imageView.SetImageURI(androidUri);
+                }
+                else if (pathOrUri.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
                 {
                     _imageView.SetImageURI(Uri.Parse(pathOrUri));
                 }
                 else if (System.IO.File.Exists(pathOrUri))
                 {
                     // Prefer decode-from-path over file:// URIs (more reliable right after a download).
-                    Android.Graphics.Bitmap bitmap = Android.Graphics.BitmapFactory.DecodeFile(pathOrUri);
+                    Bitmap bitmap = BitmapFactory.DecodeFile(pathOrUri);
                     if (bitmap != null)
                         _imageView.SetImageBitmap(bitmap);
                     else
@@ -229,11 +302,48 @@ namespace SilentNotes
                 {
                     Toast.MakeText(this, "Image not found", ToastLength.Short).Show();
                 }
+
+                _imageView.Post(() => _imageView.ResetTransform());
             }
             catch (Exception ex)
             {
                 Toast.MakeText(this, "Cannot open image: " + ex.Message, ToastLength.Long).Show();
             }
+        }
+
+        private string ResolveDisplayTitle(string pathOrUri)
+        {
+            string fromExtra = Intent?.GetStringExtra(ExtraTitle);
+            if (!string.IsNullOrWhiteSpace(fromExtra) && _paths.Length == 1)
+                return fromExtra;
+
+            if (pathOrUri.StartsWith("content:", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var androidUri = Uri.Parse(pathOrUri);
+                    using var cursor = ContentResolver?.Query(androidUri, null, null, null, null);
+                    if (cursor != null && cursor.MoveToFirst())
+                    {
+                        int nameIndex = cursor.GetColumnIndex(global::Android.Provider.OpenableColumns.DisplayName);
+                        if (nameIndex >= 0)
+                        {
+                            string name = cursor.GetString(nameIndex);
+                            if (!string.IsNullOrWhiteSpace(name))
+                                return name;
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            string fileName = System.IO.Path.GetFileName(pathOrUri);
+            if (!string.IsNullOrWhiteSpace(fileName))
+                return fileName;
+
+            return "Image";
         }
 
         private void ConfigureFullscreenWindow()

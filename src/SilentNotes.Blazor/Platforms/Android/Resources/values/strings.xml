@@ -6,4 +6,6 @@
     <string name="autofill_unlock">Unlock aNote</string>
     <string name="widget_description">Black terminal-style pad synced to the widget note</string>
     <string name="widget_label">aNote widget</string>
+    <string name="widget_clipboard_label">aNote clipboard</string>
+    <string name="widget_clipboard_description">Latest clipboard snippet with quick save to Scratchpad</string>
 </resources>

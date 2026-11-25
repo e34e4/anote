@@ -64,6 +64,10 @@ namespace SilentNotes.Platforms
         private const string PreferenceKeyMenuY = "menu_y";
         private const string PreferenceKeyMenuWidth = "menu_w";
         private const string PreferenceKeyMenuHeight = "menu_h";
+        private const string PreferenceKeyMiniPadX = "minipad_x";
+        private const string PreferenceKeyMiniPadY = "minipad_y";
+        private const string PreferenceKeyMiniPadWidth = "minipad_w";
+        private const string PreferenceKeyMiniPadHeight = "minipad_h";
         private const string PreferenceKeyImageX = "img_x";
         private const string PreferenceKeyImageY = "img_y";
         private const string PreferenceKeyImageWidth = "img_w";
@@ -162,6 +166,11 @@ namespace SilentNotes.Platforms
         private bool _captureEnabled;
         private bool _menuShowingApps;
         private bool _menuLaunchAsFloating;
+        private global::Android.Views.View _miniPadOverlayView;
+        private WindowManagerLayoutParams _miniPadLayoutParams;
+        private bool _miniPadCollapsed;
+        private LinearLayout _miniPadBodyContainer;
+        private TextView _miniPadPreviewView;
 
         private IServiceProvider _serviceProvider;
         private ClipboardCapture _clipboardCapture;
@@ -367,6 +376,7 @@ namespace SilentNotes.Platforms
             HideImageOverlay();
             HideVideoOverlay();
             HideMenuOverlay();
+            HideMiniPadOverlay();
             HideOverlay();
             Instance = null;
             BrowserUrlTracker.ServiceEnabled = false;
@@ -381,6 +391,7 @@ namespace SilentNotes.Platforms
             HideImageOverlay();
             HideVideoOverlay();
             HideMenuOverlay();
+            HideMiniPadOverlay();
             HideOverlay();
             Instance = null;
             BrowserUrlTracker.ServiceEnabled = false;
@@ -1057,6 +1068,343 @@ namespace SilentNotes.Platforms
             _menuOverlayView = null;
             _menuLayoutParams = null;
             _menuShowingApps = false;
+        }
+
+        internal void ToggleMiniPadOverlay()
+        {
+            if (_miniPadOverlayView != null)
+                HideMiniPadOverlay();
+            else
+                ShowMiniPadOverlay();
+        }
+
+        internal void ShowMiniPadOverlay()
+        {
+            if (_miniPadOverlayView != null || _windowManager == null)
+                return;
+
+            try
+            {
+                float density = Resources.DisplayMetrics.Density;
+                int screenW = Resources.DisplayMetrics.WidthPixels;
+                int screenH = Resources.DisplayMetrics.HeightPixels;
+
+                var preferences = GetSharedPreferences(PreferencesName, FileCreationMode.Private);
+                int defaultWidth = (int)Math.Min(screenW * 0.92f, 320 * density);
+                int defaultHeight = (int)(220 * density);
+                int minWidth = (int)(200 * density);
+                int minHeight = (int)(44 * density);
+
+                int winWidth = Math.Clamp(preferences.GetInt(PreferenceKeyMiniPadWidth, defaultWidth), minWidth, screenW);
+                int winHeight = Math.Clamp(preferences.GetInt(PreferenceKeyMiniPadHeight, defaultHeight), minHeight, screenH);
+                int defaultX = Math.Max(0, (screenW - winWidth) / 2);
+                int defaultY = Math.Max(0, (screenH - winHeight) / 3);
+                int winX = Math.Clamp(preferences.GetInt(PreferenceKeyMiniPadX, defaultX), 0, Math.Max(0, screenW - minWidth / 2));
+                int winY = Math.Clamp(preferences.GetInt(PreferenceKeyMiniPadY, defaultY), 0, Math.Max(0, screenH - minHeight / 2));
+                _miniPadCollapsed = preferences.GetBoolean("minipad_collapsed", false);
+
+                var card = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Vertical,
+                    Clickable = true,
+                };
+                int cardPad = (int)(10 * density);
+                card.SetPadding(cardPad, cardPad, cardPad, (int)(6 * density));
+
+                var cardBg = new GradientDrawable();
+                cardBg.SetColor(Color.ParseColor("#F2101010"));
+                cardBg.SetCornerRadius(16 * density);
+                cardBg.SetStroke((int)(1.5f * density), Color.ParseColor("#38BDF8"));
+                card.Background = cardBg;
+
+                var headerRow = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+                headerRow.SetGravity(GravityFlags.CenterVertical);
+                headerRow.SetPadding((int)(4 * density), (int)(2 * density), (int)(4 * density), (int)(6 * density));
+                int btnPad = (int)(6 * density);
+
+                var titleView = new TextView(this)
+                {
+                    Text = "Mini-pad",
+                    TextSize = 13.5f,
+                };
+                titleView.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+                titleView.SetTextColor(Color.White);
+                headerRow.AddView(titleView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+                var collapseBtn = new TextView(this)
+                {
+                    Text = _miniPadCollapsed ? "▸" : "▾",
+                    TextSize = 14f,
+                    Gravity = GravityFlags.Center,
+                };
+                collapseBtn.SetTextColor(Color.ParseColor("#38BDF8"));
+                collapseBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
+                collapseBtn.Click += (s, e) => ToggleMiniPadCollapsed(collapseBtn);
+                headerRow.AddView(collapseBtn);
+
+                var closeBtn = new TextView(this)
+                {
+                    Text = "✕",
+                    TextSize = 14f,
+                    Gravity = GravityFlags.Center,
+                };
+                closeBtn.SetTextColor(Color.ParseColor("#BDBDBD"));
+                closeBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
+                closeBtn.Click += (s, e) => HideMiniPadOverlay();
+                headerRow.AddView(closeBtn);
+
+                headerRow.SetOnTouchListener(new MiniPadDragTouchListener(this));
+                card.AddView(headerRow);
+
+                _miniPadBodyContainer = new LinearLayout(this) { Orientation = Orientation.Vertical };
+                _miniPadBodyContainer.Visibility = _miniPadCollapsed ? ViewStates.Gone : ViewStates.Visible;
+
+                _miniPadPreviewView = new TextView(this)
+                {
+                    TextSize = 13f,
+                    Gravity = GravityFlags.Top | GravityFlags.Start,
+                };
+                _miniPadPreviewView.SetTextColor(Color.ParseColor("#E2E8F0"));
+                _miniPadPreviewView.SetPadding(0, 0, 0, (int)(6 * density));
+                RefreshMiniPadOverlayPreview();
+                _miniPadPreviewView.Click += (s, e) => OpenMiniPadActivity();
+                _miniPadPreviewView.LongClick += (s, e) =>
+                {
+                    OpenMiniPadActivity();
+                    e.Handled = true;
+                };
+                _miniPadBodyContainer.AddView(_miniPadPreviewView);
+
+                var clipHint = new TextView(this)
+                {
+                    Text = "Tap clip to paste",
+                    TextSize = 10f,
+                };
+                clipHint.SetTextColor(Color.ParseColor("#94A3B8"));
+                _miniPadBodyContainer.AddView(clipHint);
+
+                var clipScroll = new global::Android.Widget.ScrollView(this);
+                var clipList = new LinearLayout(this) { Orientation = Orientation.Vertical };
+                foreach (string clip in global::SilentNotes.MiniPadActivity.GetRecentClipboardTexts())
+                {
+                    string text = clip;
+                    var row = new TextView(this)
+                    {
+                        Text = global::SilentNotes.MiniPadActivity.TruncatePreview(text, 100),
+                        TextSize = 11f,
+                    };
+                    row.SetTextColor(Color.ParseColor("#CBD5E1"));
+                    row.SetPadding(0, (int)(3 * density), 0, (int)(3 * density));
+                    row.Clickable = true;
+                    row.Click += (s, e) => AppendMiniPadDraft(text);
+                    clipList.AddView(row);
+                }
+                if (clipList.ChildCount == 0)
+                {
+                    var empty = new TextView(this) { Text = "No recent text clips", TextSize = 10f };
+                    empty.SetTextColor(Color.ParseColor("#757575"));
+                    clipList.AddView(empty);
+                }
+                clipScroll.AddView(clipList);
+                _miniPadBodyContainer.AddView(clipScroll, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, (int)(72 * density)));
+
+                var actions = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+                actions.SetGravity(GravityFlags.End);
+                actions.SetPadding(0, (int)(6 * density), 0, 0);
+
+                AddMiniPadActionButton(actions, "✏️", density, OpenMiniPadActivity);
+                AddMiniPadActionButton(actions, "Save", density, () => SaveMiniPadDraftToScratchpad());
+                AddMiniPadActionButton(actions, "Clear", density, () =>
+                {
+                    global::SilentNotes.MiniPadActivity.StoreDraft(this, string.Empty);
+                    RefreshMiniPadOverlayPreview();
+                });
+                _miniPadBodyContainer.AddView(actions);
+
+                card.AddView(_miniPadBodyContainer);
+
+                _miniPadLayoutParams = new WindowManagerLayoutParams(
+                    winWidth,
+                    _miniPadCollapsed ? ViewGroup.LayoutParams.WrapContent : winHeight,
+                    WindowManagerTypes.AccessibilityOverlay,
+                    WindowManagerFlags.NotFocusable | WindowManagerFlags.NotTouchModal,
+                    Format.Translucent)
+                {
+                    Gravity = GravityFlags.Top | GravityFlags.Start,
+                    X = winX,
+                    Y = winY,
+                };
+
+                _miniPadOverlayView = card;
+                _windowManager.AddView(_miniPadOverlayView, _miniPadLayoutParams);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not show mini-pad overlay: " + ex);
+                _miniPadOverlayView = null;
+                _miniPadLayoutParams = null;
+                _miniPadBodyContainer = null;
+                _miniPadPreviewView = null;
+            }
+        }
+
+        internal void RefreshMiniPadOverlayPreview()
+        {
+            if (_miniPadPreviewView == null)
+                return;
+
+            string draft = global::SilentNotes.MiniPadActivity.LoadDraft(this);
+            _miniPadPreviewView.Text = string.IsNullOrWhiteSpace(draft)
+                ? "Tap to type…"
+                : global::SilentNotes.MiniPadActivity.TruncatePreview(draft, 200);
+        }
+
+        private void ToggleMiniPadCollapsed(TextView collapseBtn)
+        {
+            if (_miniPadBodyContainer == null || _miniPadLayoutParams == null || _windowManager == null)
+                return;
+
+            _miniPadCollapsed = !_miniPadCollapsed;
+            _miniPadBodyContainer.Visibility = _miniPadCollapsed ? ViewStates.Gone : ViewStates.Visible;
+            collapseBtn.Text = _miniPadCollapsed ? "▸" : "▾";
+
+            if (_miniPadCollapsed)
+            {
+                _miniPadLayoutParams.Height = ViewGroup.LayoutParams.WrapContent;
+            }
+            else
+            {
+                var preferences = GetSharedPreferences(PreferencesName, FileCreationMode.Private);
+                int screenH = Resources.DisplayMetrics.HeightPixels;
+                int minHeight = (int)(160 * Resources.DisplayMetrics.Density);
+                _miniPadLayoutParams.Height = Math.Clamp(
+                    preferences.GetInt(PreferenceKeyMiniPadHeight, (int)(220 * Resources.DisplayMetrics.Density)),
+                    minHeight,
+                    screenH);
+            }
+
+            try
+            {
+                _windowManager.UpdateViewLayout(_miniPadOverlayView, _miniPadLayoutParams);
+                GetSharedPreferences(PreferencesName, FileCreationMode.Private)
+                    ?.Edit()
+                    ?.PutBoolean("minipad_collapsed", _miniPadCollapsed)
+                    ?.Apply();
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private static void AddMiniPadActionButton(LinearLayout parent, string label, float density, System.Action onClick)
+        {
+            var button = new TextView(parent.Context)
+            {
+                Text = label,
+                TextSize = 12f,
+                Gravity = GravityFlags.Center,
+            };
+            button.SetTextColor(Color.ParseColor("#38BDF8"));
+            button.SetPadding((int)(10 * density), (int)(4 * density), (int)(10 * density), (int)(4 * density));
+            button.Clickable = true;
+            button.Click += (s, e) => onClick?.Invoke();
+            parent.AddView(button);
+        }
+
+        private void AppendMiniPadDraft(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            string draft = global::SilentNotes.MiniPadActivity.LoadDraft(this);
+            if (!string.IsNullOrEmpty(draft))
+                draft += "\n";
+            draft += text.Trim();
+            global::SilentNotes.MiniPadActivity.StoreDraft(this, draft);
+            RefreshMiniPadOverlayPreview();
+        }
+
+        private void SaveMiniPadDraftToScratchpad()
+        {
+            string text = global::SilentNotes.MiniPadActivity.LoadDraft(this);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                Toast.MakeText(this, "Nothing to save", ToastLength.Short)?.Show();
+                return;
+            }
+
+            try
+            {
+                IRepositoryStorageService repositoryService = Ioc.Instance.GetService<IRepositoryStorageService>();
+                repositoryService.LoadRepositoryOrDefault(out NoteRepositoryModel repository);
+                CaptureNoteHelper.AppendScratchpad(repository, text);
+                repositoryService.TrySaveRepository(repository);
+                Ioc.Instance.GetService<IMessengerService>()?.Send(new NotesChangedMessage());
+                global::SilentNotes.MiniPadActivity.StoreDraft(this, string.Empty);
+                RefreshMiniPadOverlayPreview();
+                AnoteToast.Show(this, "Saved to the Scratchpad note", FeedbackSeverity.Info);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Mini-pad save failed: " + ex);
+                Toast.MakeText(this, "Could not save", ToastLength.Short)?.Show();
+            }
+        }
+
+        internal void HideMiniPadOverlay()
+        {
+            if (_miniPadOverlayView == null || _windowManager == null)
+                return;
+
+            try
+            {
+                _windowManager.RemoveView(_miniPadOverlayView);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not hide mini-pad overlay: " + ex);
+            }
+
+            _miniPadOverlayView = null;
+            _miniPadLayoutParams = null;
+            _miniPadBodyContainer = null;
+            _miniPadPreviewView = null;
+        }
+
+        private void SaveMiniPadBounds()
+        {
+            if (_miniPadLayoutParams == null)
+                return;
+            try
+            {
+                var preferences = GetSharedPreferences(PreferencesName, FileCreationMode.Private);
+                preferences.Edit()
+                    .PutInt(PreferenceKeyMiniPadX, _miniPadLayoutParams.X)
+                    .PutInt(PreferenceKeyMiniPadY, _miniPadLayoutParams.Y)
+                    .PutInt(PreferenceKeyMiniPadWidth, _miniPadLayoutParams.Width)
+                    .PutInt(PreferenceKeyMiniPadHeight, _miniPadLayoutParams.Height)
+                    .Apply();
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        internal void OpenMiniPadActivity()
+        {
+            try
+            {
+                string draft = global::SilentNotes.MiniPadActivity.LoadDraft(this);
+                var intent = new Intent(this, typeof(global::SilentNotes.MiniPadActivity));
+                intent.PutExtra(global::SilentNotes.MiniPadActivity.ExtraDraft, draft);
+                intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ReorderToFront);
+                StartActivity(intent);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not open MiniPadActivity: " + ex);
+            }
         }
 
         /// <summary>
@@ -2033,6 +2381,56 @@ namespace SilentNotes.Platforms
             }
         }
 
+        private class MiniPadDragTouchListener : Java.Lang.Object, global::Android.Views.View.IOnTouchListener
+        {
+            private readonly FloatingButtonAccessibilityService _service;
+            private float _startRawX;
+            private float _startRawY;
+            private int _startX;
+            private int _startY;
+
+            public MiniPadDragTouchListener(FloatingButtonAccessibilityService service)
+            {
+                _service = service;
+            }
+
+            public bool OnTouch(global::Android.Views.View view, MotionEvent e)
+            {
+                if (_service._miniPadOverlayView == null || _service._miniPadLayoutParams == null || _service._windowManager == null)
+                    return false;
+
+                switch (e.ActionMasked)
+                {
+                    case MotionEventActions.Down:
+                        _startRawX = e.RawX;
+                        _startRawY = e.RawY;
+                        _startX = _service._miniPadLayoutParams.X;
+                        _startY = _service._miniPadLayoutParams.Y;
+                        return true;
+
+                    case MotionEventActions.Move:
+                        int dx = (int)(e.RawX - _startRawX);
+                        int dy = (int)(e.RawY - _startRawY);
+                        _service._miniPadLayoutParams.X = Math.Max(0, _startX + dx);
+                        _service._miniPadLayoutParams.Y = Math.Max(0, _startY + dy);
+                        try
+                        {
+                            _service._windowManager.UpdateViewLayout(_service._miniPadOverlayView, _service._miniPadLayoutParams);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        return true;
+
+                    case MotionEventActions.Up:
+                    case MotionEventActions.Cancel:
+                        _service.SaveMiniPadBounds();
+                        return true;
+                }
+                return false;
+            }
+        }
+
         private class MenuDragTouchListener : Java.Lang.Object, global::Android.Views.View.IOnTouchListener
         {
             private readonly FloatingButtonAccessibilityService _service;
@@ -2307,6 +2705,12 @@ namespace SilentNotes.Platforms
             {
                 HideMenuOverlay();
                 OpenGlobalSearch();
+            }, true, null));
+
+            allButtons.Add(("📓", "Mini-pad", () =>
+            {
+                HideMenuOverlay();
+                ToggleMiniPadOverlay();
             }, true, null));
 
             allButtons.Add(("➕", "+ App", () => ShowAddAppDialog(), true, null));
@@ -2664,6 +3068,11 @@ namespace SilentNotes.Platforms
                 if (string.Equals(trimmed, ":show_menu", StringComparison.OrdinalIgnoreCase))
                 {
                     ToggleMenuOverlay();
+                    return true;
+                }
+                if (string.Equals(trimmed, ":mini_pad", StringComparison.OrdinalIgnoreCase))
+                {
+                    ToggleMiniPadOverlay();
                     return true;
                 }
                 if (string.Equals(trimmed, ":keyboard_switcher", StringComparison.OrdinalIgnoreCase))

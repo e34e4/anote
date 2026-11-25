@@ -459,6 +459,71 @@
 			</div>
 
 
+			<h2 class="h-colored mt-10">@LanguageService["automation_rules_title"]</h2>
+			<div class="css-grid">
+				<div><MudIcon Icon="@Icons.Material.Filled.Bolt" Color="Color.Secondary" /></div>
+				<div>
+					<MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">@LanguageService["automation_rules_desc"]</MudText>
+					@if (ViewModel.AutomationRules.Count == 0)
+					{
+						<MudText Typo="Typo.body2" Class="mud-text-secondary">@LanguageService["automation_rules_empty"]</MudText>
+					}
+					else
+					{
+						<MudStack Spacing="1" Class="mb-3">
+							@foreach (var rule in ViewModel.AutomationRules)
+							{
+								<MudPaper Class="pa-2 d-flex align-center justify-space-between" Elevation="0" Outlined="true">
+									<div>
+										<MudText Typo="Typo.body2"><strong>@(string.IsNullOrWhiteSpace(rule.Name) ? ViewModel.DescribeAutomationTrigger(rule.TriggerType) : rule.Name)</strong></MudText>
+										<MudText Typo="Typo.caption" Class="mud-text-secondary">
+											@ViewModel.DescribeAutomationTrigger(rule.TriggerType)
+											@if (!string.IsNullOrWhiteSpace(rule.MatchKeyword))
+											{
+												<span> · "@rule.MatchKeyword"</span>
+											}
+											→ @ViewModel.DescribeAutomationAction(rule.ActionType)
+											@if (!string.IsNullOrWhiteSpace(rule.ActionParam))
+											{
+												<span> (@rule.ActionParam)</span>
+											}
+										</MudText>
+									</div>
+									<MudStack Row="true" Spacing="0" AlignItems="AlignItems.Center">
+										<MudSwitch T="bool" Value="@rule.Enabled" ValueChanged="@((bool enabled) => ViewModel.SetAutomationRuleEnabledCommand.Execute(new AutomationRuleToggleArgs { Rule = rule, Enabled = enabled }))"
+											Color="Color.Tertiary" UnCheckedColor="@GetSwitchUncheckedColor()" />
+										<MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+											OnClick="@(() => ViewModel.DeleteAutomationRuleCommand.Execute(rule))" />
+									</MudStack>
+								</MudPaper>
+							}
+						</MudStack>
+					}
+					<MudText Typo="Typo.subtitle2" Class="mb-2">@LanguageService["automation_rules_add"]</MudText>
+					<MudStack Spacing="2">
+						<MudTextField @bind-Value="ViewModel.DraftAutomationName" Label="@LanguageService["automation_rule_name"]" Variant="Variant.Outlined" Margin="Margin.Dense" />
+						<MudSelect T="string" Label="@LanguageService["automation_rule_trigger"]" @bind-Value="ViewModel.DraftAutomationTrigger" Variant="Variant.Outlined" Margin="Margin.Dense">
+							@foreach (var item in ViewModel.AutomationTriggerOptions)
+							{
+								<MudSelectItem T="string" Value="@item.Value">@LanguageService[item.Description]</MudSelectItem>
+							}
+						</MudSelect>
+						<MudTextField @bind-Value="ViewModel.DraftAutomationKeyword" Label="@LanguageService["automation_rule_keyword"]" Variant="Variant.Outlined" Margin="Margin.Dense" />
+						<MudSelect T="string" Label="@LanguageService["automation_rule_action"]" @bind-Value="ViewModel.DraftAutomationAction" Variant="Variant.Outlined" Margin="Margin.Dense">
+							@foreach (var item in ViewModel.AutomationActionOptions)
+							{
+								<MudSelectItem T="string" Value="@item.Value">@LanguageService[item.Description]</MudSelectItem>
+							}
+						</MudSelect>
+						<MudTextField @bind-Value="ViewModel.DraftAutomationParam" Label="@LanguageService["automation_rule_param"]" Variant="Variant.Outlined" Margin="Margin.Dense" />
+						<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+							OnClick="@(() => ViewModel.AddAutomationRuleCommand.Execute(null))">
+							@LanguageService["automation_rules_add_button"]
+						</MudButton>
+					</MudStack>
+				</div>
+			</div>
+
 			<h2 class="h-colored mt-10">@LanguageService["sync"]</h2>
 
 			<div class="css-grid">

@@ -8,6 +8,7 @@ using System.Xml.Serialization;
 using SilentNotes.Crypto.KeyDerivation;
 using SilentNotes.Crypto.SymmetricEncryption;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 using VanillaCloudStorageClient;
 
 namespace SilentNotes.Models
@@ -35,6 +36,7 @@ namespace SilentNotes.Models
         private List<string> _noteColorsHex;
         private List<string> _transferCodeHistory;
         private List<NotificationTriggerModel> _notificationTriggers;
+        private List<AutomationRuleModel> _automationRules;
         private List<string> _filterTags;
         private List<int> _mainTabOrder;
 
@@ -99,6 +101,8 @@ namespace SilentNotes.Models
             CameraPhotoQuality = 25;
             CalculatorHistory = new List<CalculatorHistoryEntryModel>();
             CalculatorVariables = new List<CalculatorVariableEntryModel>();
+            CustomCurrencyRates = new List<CurrencyRateEntryModel>();
+            CustomRateProfiles = new List<CustomRateProfileEntryModel>();
             CameraUseFrontLens = false;
             CameraFlashMode = "auto";
             CameraAutoSaveToGallery = true;
@@ -117,6 +121,9 @@ namespace SilentNotes.Models
             FilePathTabIndex = 0;
             PlayerPathTabIndex = 0;
             ReaderPathTabIndex = 0;
+            FileSortMode = nameof(FileBrowserSortMode.DateDesc);
+            PlayerSortMode = nameof(FileBrowserSortMode.DateDesc);
+            ReaderSortMode = nameof(FileBrowserSortMode.DateDesc);
             ReaderEditorWordWrap = true;
             ReaderEditorFontFileName = string.Empty;
             ReaderEditorFontDisplayName = string.Empty;
@@ -132,6 +139,7 @@ namespace SilentNotes.Models
             LanBridgeAccessToken = string.Empty;
             LanBridgeAllowWrites = true;
             ManualBackupFolder = string.Empty;
+            AutomationRules = new List<AutomationRuleModel>();
         }
 
         /// <summary>
@@ -672,6 +680,20 @@ namespace SilentNotes.Models
         public List<CalculatorVariableEntryModel> CalculatorVariables { get; set; }
 
         /// <summary>
+        /// Gets or sets user-defined currency codes and their USD conversion rates for the calculator.
+        /// </summary>
+        [XmlArray("calc_custom_currency_rates")]
+        [XmlArrayItem("currency")]
+        public List<CurrencyRateEntryModel> CustomCurrencyRates { get; set; }
+
+        /// <summary>
+        /// Gets or sets named custom conversion rates (e.g. electricity kWh, fuel per liter).
+        /// </summary>
+        [XmlArray("calc_custom_rate_profiles")]
+        [XmlArrayItem("profile")]
+        public List<CustomRateProfileEntryModel> CustomRateProfiles { get; set; }
+
+        /// <summary>
         /// Gets or sets the photo file format for the Camera tab ("jpg", "png", or "webp").
         /// </summary>
         [XmlElement("camera_photo_format")]
@@ -815,6 +837,24 @@ namespace SilentNotes.Models
         public int ReaderPathTabIndex { get; set; }
 
         /// <summary>
+        /// Gets or sets the File tab list sort mode (<see cref="FileBrowserSortMode"/> name).
+        /// </summary>
+        [XmlElement("file_sort_mode")]
+        public string FileSortMode { get; set; }
+
+        /// <summary>
+        /// Gets or sets the Player tab list sort mode (<see cref="FileBrowserSortMode"/> name).
+        /// </summary>
+        [XmlElement("player_sort_mode")]
+        public string PlayerSortMode { get; set; }
+
+        /// <summary>
+        /// Gets or sets the Reader tab list sort mode (<see cref="FileBrowserSortMode"/> name).
+        /// </summary>
+        [XmlElement("reader_sort_mode")]
+        public string ReaderSortMode { get; set; }
+
+        /// <summary>
         /// Gets or sets whether the Reader text editor wraps long lines. Default true.
         /// </summary>
         [XmlElement("reader_editor_word_wrap")]
@@ -951,10 +991,47 @@ namespace SilentNotes.Models
         }
 
         /// <summary>
+        /// Gets or sets local module-to-module automation rules (device settings only).
+        /// </summary>
+        [XmlArray("automation_rules")]
+        [XmlArrayItem("rule")]
+        public List<AutomationRuleModel> AutomationRules
+        {
+            get { return _automationRules ?? (_automationRules = new List<AutomationRuleModel>()); }
+            set { _automationRules = value; }
+        }
+
+        /// <summary>
         /// Gets or sets the currently active note filter.
         /// </summary>
         [XmlIgnore]
         public string Filter { get; set; }
+
+        /// <summary>
+        /// Gets or sets the layout mode for the notes tab.
+        /// </summary>
+        [XmlElement("notes_view_mode")]
+        public NotesRepositoryViewMode NotesViewMode { get; set; }
+
+        /// <summary>
+        /// Gets or sets an optional status filter for the notes tab (empty = all).
+        /// </summary>
+        [XmlElement("notes_filter_status")]
+        public string NotesFilterStatus { get; set; }
+
+        /// <summary>
+        /// Gets or sets an optional priority filter for the notes tab (<see cref="NoteMetadata.FilterPriorityAny"/> = all).
+        /// </summary>
+        [XmlElement("notes_filter_priority")]
+        public int NotesFilterPriority { get; set; } = NoteMetadata.FilterPriorityAny;
+
+        public bool NotesFilterPrioritySpecified { get { return NotesFilterPriority != NoteMetadata.FilterPriorityAny; } }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether only overdue notes are shown.
+        /// </summary>
+        [XmlElement("notes_filter_overdue")]
+        public bool NotesFilterOverdueOnly { get; set; }
 
         /// <summary>
         /// Gets or sets the visual order of main view tab buttons as stable tab indices.
@@ -1054,5 +1131,45 @@ namespace SilentNotes.Models
         /// <summary>Gets or sets the numeric value.</summary>
         [XmlAttribute("value")]
         public double Value { get; set; }
+    }
+
+    /// <summary>
+    /// A user-defined currency and its approximate USD rate for offline calculator conversion.
+    /// </summary>
+    public class CurrencyRateEntryModel
+    {
+        /// <summary>Gets or sets the three-letter or custom currency code.</summary>
+        [XmlAttribute("code")]
+        public string Code { get; set; }
+
+        /// <summary>Gets or sets how many USD one unit of this currency is worth.</summary>
+        [XmlAttribute("usd_rate")]
+        public double UsdRate { get; set; }
+    }
+
+    /// <summary>
+    /// A named custom unit conversion (base label, quote label, multiply factor).
+    /// </summary>
+    public class CustomRateProfileEntryModel
+    {
+        /// <summary>Gets or sets the stable profile id.</summary>
+        [XmlAttribute("id")]
+        public string Id { get; set; }
+
+        /// <summary>Gets or sets the display name.</summary>
+        [XmlAttribute("name")]
+        public string Name { get; set; }
+
+        /// <summary>Gets or sets the label for the input unit (e.g. kWh).</summary>
+        [XmlElement("base_label")]
+        public string BaseLabel { get; set; }
+
+        /// <summary>Gets or sets the label for the output unit (e.g. USD).</summary>
+        [XmlElement("quote_label")]
+        public string QuoteLabel { get; set; }
+
+        /// <summary>Gets or sets multiply factor from base to quote.</summary>
+        [XmlAttribute("rate")]
+        public double Rate { get; set; }
     }
 }

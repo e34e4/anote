@@ -80,6 +80,9 @@ namespace SilentNotes.ViewModels
                 {
                     SearchableHtmlConverter converter = _searchableTextConverter ?? (_searchableTextConverter = new SearchableHtmlConverter());
                     converter.TryConvertHtml(UnlockedHtmlContent, out _searchableContent);
+                    string suffix = NoteMetadata.BuildSearchableSuffix(Model);
+                    if (!string.IsNullOrEmpty(suffix))
+                        _searchableContent = (_searchableContent ?? string.Empty) + " " + suffix;
                 }
                 return _searchableContent;
             }
@@ -271,6 +274,70 @@ namespace SilentNotes.ViewModels
                     return RouteNames.Combine(RouteNames.OpenSafe, "target", CryptoUtils.StringToBase64String(routeForUnlockedNote));
                 else
                     return routeForUnlockedNote;
+            }
+        }
+
+        /// <summary>
+        /// Gets the workflow status (normalized lowercase).
+        /// </summary>
+        public string Status
+        {
+            get { return NoteMetadata.NormalizeStatus(Model.Status); }
+        }
+
+        /// <summary>
+        /// Gets the priority (0–3).
+        /// </summary>
+        public int Priority
+        {
+            get { return Model.Priority; }
+        }
+
+        /// <summary>
+        /// Gets the due date in UTC, if set.
+        /// </summary>
+        public DateTime? DueAt
+        {
+            get { return Model.DueAt; }
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether the due date is in the past and the note is not done.
+        /// </summary>
+        public bool IsDueOverdue
+        {
+            get { return NoteMetadata.IsOverdue(Model.DueAt, Model.Status); }
+        }
+
+        /// <summary>
+        /// Gets whether any metadata badge should be shown on list cards.
+        /// </summary>
+        public bool HasMetadataBadges
+        {
+            get
+            {
+                return !string.IsNullOrEmpty(Status)
+                    || Priority > NoteMetadata.PriorityLow
+                    || DueAt.HasValue;
+            }
+        }
+
+        /// <summary>
+        /// Gets a short title derived from the note HTML.
+        /// </summary>
+        public string DisplayTitle
+        {
+            get
+            {
+                if (IsLocked)
+                    return "…";
+                string title = NoteHtmlUtils.GetTitle(UnlockedHtmlContent);
+                if (string.IsNullOrWhiteSpace(title))
+                    title = SearchableContent?.Trim();
+                if (string.IsNullOrWhiteSpace(title))
+                    return "—";
+                title = title.Trim();
+                return title.Length > 80 ? title.Substring(0, 77) + "…" : title;
             }
         }
 

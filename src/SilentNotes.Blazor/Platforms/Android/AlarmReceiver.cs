@@ -9,6 +9,7 @@ using Android.Content;
 using Android.OS;
 using SilentNotes.Models;
 using SilentNotes.Services;
+using SilentNotes.Workers;
 
 namespace SilentNotes
 {
@@ -47,6 +48,7 @@ namespace SilentNotes
             if (kind == KindTimer)
             {
                 PostTimerNotification(context, intent);
+                RunAutomation(AutomationTriggerTypes.TimerFinished, intent.GetStringExtra(ExtraLabel));
                 return;
             }
 
@@ -62,6 +64,7 @@ namespace SilentNotes
                 context.StartService(serviceIntent);
 
             RescheduleOrDisable(alarmId);
+            RunAutomation(AutomationTriggerTypes.AlarmFired, intent.GetStringExtra(ExtraLabel));
         }
 
         private static void PostTimerNotification(Context context, Intent intent)
@@ -81,6 +84,59 @@ namespace SilentNotes
 
             NotificationManager manager = AppNotifications.GetManager(context);
             manager?.Notify(AppNotifications.TimerNotificationId, builder.Build());
+
+            RecordFocusCompletionIfNeeded();
+        }
+
+        private static void RunAutomation(string trigger, string label)
+        {
+            try
+            {
+                IAutomationRulesEngine engine = Ioc.Instance.GetService<IAutomationRulesEngine>();
+                engine?.Evaluate(
+                    trigger,
+                    new AutomationRuleContext
+                    {
+                        AppendText = label ?? string.Empty,
+                    });
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private static void RecordFocusCompletionIfNeeded()
+        {
+            try
+            {
+                IClockService clockService = Ioc.Instance.GetService<IClockService>();
+                IRepositoryStorageService repositoryService = Ioc.Instance.GetService<IRepositoryStorageService>();
+                if (clockService == null || repositoryService == null)
+                    return;
+
+                ClockDataModel data = clockService.LoadData();
+                if (data.TimerId == Guid.Empty)
+                    return;
+                if (data.LastCompletedTimerId == data.TimerId)
+                    return;
+                if (!string.Equals(data.TimerMode, FocusSessionHelper.ModeFocus, StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                RepositoryStorageLoadResult loadResult = repositoryService.LoadRepositoryOrDefault(out NoteRepositoryModel repository);
+                if (repository == null || object.ReferenceEquals(repository, NoteRepositoryModel.InvalidRepository))
+                    return;
+
+                Guid? linked = data.FocusLinkedNoteId == Guid.Empty ? (Guid?)null : data.FocusLinkedNoteId;
+                FocusSessionHelper.RecordCompletion(repository, repositoryService, linked, data.TimerSeconds);
+
+                data.LastCompletedTimerId = data.TimerId;
+                data.TimerId = Guid.Empty;
+                data.TimerMode = null;
+                clockService.TrySaveData(data);
+            }
+            catch (Exception)
+            {
+            }
         }
 
         /// <summary>

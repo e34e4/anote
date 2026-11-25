@@ -295,6 +295,26 @@ namespace SilentNotes.Services
                         foreach (string phone in contact.Phones)
                             writer.WriteStringValue(phone);
                         writer.WriteEndArray();
+                        if (!string.IsNullOrEmpty(contact.Notes))
+                            writer.WriteString("notes", contact.Notes);
+                        if (contact.FollowUpIntervalDays != 0)
+                            writer.WriteNumber("followUpIntervalDays", contact.FollowUpIntervalDays);
+                        if (contact.LastInteractionUtc.HasValue)
+                            writer.WriteString("lastInteractionUtc", contact.LastInteractionUtc.Value.ToString("o"));
+                        if (contact.NextFollowUpUtc.HasValue)
+                            writer.WriteString("nextFollowUpUtc", contact.NextFollowUpUtc.Value.ToString("o"));
+                        if (contact.InteractionLog.Count > 0)
+                        {
+                            writer.WriteStartArray("interactionLog");
+                            foreach (ContactInteractionEntryModel entry in contact.InteractionLog)
+                            {
+                                writer.WriteStartObject();
+                                writer.WriteString("utc", entry.Utc.ToString("o"));
+                                writer.WriteString("summary", entry.Summary);
+                                writer.WriteEndObject();
+                            }
+                            writer.WriteEndArray();
+                        }
                         writer.WriteEndObject();
                     }
                     writer.WriteEndArray();

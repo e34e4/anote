@@ -258,6 +258,10 @@
 								<div class="rec-row-meta">@(ViewModel.IsShotsSection ? $"{item.DateText} · {item.SizeText}" : $"{item.DateText} · {item.DurationText} · {item.SizeText}")</div>
 							</div>
 
+							@if (ViewModel.SupportsVoiceMemoTranscribe)
+							{
+								<MudIconButton Icon="@Icons.Material.Filled.Mic" Color="Color.Secondary" Size="Size.Small" OnClick="() => ViewModel.AddToVoiceNoteCommand.Execute(item)" title="@LanguageService["rec_voice_memo"]" />
+							}
 							<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => ViewModel.StartRenameCommand.Execute(item)" title="@LanguageService["rec_rename"]" />
 							<MudIconButton Icon="@Icons.Material.Filled.SaveAlt" Size="Size.Small" OnClick="() => SaveToDeviceAsync(item)" title="@(ViewModel.IsShotsSection ? LanguageService["rec_shots_save_device"] : ViewModel.IsScreenSection ? LanguageService["rec_screen_save_device"] : LanguageService["rec_save_device"])" />
 							<MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small" OnClick="() => SaveToWebdavAsync(item)" title="@LanguageService["webdav_quick_save"]" />
