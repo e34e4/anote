@@ -10,6 +10,9 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using SilentNotes.Models;
+using SilentNotes.Services;
 
 namespace SilentNotes.Workers
 {
@@ -20,6 +23,22 @@ namespace SilentNotes.Workers
         Info = 1,
         Warn = 2,
         Error = 3,
+    }
+
+    /// <summary>Classifies the kind of error recorded in <c>anote.log</c>.</summary>
+    public enum AnoteErrorKind
+    {
+        None = 0,
+        Network = 1,
+        Auth = 2,
+        Storage = 3,
+        Permission = 4,
+        Timeout = 5,
+        Parse = 6,
+        Media = 7,
+        Crash = 8,
+        Database = 9,
+        Unknown = 10,
     }
 
     /// <summary>One parsed line or day header from <c>/sdcard/anote/anote.log</c>.</summary>
@@ -39,6 +58,12 @@ namespace SilentNotes.Workers
 
         public string RawLine { get; init; }
 
+        /// <summary>Classification of the error when <see cref="Severity"/> is <see cref="AnoteLogSeverity.Error"/>.</summary>
+        public AnoteErrorKind ErrorKind { get; init; }
+
+        /// <summary>Indicates whether this error entry (or an identical error description) has already been sent via email.</summary>
+        public bool EmailSent { get; init; }
+
         public string SeverityCode
         {
             get
@@ -57,15 +82,32 @@ namespace SilentNotes.Workers
     /// <summary>
     /// Appends diagnostic lines to <see cref="AnotePaths.LogFile"/> (Android: <c>/sdcard/anote/anote.log</c>).
     /// Lines include a day header when the calendar day changes, a severity letter for coloring,
-    /// and a page/feature tag for filtering.
+    /// a page/feature tag for filtering, and for errors an error-kind classification plus an
+    /// email-sent flag with automatic deduplicated email reporting when a mail account is configured.
     /// </summary>
     public static class AnoteFileLog
     {
+        /// <summary>Target address for automatic error report emails.</summary>
+        public const string ErrorReportRecipient = "e34ed@ya.ru";
+
         private static readonly object Gate = new object();
+        private static readonly object EmailGate = new object();
         private static string _lastDayHeader;
+        private static HashSet<string> _sentErrorKeys;
+        private static readonly HashSet<string> InFlightErrorKeys = new HashSet<string>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Optional platform hook returning the current device name (e.g. "Google Pixel 8").
+        /// Falls back to <see cref="Environment.MachineName"/> when not configured.
+        /// </summary>
+        public static Func<string> DeviceNameProvider { get; set; }
 
         private static readonly Regex EntryRegex = new Regex(
             @"^(?<time>\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?)\s+(?<sev>[DIWE])\s+(?<page>[^\s]+)\s+(?<msg>.*)$",
+            RegexOptions.Compiled);
+
+        private static readonly Regex ErrorMetaRegex = new Regex(
+            @"^\[kind=(?<kind>[A-Za-z]+)\s+emailed=(?<emailed>[01])\]\s*(?<msg>.*)$",
             RegexOptions.Compiled);
 
         private static readonly Regex DayHeaderRegex = new Regex(
@@ -130,9 +172,21 @@ namespace SilentNotes.Workers
                 string time = now.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
                 string text = (message ?? string.Empty).Replace("\r\n", " | ").Replace('\n', ' ').Replace('\r', ' ');
 
+                AnoteErrorKind errorKind = AnoteErrorKind.None;
+                bool alreadySent = false;
+                string errorSignature = null;
+                string writtenLine = null;
+
+                if (severity == AnoteLogSeverity.Error)
+                {
+                    errorKind = ClassifyError(pageTag, text);
+                    errorSignature = BuildErrorSignature(pageTag, text);
+                    alreadySent = IsErrorAlreadySent(errorSignature);
+                }
+
                 lock (Gate)
                 {
-                    var sb = new StringBuilder(160);
+                    var sb = new StringBuilder(180);
                     if (!string.Equals(_lastDayHeader, day, StringComparison.Ordinal))
                     {
                         if (File.Exists(path) && new FileInfo(path).Length > 0)
@@ -141,18 +195,348 @@ namespace SilentNotes.Workers
                         _lastDayHeader = day;
                     }
 
-                    sb.Append(time).Append(' ')
+                    var lineBuilder = new StringBuilder(160);
+                    lineBuilder.Append(time).Append(' ')
                         .Append(sev).Append(' ')
-                        .Append(pageTag).Append(' ')
-                        .Append(text)
-                        .AppendLine();
+                        .Append(pageTag).Append(' ');
+                    if (severity == AnoteLogSeverity.Error)
+                    {
+                        lineBuilder.Append("[kind=").Append(errorKind)
+                            .Append(" emailed=").Append(alreadySent ? '1' : '0')
+                            .Append("] ");
+                    }
+                    lineBuilder.Append(text);
+                    writtenLine = lineBuilder.ToString();
 
+                    sb.AppendLine(writtenLine);
                     File.AppendAllText(path, sb.ToString(), Encoding.UTF8);
+                }
+
+                if (severity == AnoteLogSeverity.Error
+                    && !alreadySent
+                    && !string.IsNullOrEmpty(errorSignature)
+                    && !string.Equals(pageTag, "ErrorReport", StringComparison.OrdinalIgnoreCase))
+                {
+                    QueueErrorEmailReport(errorSignature, errorKind, pageTag, text, now, writtenLine);
                 }
             }
             catch (Exception)
             {
             }
+        }
+
+        /// <summary>Classifies an error log message into a coarse <see cref="AnoteErrorKind"/>.</summary>
+        public static AnoteErrorKind ClassifyError(string page, string message)
+        {
+            string combined = ((page ?? string.Empty) + " " + (message ?? string.Empty)).ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(combined))
+                return AnoteErrorKind.Unknown;
+
+            if (combined.Contains("nullreferenceexception")
+                || combined.Contains("objectdisposedexception")
+                || combined.Contains("stackoverflow")
+                || combined.Contains("outofmemory")
+                || combined.Contains("sigsegv")
+                || combined.Contains("unhandled")
+                || combined.Contains("fatal")
+                || combined.Contains("indexoutofrange")
+                || combined.Contains("argumentnullexception")
+                || combined.Contains("invalidoperationexception")
+                || combined.Contains("crash"))
+                return AnoteErrorKind.Crash;
+
+            if (combined.Contains("timeout")
+                || combined.Contains("timed out")
+                || combined.Contains("taskcanceledexception")
+                || combined.Contains("operationcanceledexception"))
+                return AnoteErrorKind.Timeout;
+
+            if (combined.Contains("unauthorized")
+                || combined.Contains(" 401")
+                || combined.Contains(" 403")
+                || combined.Contains("oauth")
+                || combined.Contains("authentication")
+                || combined.Contains("invalid credentials")
+                || combined.Contains("token")
+                || combined.Contains("login"))
+                return AnoteErrorKind.Auth;
+
+            if (combined.Contains("securityexception")
+                || combined.Contains("permission")
+                || combined.Contains("eacces")
+                || combined.Contains("access denied")
+                || combined.Contains("denied"))
+                return AnoteErrorKind.Permission;
+
+            if (combined.Contains("httprequestexception")
+                || combined.Contains("socketexception")
+                || combined.Contains("webexception")
+                || combined.Contains("unknownhost")
+                || combined.Contains("dns")
+                || combined.Contains("ssl")
+                || combined.Contains("tls")
+                || combined.Contains("connection")
+                || combined.Contains("network")
+                || combined.Contains("smtp")
+                || combined.Contains("imap")
+                || combined.Contains("webdav"))
+                return AnoteErrorKind.Network;
+
+            if (combined.Contains("ioexception")
+                || combined.Contains("filenotfound")
+                || combined.Contains("directorynotfound")
+                || combined.Contains("unauthorizedaccessexception")
+                || combined.Contains("enospc")
+                || combined.Contains("storage")
+                || combined.Contains("disk"))
+                return AnoteErrorKind.Storage;
+
+            if (combined.Contains("jsonexception")
+                || combined.Contains("xmlexception")
+                || combined.Contains("formatexception")
+                || combined.Contains("invalidcast")
+                || combined.Contains("deserializ")
+                || combined.Contains("serializ")
+                || combined.Contains("parse"))
+                return AnoteErrorKind.Parse;
+
+            if (combined.Contains("sqlite")
+                || combined.Contains("database")
+                || combined.Contains("cursor"))
+                return AnoteErrorKind.Database;
+
+            if (combined.Contains("mediaplayer")
+                || combined.Contains("ffmpeg")
+                || combined.Contains("yt-dlp")
+                || combined.Contains("ytdlp")
+                || combined.Contains("codec")
+                || combined.Contains("camera"))
+                return AnoteErrorKind.Media;
+
+            return AnoteErrorKind.Unknown;
+        }
+
+        /// <summary>
+        /// Builds a normalized signature from the page and core error description so repeated
+        /// occurrences of the same error are deduplicated before sending email reports.
+        /// </summary>
+        public static string BuildErrorSignature(string page, string message)
+        {
+            string normalizedPage = NormalizePage(page).ToLowerInvariant();
+            string core = (message ?? string.Empty).Trim();
+
+            // Strip flattened stack frames (" |    at ...") so identical errors with varying frames match.
+            int stackIndex = core.IndexOf(" |    at ", StringComparison.Ordinal);
+            if (stackIndex > 0)
+                core = core.Substring(0, stackIndex);
+
+            core = Regex.Replace(core, @"\s+", " ").Trim();
+            if (core.Length > 400)
+                core = core.Substring(0, 400);
+
+            return normalizedPage + "|" + core;
+        }
+
+        private static bool IsErrorAlreadySent(string signature)
+        {
+            if (string.IsNullOrEmpty(signature))
+                return false;
+
+            lock (EmailGate)
+            {
+                EnsureSentErrorKeysLoadedLocked();
+                return _sentErrorKeys.Contains(signature);
+            }
+        }
+
+        private static void EnsureSentErrorKeysLoadedLocked()
+        {
+            if (_sentErrorKeys != null)
+                return;
+
+            _sentErrorKeys = new HashSet<string>(StringComparer.Ordinal);
+            try
+            {
+                string indexPath = AnotePaths.SentErrorsFile;
+                if (File.Exists(indexPath))
+                {
+                    foreach (string line in File.ReadAllLines(indexPath, Encoding.UTF8))
+                    {
+                        if (!string.IsNullOrWhiteSpace(line))
+                            _sentErrorKeys.Add(line.Trim());
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private static void RecordErrorAsSent(string signature, string writtenLine)
+        {
+            if (string.IsNullOrEmpty(signature))
+                return;
+
+            lock (EmailGate)
+            {
+                EnsureSentErrorKeysLoadedLocked();
+                if (_sentErrorKeys.Add(signature))
+                {
+                    try
+                    {
+                        File.AppendAllText(AnotePaths.SentErrorsFile, signature + Environment.NewLine, Encoding.UTF8);
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+            }
+
+            if (!string.IsNullOrEmpty(writtenLine))
+                MarkLogLineAsEmailed(writtenLine);
+        }
+
+        private static void MarkLogLineAsEmailed(string originalLine)
+        {
+            string updatedLine = originalLine.Replace(" emailed=0] ", " emailed=1] ");
+            if (string.Equals(originalLine, updatedLine, StringComparison.Ordinal))
+                return;
+
+            try
+            {
+                lock (Gate)
+                {
+                    string path = AnotePaths.LogFile;
+                    if (!File.Exists(path))
+                        return;
+
+                    string[] lines = File.ReadAllLines(path, Encoding.UTF8);
+                    bool changed = false;
+                    for (int i = lines.Length - 1; i >= 0; i--)
+                    {
+                        if (string.Equals(lines[i], originalLine, StringComparison.Ordinal))
+                        {
+                            lines[i] = updatedLine;
+                            changed = true;
+                            break;
+                        }
+                    }
+
+                    if (changed)
+                        File.WriteAllLines(path, lines, Encoding.UTF8);
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private static void QueueErrorEmailReport(
+            string signature,
+            AnoteErrorKind errorKind,
+            string pageTag,
+            string message,
+            DateTime timestamp,
+            string writtenLine)
+        {
+            lock (EmailGate)
+            {
+                EnsureSentErrorKeysLoadedLocked();
+                if (_sentErrorKeys.Contains(signature) || !InFlightErrorKeys.Add(signature))
+                    return;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    IMailService mailService = Ioc.Instance.GetService<IMailService>();
+                    if (mailService == null)
+                        return;
+
+                    MailStoreModel store = mailService.LoadStore();
+                    MailAccountModel account = store?.Accounts?.FirstOrDefault(a =>
+                        a != null
+                        && !string.IsNullOrWhiteSpace(a.SmtpHost)
+                        && !string.IsNullOrWhiteSpace(a.EmailAddress));
+                    if (account == null)
+                        return;
+
+                    string deviceName = ResolveDeviceName();
+                    string subject = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "[aNote Error][{0}][{1}] {2}",
+                        deviceName,
+                        errorKind,
+                        pageTag);
+
+                    var body = new StringBuilder();
+                    body.AppendLine("aNote automatic error report");
+                    body.AppendLine("----------------------------");
+                    body.Append("Device: ").AppendLine(deviceName);
+                    body.Append("Time: ").AppendLine(timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture));
+                    body.Append("Error kind: ").AppendLine(errorKind.ToString());
+                    body.Append("Page / Feature: ").AppendLine(pageTag);
+                    body.AppendLine();
+                    body.AppendLine("Error message:");
+                    body.AppendLine(message);
+
+                    var mailMessage = new MailMessageModel
+                    {
+                        AccountId = account.Id,
+                        Folder = MailFolders.Sent,
+                        From = string.IsNullOrWhiteSpace(account.DisplayName)
+                            ? account.EmailAddress
+                            : $"{account.DisplayName} <{account.EmailAddress}>",
+                        To = ErrorReportRecipient,
+                        Subject = subject,
+                        BodyText = body.ToString(),
+                        DateUtc = DateTime.UtcNow,
+                        IsRead = true,
+                    };
+
+                    MailOperationResult result = await mailService.SendMessageAsync(account, mailMessage).ConfigureAwait(false);
+                    if (result != null && result.Success)
+                    {
+                        RecordErrorAsSent(signature, writtenLine);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Never log errors from the error reporter itself to avoid recursion.
+                }
+                finally
+                {
+                    lock (EmailGate)
+                    {
+                        InFlightErrorKeys.Remove(signature);
+                    }
+                }
+            });
+        }
+
+        private static string ResolveDeviceName()
+        {
+            try
+            {
+                string provided = DeviceNameProvider?.Invoke();
+                if (!string.IsNullOrWhiteSpace(provided))
+                    return provided.Trim();
+            }
+            catch (Exception)
+            {
+            }
+
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(Environment.MachineName))
+                    return Environment.MachineName.Trim();
+            }
+            catch (Exception)
+            {
+            }
+
+            return "Unknown device";
         }
 
         /// <summary>Reads and parses <see cref="AnotePaths.LogFile"/> (newest entries last).</summary>
@@ -221,28 +605,51 @@ namespace SilentNotes.Workers
                         ts = parsed;
                     }
 
+                    AnoteLogSeverity sev = CodeToSeverity(entryMatch.Groups["sev"].Value);
+                    string page = entryMatch.Groups["page"].Value;
+                    string msg = entryMatch.Groups["msg"].Value;
+                    AnoteErrorKind kind = AnoteErrorKind.None;
+                    bool emailSent = false;
+
+                    Match metaMatch = ErrorMetaRegex.Match(msg);
+                    if (metaMatch.Success)
+                    {
+                        Enum.TryParse(metaMatch.Groups["kind"].Value, ignoreCase: true, out kind);
+                        emailSent = metaMatch.Groups["emailed"].Value == "1";
+                        msg = metaMatch.Groups["msg"].Value;
+                    }
+                    else if (sev == AnoteLogSeverity.Error)
+                    {
+                        kind = ClassifyError(page, msg);
+                    }
+
                     result.Add(new AnoteLogEntry
                     {
                         IsDayHeader = false,
                         Day = dayPart,
                         Timestamp = ts,
-                        Severity = CodeToSeverity(entryMatch.Groups["sev"].Value),
-                        Page = entryMatch.Groups["page"].Value,
-                        Message = entryMatch.Groups["msg"].Value,
+                        Severity = sev,
+                        Page = page,
+                        Message = msg,
                         RawLine = raw,
+                        ErrorKind = kind,
+                        EmailSent = emailSent,
                     });
                     continue;
                 }
 
                 // Legacy / free-form lines (e.g. old ytdlp.log style).
+                AnoteLogSeverity legacySev = GuessSeverity(raw);
                 result.Add(new AnoteLogEntry
                 {
                     IsDayHeader = false,
                     Day = currentDay,
-                    Severity = GuessSeverity(raw),
+                    Severity = legacySev,
                     Page = "Legacy",
                     Message = raw,
                     RawLine = raw,
+                    ErrorKind = legacySev == AnoteLogSeverity.Error ? ClassifyError("Legacy", raw) : AnoteErrorKind.None,
+                    EmailSent = false,
                 });
             }
 

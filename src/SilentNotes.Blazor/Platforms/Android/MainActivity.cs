@@ -213,6 +213,15 @@ namespace SilentNotes
         protected override void OnCreate(Bundle savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
+            AnoteFileLog.DeviceNameProvider = () =>
+            {
+                string manufacturer = Build.Manufacturer ?? string.Empty;
+                string model = Build.Model ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(manufacturer)
+                    && !model.StartsWith(manufacturer, StringComparison.OrdinalIgnoreCase))
+                    return (manufacturer + " " + model).Trim();
+                return !string.IsNullOrWhiteSpace(model) ? model.Trim() : Build.Device ?? "Android";
+            };
             try
             {
                 AnotePaths.EnsureDirectories();

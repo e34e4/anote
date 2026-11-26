@@ -592,6 +592,22 @@ namespace SilentNotes.Platforms
             if (intent == null)
                 return null;
 
+            // Internal request from the SMS floating window / notification to open a conversation.
+            if (intent.HasExtra(FloatingButtonAccessibilityService.ExtraOpenSmsThreadId)
+                || intent.HasExtra(FloatingButtonAccessibilityService.ExtraOpenSmsAddress))
+            {
+                long threadId = intent.GetLongExtra(FloatingButtonAccessibilityService.ExtraOpenSmsThreadId, 0);
+                string address = GetStringExtraSafe(intent, FloatingButtonAccessibilityService.ExtraOpenSmsAddress);
+                intent.RemoveExtra(FloatingButtonAccessibilityService.ExtraOpenSmsThreadId);
+                intent.RemoveExtra(FloatingButtonAccessibilityService.ExtraOpenSmsAddress);
+                return new SmsIntentRequest
+                {
+                    ThreadId = threadId > 0 ? threadId : 0,
+                    PhoneNumber = string.IsNullOrWhiteSpace(address) ? null : address,
+                    OpenConversation = true,
+                };
+            }
+
             string action = intent.Action;
             global::Android.Net.Uri data = intent.Data;
             string scheme = data?.Scheme ?? string.Empty;
@@ -826,9 +842,20 @@ namespace SilentNotes.Platforms
             // not ready yet, or the activity was only resumed without a separate NewIntent delivery.
             try
             {
+                ConsumeSmsIntent(activity?.Intent);
                 ConsumeTabIntent(activity?.Intent);
                 ConsumeRouteIntent(activity?.Intent);
                 ConsumeAnoteDeepLink(activity?.Intent);
+
+                // Also dispatch in-process pending requests set by the floating quick menu / SMS popup
+                // in case the OEM reordered the task to front without delivering OnNewIntent.
+                var messenger = Ioc.Instance.GetService<IMessengerService>();
+                if (SmsIntentRequest.Pending != null)
+                    messenger?.Send(new SmsIntentMessage());
+                if (TabIntentRequest.Pending != null)
+                    messenger?.Send(new TabIntentMessage());
+                if (RouteIntentRequest.Pending != null)
+                    messenger?.Send(new RouteIntentMessage());
             }
             catch (Exception ex)
             {

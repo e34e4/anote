@@ -19,5 +19,14 @@ namespace SilentNotes.Models
 
         /// <summary>Gets or sets an optional message body to pre-fill in the composer.</summary>
         public string Body { get; set; }
+
+        /// <summary>Gets or sets the thread id of an existing conversation to open, or 0 for compose.</summary>
+        public long ThreadId { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether to open an existing conversation matching
+        /// <see cref="ThreadId"/> or <see cref="PhoneNumber"/> instead of composing a new message.
+        /// </summary>
+        public bool OpenConversation { get; set; }
     }
 }

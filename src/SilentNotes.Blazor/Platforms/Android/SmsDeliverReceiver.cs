@@ -37,8 +37,9 @@ namespace SilentNotes
                     body.Append(message.MessageBody);
 
                 string text = body.ToString();
-                StoreInboxMessage(context, address, text);
-                ShowNotification(context, address, text);
+                long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                long threadId = StoreInboxMessage(context, address, text, timestampMs);
+                ShowNotification(context, threadId, address, text, timestampMs);
                 RunAutomationRules(address, text);
                 NotifyRunningApp();
             }
@@ -47,21 +48,23 @@ namespace SilentNotes
             }
         }
 
-        private static void StoreInboxMessage(Context context, string address, string text)
+        private static long StoreInboxMessage(Context context, string address, string text, long timestampMs)
         {
             long threadId = Telephony.Threads.GetOrCreateThreadId(context, address);
             var values = new ContentValues();
             values.Put("address", address);
             values.Put("body", text);
-            values.Put("date", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            values.Put("date", timestampMs);
             values.Put("read", 0);
             values.Put("type", 1); // inbox
             values.Put("thread_id", threadId);
             context.ContentResolver.Insert(Telephony.Sms.Inbox.ContentUri, values);
+            return threadId;
         }
 
-        private static void ShowNotification(Context context, string address, string text)
+        private static void ShowNotification(Context context, long threadId, string address, string text, long timestampMs)
         {
+            int notificationId = AppNotifications.SmsNotificationIdForThread(threadId);
             Notification.Builder builder = AppNotifications.CreateBuilder(context, NotificationChannels.SmsChannelId);
             builder.SetContentTitle(string.IsNullOrWhiteSpace(address) ? "New message" : address);
             builder.SetContentText(text);
@@ -69,9 +72,9 @@ namespace SilentNotes
             builder.SetSmallIcon(AppNotifications.SmallIcon(context));
             builder.SetAutoCancel(true);
             builder.SetPriority((int)NotificationPriority.High);
-            builder.SetContentIntent(AppNotifications.BuildOpenAppIntent(context, AppNotifications.SmsNotificationId));
+            builder.SetContentIntent(AppNotifications.BuildOpenSmsPopupIntent(context, notificationId, threadId, address, text, timestampMs));
 
-            AppNotifications.GetManager(context)?.Notify(AppNotifications.SmsNotificationId, builder.Build());
+            AppNotifications.GetManager(context)?.Notify(notificationId, builder.Build());
         }
 
         private static void RunAutomationRules(string address, string text)

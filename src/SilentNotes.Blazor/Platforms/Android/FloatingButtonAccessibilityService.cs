@@ -57,6 +57,12 @@ namespace SilentNotes.Platforms
         /// <summary>Intent extra requesting a screen-recording toggle (start or stop).</summary>
         public const string ExtraToggleScreenRecord = "aNoteToggleScreenRecord";
 
+        /// <summary>Intent extra specifying which SMS thread id to open in the SMS tab.</summary>
+        public const string ExtraOpenSmsThreadId = "aNoteOpenSmsThreadId";
+
+        /// <summary>Intent extra specifying the SMS phone number/address to open in the SMS tab.</summary>
+        public const string ExtraOpenSmsAddress = "aNoteOpenSmsAddress";
+
         private const string PreferencesName = "anote_floating_button";
         private const string PreferenceKeyX = "x";
         private const string PreferenceKeyY = "y";
@@ -76,6 +82,10 @@ namespace SilentNotes.Platforms
         private const string PreferenceKeyVideoY = "vid_y";
         private const string PreferenceKeyVideoWidth = "vid_w";
         private const string PreferenceKeyVideoHeight = "vid_h";
+        private const string PreferenceKeySmsX = "sms_x";
+        private const string PreferenceKeySmsY = "sms_y";
+        private const string PreferenceKeySmsWidth = "sms_w";
+        private const string PreferenceKeySmsHeight = "sms_h";
         private const string LogTag = "aNoteFloating";
         private const int LongPressDelayMs = 600;
         private const int DoubleTapTimeoutMs = 260;
@@ -171,6 +181,8 @@ namespace SilentNotes.Platforms
         private bool _miniPadCollapsed;
         private LinearLayout _miniPadBodyContainer;
         private TextView _miniPadPreviewView;
+        private global::Android.Views.View _smsOverlayView;
+        private WindowManagerLayoutParams _smsLayoutParams;
 
         private IServiceProvider _serviceProvider;
         private ClipboardCapture _clipboardCapture;
@@ -373,6 +385,7 @@ namespace SilentNotes.Platforms
         public override bool OnUnbind(Intent intent)
         {
             StopClipboardCapture();
+            HideSmsOverlay();
             HideImageOverlay();
             HideVideoOverlay();
             HideMenuOverlay();
@@ -388,6 +401,7 @@ namespace SilentNotes.Platforms
         public override void OnDestroy()
         {
             StopClipboardCapture();
+            HideSmsOverlay();
             HideImageOverlay();
             HideVideoOverlay();
             HideMenuOverlay();
@@ -1408,6 +1422,246 @@ namespace SilentNotes.Platforms
         }
 
         /// <summary>
+        /// Shows a compact, movable and resizable floating window displaying a received SMS message,
+        /// with a button to open the full aNote app directly on the SMS tab and that conversation.
+        /// </summary>
+        internal bool ShowSmsOverlay(long threadId, string address, string body, long timestampMs)
+        {
+            if (_windowManager == null)
+                _windowManager = ResolveWindowManager();
+            if (_windowManager == null)
+                return false;
+
+            try
+            {
+                HideSmsOverlay();
+
+                float density = Resources.DisplayMetrics.Density;
+                int screenW = Resources.DisplayMetrics.WidthPixels;
+                int screenH = Resources.DisplayMetrics.HeightPixels;
+
+                var preferences = GetSharedPreferences(PreferencesName, FileCreationMode.Private);
+                int defaultWidth = (int)Math.Min(screenW * 0.88f, 360 * density);
+                int defaultHeight = (int)Math.Min(screenH * 0.36f, 240 * density);
+                int minWidth = (int)(190 * density);
+                int minHeight = (int)(140 * density);
+
+                int winWidth = Math.Clamp(preferences.GetInt(PreferenceKeySmsWidth, defaultWidth), minWidth, screenW);
+                int winHeight = Math.Clamp(preferences.GetInt(PreferenceKeySmsHeight, defaultHeight), minHeight, screenH);
+                int defaultX = Math.Max(0, (screenW - winWidth) / 2);
+                int defaultY = Math.Max((int)(48 * density), (screenH - winHeight) / 4);
+                int winX = Math.Clamp(preferences.GetInt(PreferenceKeySmsX, defaultX), 0, Math.Max(0, screenW - minWidth / 2));
+                int winY = Math.Clamp(preferences.GetInt(PreferenceKeySmsY, defaultY), 0, Math.Max(0, screenH - minHeight / 2));
+
+                var card = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Vertical,
+                    Clickable = true,
+                };
+                int cardPad = (int)(10 * density);
+                card.SetPadding(cardPad, cardPad, cardPad, (int)(6 * density));
+
+                var cardBg = new GradientDrawable();
+                cardBg.SetColor(Color.ParseColor("#F2101010"));
+                cardBg.SetCornerRadius(16 * density);
+                cardBg.SetStroke((int)(1.5f * density), Color.ParseColor("#38BDF8"));
+                card.Background = cardBg;
+
+                string displayName = global::SilentNotes.SmsPopupActivity.ResolveSenderDisplayName(address);
+                string headerTitle = !string.IsNullOrWhiteSpace(displayName)
+                    ? displayName
+                    : (!string.IsNullOrWhiteSpace(address) ? address : "SMS");
+
+                var headerRow = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Horizontal,
+                };
+                headerRow.SetGravity(GravityFlags.CenterVertical);
+                headerRow.SetPadding((int)(4 * density), (int)(2 * density), (int)(4 * density), (int)(6 * density));
+                int btnPad = (int)(6 * density);
+
+                var titleView = new TextView(this)
+                {
+                    Text = "⠿ " + headerTitle,
+                    TextSize = 13.5f,
+                    Ellipsize = global::Android.Text.TextUtils.TruncateAt.End,
+                };
+                titleView.SetSingleLine(true);
+                titleView.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+                titleView.SetTextColor(Color.White);
+                headerRow.AddView(titleView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+                var copyBtn = new TextView(this)
+                {
+                    Text = "Copy",
+                    TextSize = 12f,
+                    Gravity = GravityFlags.Center,
+                };
+                copyBtn.SetTextColor(Color.ParseColor("#94A3B8"));
+                copyBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
+                copyBtn.Click += (s, e) => global::SilentNotes.SmsPopupActivity.CopyToClipboard(this, body);
+                headerRow.AddView(copyBtn);
+
+                var closeBtn = new TextView(this)
+                {
+                    Text = "✕",
+                    TextSize = 14f,
+                    Gravity = GravityFlags.Center,
+                };
+                closeBtn.SetTextColor(Color.ParseColor("#BDBDBD"));
+                closeBtn.SetPadding(btnPad, (int)(2 * density), btnPad, (int)(2 * density));
+                closeBtn.Click += (s, e) => HideSmsOverlay();
+                headerRow.AddView(closeBtn);
+
+                headerRow.SetOnTouchListener(new SmsDragTouchListener(this));
+                card.AddView(headerRow);
+
+                string subtitle = global::SilentNotes.SmsPopupActivity.BuildSubtitle(displayName, address, timestampMs);
+                if (!string.IsNullOrEmpty(subtitle))
+                {
+                    var subtitleView = new TextView(this)
+                    {
+                        Text = subtitle,
+                        TextSize = 11f,
+                    };
+                    subtitleView.SetTextColor(Color.ParseColor("#94A3B8"));
+                    subtitleView.SetPadding((int)(4 * density), 0, (int)(4 * density), (int)(4 * density));
+                    subtitleView.SetOnTouchListener(new SmsDragTouchListener(this));
+                    card.AddView(subtitleView);
+                }
+
+                var scrollView = new global::Android.Widget.ScrollView(this);
+                var bodyView = new TextView(this)
+                {
+                    Text = body ?? string.Empty,
+                    TextSize = 13.5f,
+                };
+                bodyView.SetTextColor(Color.ParseColor("#F1F5F9"));
+                bodyView.SetLineSpacing(0f, 1.2f);
+                bodyView.SetPadding((int)(4 * density), (int)(2 * density), (int)(4 * density), (int)(6 * density));
+                scrollView.AddView(bodyView);
+                card.AddView(scrollView, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, 0, 1f));
+
+                var openBtn = new TextView(this)
+                {
+                    Text = "Open in aNote",
+                    TextSize = 12.5f,
+                    Gravity = GravityFlags.Center,
+                };
+                openBtn.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+                openBtn.SetTextColor(Color.ParseColor("#0B1120"));
+                openBtn.SetPadding((int)(10 * density), (int)(6 * density), (int)(10 * density), (int)(6 * density));
+                var openBg = new GradientDrawable();
+                openBg.SetColor(Color.ParseColor("#38BDF8"));
+                openBg.SetCornerRadius(10 * density);
+                openBtn.Background = openBg;
+                openBtn.Click += (s, e) =>
+                {
+                    HideSmsOverlay();
+                    global::SilentNotes.SmsPopupActivity.OpenConversationInMainApp(this, threadId, address);
+                };
+                var openParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+                {
+                    TopMargin = (int)(6 * density),
+                };
+                card.AddView(openBtn, openParams);
+
+                var footerRow = new LinearLayout(this)
+                {
+                    Orientation = Orientation.Horizontal,
+                };
+                footerRow.SetGravity(GravityFlags.CenterVertical);
+                footerRow.SetPadding(0, (int)(4 * density), 0, 0);
+
+                var bottomResizePill = new TextView(this)
+                {
+                    Text = "═══",
+                    TextSize = 11f,
+                    Gravity = GravityFlags.Center,
+                };
+                bottomResizePill.SetTextColor(Color.ParseColor("#757575"));
+                bottomResizePill.SetOnTouchListener(new SmsResizeTouchListener(this, resizeWidth: false, resizeHeight: true, minWidth, minHeight, screenW, screenH));
+                footerRow.AddView(bottomResizePill, new LinearLayout.LayoutParams(0, (int)(22 * density), 1f));
+
+                var cornerGrip = new TextView(this)
+                {
+                    Text = "◢",
+                    TextSize = 14f,
+                    Gravity = GravityFlags.Center,
+                };
+                cornerGrip.SetTextColor(Color.ParseColor("#38BDF8"));
+                cornerGrip.SetPadding((int)(8 * density), 0, (int)(4 * density), 0);
+                cornerGrip.SetOnTouchListener(new SmsResizeTouchListener(this, resizeWidth: true, resizeHeight: true, minWidth, minHeight, screenW, screenH));
+                footerRow.AddView(cornerGrip, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WrapContent, (int)(22 * density)));
+
+                card.AddView(footerRow, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+
+                _smsLayoutParams = new WindowManagerLayoutParams(
+                    winWidth,
+                    winHeight,
+                    WindowManagerTypes.AccessibilityOverlay,
+                    WindowManagerFlags.NotFocusable | WindowManagerFlags.NotTouchModal,
+                    Format.Translucent)
+                {
+                    Gravity = GravityFlags.Top | GravityFlags.Start,
+                    X = winX,
+                    Y = winY,
+                };
+
+                _smsOverlayView = card;
+                _windowManager.AddView(_smsOverlayView, _smsLayoutParams);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error(LogTag, "Could not show floating SMS overlay: " + ex);
+                HideSmsOverlay();
+                return false;
+            }
+        }
+
+        internal void HideSmsOverlay()
+        {
+            if (_smsOverlayView != null && _windowManager != null)
+            {
+                try
+                {
+                    _windowManager.RemoveView(_smsOverlayView);
+                }
+                catch (Exception ex)
+                {
+                    global::Android.Util.Log.Error(LogTag, "Could not remove floating SMS overlay: " + ex);
+                }
+            }
+            _smsOverlayView = null;
+            _smsLayoutParams = null;
+        }
+
+        private void SaveSmsBounds()
+        {
+            if (_smsLayoutParams == null)
+                return;
+
+            try
+            {
+                var preferences = GetSharedPreferences(PreferencesName, FileCreationMode.Private);
+                preferences.Edit()
+                    .PutInt(PreferenceKeySmsX, _smsLayoutParams.X)
+                    .PutInt(PreferenceKeySmsY, _smsLayoutParams.Y)
+                    .PutInt(PreferenceKeySmsWidth, _smsLayoutParams.Width)
+                    .PutInt(PreferenceKeySmsHeight, _smsLayoutParams.Height)
+                    .Apply();
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        /// <summary>
         /// Shows a movable/resizable floating image window using the same Accessibility overlay
         /// style as the quick menu. Returns false if the path is missing or the overlay cannot be shown.
         /// </summary>
@@ -2375,6 +2629,131 @@ namespace SilentNotes.Platforms
                     case MotionEventActions.Up:
                     case MotionEventActions.Cancel:
                         _service.SaveImageBounds();
+                        return true;
+                }
+                return false;
+            }
+        }
+
+        private class SmsDragTouchListener : Java.Lang.Object, global::Android.Views.View.IOnTouchListener
+        {
+            private readonly FloatingButtonAccessibilityService _service;
+            private float _startRawX;
+            private float _startRawY;
+            private int _startX;
+            private int _startY;
+
+            public SmsDragTouchListener(FloatingButtonAccessibilityService service)
+            {
+                _service = service;
+            }
+
+            public bool OnTouch(global::Android.Views.View view, MotionEvent e)
+            {
+                if (_service._smsOverlayView == null || _service._smsLayoutParams == null || _service._windowManager == null)
+                    return false;
+
+                switch (e.ActionMasked)
+                {
+                    case MotionEventActions.Down:
+                        _startRawX = e.RawX;
+                        _startRawY = e.RawY;
+                        _startX = _service._smsLayoutParams.X;
+                        _startY = _service._smsLayoutParams.Y;
+                        return true;
+
+                    case MotionEventActions.Move:
+                        int dx = (int)(e.RawX - _startRawX);
+                        int dy = (int)(e.RawY - _startRawY);
+                        _service._smsLayoutParams.X = Math.Max(0, _startX + dx);
+                        _service._smsLayoutParams.Y = Math.Max(0, _startY + dy);
+                        try
+                        {
+                            _service._windowManager.UpdateViewLayout(_service._smsOverlayView, _service._smsLayoutParams);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        return true;
+
+                    case MotionEventActions.Up:
+                    case MotionEventActions.Cancel:
+                        _service.SaveSmsBounds();
+                        return true;
+                }
+                return false;
+            }
+        }
+
+        private class SmsResizeTouchListener : Java.Lang.Object, global::Android.Views.View.IOnTouchListener
+        {
+            private readonly FloatingButtonAccessibilityService _service;
+            private readonly bool _resizeWidth;
+            private readonly bool _resizeHeight;
+            private readonly int _minWidth;
+            private readonly int _minHeight;
+            private readonly int _maxWidth;
+            private readonly int _maxHeight;
+            private float _startRawX;
+            private float _startRawY;
+            private int _startWidth;
+            private int _startHeight;
+
+            public SmsResizeTouchListener(
+                FloatingButtonAccessibilityService service,
+                bool resizeWidth,
+                bool resizeHeight,
+                int minWidth,
+                int minHeight,
+                int maxWidth,
+                int maxHeight)
+            {
+                _service = service;
+                _resizeWidth = resizeWidth;
+                _resizeHeight = resizeHeight;
+                _minWidth = minWidth;
+                _minHeight = minHeight;
+                _maxWidth = maxWidth;
+                _maxHeight = maxHeight;
+            }
+
+            public bool OnTouch(global::Android.Views.View view, MotionEvent e)
+            {
+                if (_service._smsOverlayView == null || _service._smsLayoutParams == null || _service._windowManager == null)
+                    return false;
+
+                switch (e.ActionMasked)
+                {
+                    case MotionEventActions.Down:
+                        _startRawX = e.RawX;
+                        _startRawY = e.RawY;
+                        _startWidth = _service._smsLayoutParams.Width;
+                        _startHeight = _service._smsLayoutParams.Height;
+                        return true;
+
+                    case MotionEventActions.Move:
+                        if (_resizeWidth)
+                        {
+                            int dw = (int)(e.RawX - _startRawX);
+                            _service._smsLayoutParams.Width = Math.Clamp(_startWidth + dw, _minWidth, _maxWidth);
+                        }
+                        if (_resizeHeight)
+                        {
+                            int dh = (int)(e.RawY - _startRawY);
+                            _service._smsLayoutParams.Height = Math.Clamp(_startHeight + dh, _minHeight, _maxHeight);
+                        }
+                        try
+                        {
+                            _service._windowManager.UpdateViewLayout(_service._smsOverlayView, _service._smsLayoutParams);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        return true;
+
+                    case MotionEventActions.Up:
+                    case MotionEventActions.Cancel:
+                        _service.SaveSmsBounds();
                         return true;
                 }
                 return false;
@@ -3544,10 +3923,13 @@ namespace SilentNotes.Platforms
                     return;
                 }
 
+                TabIntentRequest.Pending = new TabIntentRequest { TabIndex = 9 };
+                ScreenRecordIntentRequest.Pending = new ScreenRecordIntentRequest { Stop = false };
+
                 Intent intent = new Intent(this, typeof(MainActivity));
                 intent.PutExtra(ExtraOpenTab, 9);
                 intent.PutExtra(ExtraToggleScreenRecord, true);
-                intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop);
+                intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ReorderToFront | ActivityFlags.ClearTop);
                 StartActivity(intent);
             }
             catch (Exception ex)
@@ -3640,9 +4022,13 @@ namespace SilentNotes.Platforms
 
         internal void OpenApplicationAtTab(int tabIndex)
         {
+            // Set pending tab in-process first: the accessibility service shares the app process,
+            // so Blazor activates the tab even if the Intent extra is dropped on OEM task-reorder launches.
+            TabIntentRequest.Pending = new TabIntentRequest { TabIndex = tabIndex };
+
             Intent intent = new Intent(this, typeof(MainActivity));
             intent.PutExtra(ExtraOpenTab, tabIndex);
-            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ReorderToFront);
+            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ReorderToFront | ActivityFlags.ClearTop);
             StartActivity(intent);
         }
 

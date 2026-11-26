@@ -1,0 +1,1 @@
+SMS notifications now open in a movable/resizable floating window with an Open in aNote button targeting that conversation; quick-menu tab/page navigation works reliably on resume; aNote log classifies errors, tracks email-sent status, and automatically emails unique errors (with device name) when a mail account is configured.

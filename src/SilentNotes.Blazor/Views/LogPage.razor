@@ -71,6 +71,31 @@
 	.log-I { color: #81d4fa; }
 	.log-W { color: #ffb74d; }
 	.log-E { color: #ef5350; }
+	.log-badge {
+		display: inline-block;
+		padding: 1px 5px;
+		border-radius: 4px;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 0.68rem;
+		font-weight: 600;
+		flex: 0 0 auto;
+		white-space: nowrap;
+	}
+	.log-badge-kind {
+		background: rgba(239, 83, 80, 0.22);
+		color: #ff8a80;
+		border: 1px solid rgba(239, 83, 80, 0.45);
+	}
+	.log-badge-sent {
+		background: rgba(56, 189, 248, 0.18);
+		color: #38bdf8;
+		border: 1px solid rgba(56, 189, 248, 0.4);
+	}
+	.log-badge-unsent {
+		background: rgba(148, 163, 184, 0.14);
+		color: #94a3b8;
+		border: 1px solid rgba(148, 163, 184, 0.3);
+	}
 </style>
 
 <MudAppBar Class="flex-none" Fixed="true" Dense="true" WrapContent="false">
@@ -122,6 +147,13 @@
 						<div class="@($"log-line log-{sevCode}")">
 							<span class="log-meta">@(entry.Timestamp?.ToString("HH:mm:ss") ?? "--:--:--") [@sevCode]</span>
 							<span class="log-page">@entry.Page</span>
+							@if (entry.Severity == AnoteLogSeverity.Error)
+							{
+								<span class="log-badge log-badge-kind">@entry.ErrorKind</span>
+								<span class="@(entry.EmailSent ? "log-badge log-badge-sent" : "log-badge log-badge-unsent")">
+									@(entry.EmailSent ? "✉ sent" : "✉ unsent")
+								</span>
+							}
 							<span class="log-text">@entry.Message</span>
 						</div>
 					}

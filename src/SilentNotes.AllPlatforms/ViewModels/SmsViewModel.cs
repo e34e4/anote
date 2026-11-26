@@ -415,14 +415,76 @@ namespace SilentNotes.ViewModels
         }
 
         /// <summary>
-        /// Handles a pending SMS compose request (from a contact action or an external sms/smsto intent).
+        /// Handles a pending SMS request (either opening an existing conversation from a
+        /// notification/floating popup, or composing a new message from a contact action or
+        /// external sms/smsto intent).
         /// </summary>
-        /// <param name="request">The compose request.</param>
+        /// <param name="request">The SMS request.</param>
         public void HandleIntent(SmsIntentRequest request)
         {
             if (request == null)
                 return;
+
+            if (request.OpenConversation || request.ThreadId > 0)
+            {
+                OpenConversationByIntent(request);
+                return;
+            }
+
             ComposeNew(request.PhoneNumber, request.Body);
+        }
+
+        private void OpenConversationByIntent(SmsIntentRequest request)
+        {
+            ReloadThreads();
+
+            SmsThreadItemViewModel match = null;
+            if (request.ThreadId > 0)
+                match = _threads.FirstOrDefault(t => t.Model.ThreadId == request.ThreadId);
+
+            if (match == null && !string.IsNullOrWhiteSpace(request.PhoneNumber))
+            {
+                string targetNormalized = NormalizePhoneDigits(request.PhoneNumber);
+                match = _threads.FirstOrDefault(t =>
+                {
+                    if (string.IsNullOrWhiteSpace(t.Model.Address))
+                        return false;
+                    if (string.Equals(t.Model.Address.Trim(), request.PhoneNumber.Trim(), StringComparison.OrdinalIgnoreCase))
+                        return true;
+                    if (!string.IsNullOrEmpty(targetNormalized))
+                        return string.Equals(NormalizePhoneDigits(t.Model.Address), targetNormalized, StringComparison.Ordinal);
+                    return false;
+                });
+            }
+
+            if (match != null)
+            {
+                _ = OpenThreadAsync(match);
+                return;
+            }
+
+            if (request.ThreadId > 0)
+            {
+                var fallback = new SmsThreadItemViewModel(new SmsThreadModel
+                {
+                    ThreadId = request.ThreadId,
+                    Address = request.PhoneNumber,
+                });
+                _ = OpenThreadAsync(fallback);
+                return;
+            }
+
+            ComposeNew(request.PhoneNumber, request.Body);
+        }
+
+        private static string NormalizePhoneDigits(string number)
+        {
+            if (string.IsNullOrWhiteSpace(number))
+                return null;
+            string digits = new string(number.Where(char.IsDigit).ToArray());
+            if (digits.Length > 9)
+                digits = digits.Substring(digits.Length - 9);
+            return string.IsNullOrEmpty(digits) ? null : digits;
         }
 
         private void LoadMessages()

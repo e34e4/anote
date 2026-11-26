@@ -97,6 +97,9 @@ namespace SilentNotes.Workers
         /// <summary>Unified app log file (<c>/sdcard/anote/anote.log</c>).</summary>
         public static string LogFile => Path.Combine(GetRootDirectory(), "anote.log");
 
+        /// <summary>Persistent list of error signatures already reported by email.</summary>
+        public static string SentErrorsFile => Path.Combine(GetRootDirectory(), "anote_sent_errors.txt");
+
         /// <summary>Creates standard anote subfolders if missing; returns <see cref="GetRootDirectory"/>.</summary>
         public static string EnsureDirectories()
         {

@@ -105,12 +105,20 @@
 				// WebView may not apply NavigateTo until after resume settles (quick-menu → System).
 				await Task.Delay(80);
 				TryNavigatePendingRoute();
+				TryNavigatePendingTabOrSms();
 			}));
 
 		MessengerService.Register<TabIntentMessage>(
 			this, (recipient, message) => InvokeAsync(() =>
 			{
 				if (TabIntentRequest.Pending != null)
+					NavigationService.NavigateTo(RouteNames.NoteRepository, reload: false);
+			}));
+
+		MessengerService.Register<SmsIntentMessage>(
+			this, (recipient, message) => InvokeAsync(() =>
+			{
+				if (SmsIntentRequest.Pending != null)
 					NavigationService.NavigateTo(RouteNames.NoteRepository, reload: false);
 			}));
 
@@ -200,6 +208,21 @@
 		NavigationService.NavigateTo(pendingRoute.Route, reload: false);
 	}
 
+	private void TryNavigatePendingTabOrSms()
+	{
+		if (SmsIntentRequest.Pending != null)
+		{
+			NavigationService.NavigateTo(RouteNames.NoteRepository, reload: false);
+			MessengerService.Send(new SmsIntentMessage());
+		}
+
+		if (TabIntentRequest.Pending != null)
+		{
+			NavigationService.NavigateTo(RouteNames.NoteRepository, reload: false);
+			MessengerService.Send(new TabIntentMessage());
+		}
+	}
+
 	/// <summary>
 	/// Allows to create a backup, part of the error page
 	/// </summary>
@@ -232,6 +255,7 @@
 		MessengerService.Unregister<RedrawMainPageMessage>(this);
 		MessengerService.Unregister<AfterResumeMessage>(this);
 		MessengerService.Unregister<TabIntentMessage>(this);
+		MessengerService.Unregister<SmsIntentMessage>(this);
 		MessengerService.Unregister<RouteIntentMessage>(this);
 		MessengerService.Unregister<ClipboardChangedMessage>(this);
 	}

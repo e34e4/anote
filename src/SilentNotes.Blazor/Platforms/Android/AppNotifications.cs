@@ -43,6 +43,14 @@ namespace SilentNotes
             return 7500 + (hash & 0x0FFF);
         }
 
+        /// <summary>Stable per-thread notification id so SMS from different senders do not overwrite each other.</summary>
+        public static int SmsNotificationIdForThread(long threadId)
+        {
+            if (threadId <= 0)
+                return SmsNotificationId;
+            return 11600 + (int)(threadId & 0x0FFF);
+        }
+
         /// <summary>Gets the system notification manager.</summary>
         public static NotificationManager GetManager(Context context)
         {
@@ -73,6 +81,31 @@ namespace SilentNotes
             else
                 intent.PutExtra(AlarmRingingService.ExtraOpenClock, true);
             intent.AddFlags(ActivityFlags.SingleTop);
+
+            var flags = PendingIntentFlags.UpdateCurrent;
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.M)
+                flags |= PendingIntentFlags.Immutable;
+            return PendingIntent.GetActivity(context, requestCode, intent, flags);
+        }
+
+        /// <summary>
+        /// Builds the pending intent which opens the received SMS in a small resizable floating window
+        /// (without launching the full aNote app).
+        /// </summary>
+        public static PendingIntent BuildOpenSmsPopupIntent(
+            Context context,
+            int requestCode,
+            long threadId,
+            string address,
+            string body,
+            long timestampMs)
+        {
+            var intent = new Intent(context, typeof(SmsPopupActivity));
+            intent.PutExtra(SmsPopupActivity.ExtraThreadId, threadId);
+            intent.PutExtra(SmsPopupActivity.ExtraAddress, address ?? string.Empty);
+            intent.PutExtra(SmsPopupActivity.ExtraBody, body ?? string.Empty);
+            intent.PutExtra(SmsPopupActivity.ExtraTimestampMs, timestampMs);
+            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.ClearTop | ActivityFlags.SingleTop);
 
             var flags = PendingIntentFlags.UpdateCurrent;
             if (Build.VERSION.SdkInt >= BuildVersionCodes.M)
