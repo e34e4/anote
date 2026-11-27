@@ -1,1 +1,1 @@
-Abro bookmarks import now merges like linqs: adds new URLs and replaces an existing title when the imported name for the same URL is shorter.
+Abro bookmarks import now merges like linqs: adds new URLs and replaces an existing title when the imported name for the same URL is shorter. Blazor sleep/resume render-batch desync is recovered quietly and no longer emails Crash/Error reports.

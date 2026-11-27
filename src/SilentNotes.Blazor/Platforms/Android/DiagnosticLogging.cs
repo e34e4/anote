@@ -87,33 +87,64 @@ namespace SilentNotes.Platforms
 
         private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
+            // Known Blazor Hybrid bug (dotnet/aspnetcore#68674): sleep/resume can desync
+            // render-batch acks. Recover via WebView reload; do not treat as a Crash report.
+            if (IsRenderBatchDesync(e.ExceptionObject))
+            {
+                global::Android.Util.Log.Warn(Tag, "UnhandledException (render-batch desync, recovering): " + e.ExceptionObject);
+                AnoteFileLog.Warn("Diag", "UnhandledException (render-batch desync, recovering)", e.ExceptionObject as Exception);
+                RequestReloadIfRenderBatchDesync(e.ExceptionObject);
+                return;
+            }
+
             global::Android.Util.Log.Error(Tag, "UnhandledException (isTerminating=" + e.IsTerminating + "): " + e.ExceptionObject);
             if (e.ExceptionObject is Exception unhandledEx)
                 AnoteFileLog.Error("Diag", "UnhandledException (isTerminating=" + e.IsTerminating + ")", unhandledEx);
             else
                 AnoteFileLog.Error("Diag", "UnhandledException (isTerminating=" + e.IsTerminating + "): " + e.ExceptionObject);
-            RequestReloadIfRenderBatchDesync(e.ExceptionObject);
         }
 
         private static void OnUnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs e)
         {
+            // Always observe so the process is not torn down for background task faults.
+            e.SetObserved();
+
+            if (IsRenderBatchDesync(e.Exception))
+            {
+                global::Android.Util.Log.Warn(Tag, "UnobservedTaskException (render-batch desync, recovering): " + e.Exception);
+                AnoteFileLog.Warn("Diag", "UnobservedTaskException (render-batch desync, recovering)", e.Exception);
+                RequestReloadIfRenderBatchDesync(e.Exception);
+                return;
+            }
+
             global::Android.Util.Log.Error(Tag, "UnobservedTaskException: " + e.Exception);
             AnoteFileLog.Error("Diag", "UnobservedTaskException", e.Exception);
-            e.SetObserved();
-            RequestReloadIfRenderBatchDesync(e.Exception);
         }
 
         private static void OnAndroidUnhandledException(object sender, RaiseThrowableEventArgs e)
         {
+            if (IsRenderBatchDesync(e.Exception))
+            {
+                e.Handled = true;
+                global::Android.Util.Log.Warn(Tag, "AndroidUnhandledException (render-batch desync, recovering): " + e.Exception);
+                AnoteFileLog.Warn("Diag", "AndroidUnhandledException (render-batch desync, recovering)", e.Exception);
+                RequestReloadIfRenderBatchDesync(e.Exception);
+                return;
+            }
+
             global::Android.Util.Log.Error(Tag, "AndroidUnhandledException: " + e.Exception);
             AnoteFileLog.Error("Diag", "AndroidUnhandledException", e.Exception);
-            RequestReloadIfRenderBatchDesync(e.Exception);
+        }
+
+        private static bool IsRenderBatchDesync(object exceptionOrText)
+        {
+            string text = exceptionOrText?.ToString() ?? string.Empty;
+            return text.IndexOf(RenderBatchDesyncMarker, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static void RequestReloadIfRenderBatchDesync(object exceptionOrText)
         {
-            string text = exceptionOrText?.ToString() ?? string.Empty;
-            if (text.IndexOf(RenderBatchDesyncMarker, StringComparison.OrdinalIgnoreCase) < 0)
+            if (!IsRenderBatchDesync(exceptionOrText))
                 return;
 
             lock (ReloadGate)

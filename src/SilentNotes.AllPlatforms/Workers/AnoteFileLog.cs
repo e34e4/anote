@@ -246,10 +246,13 @@ namespace SilentNotes.Workers
                     File.AppendAllText(path, sb.ToString(), Encoding.UTF8);
                 }
 
+                // Blazor Hybrid sleep/resume desync (aspnetcore#68674) is recovered by WebView
+                // auto-reload; never spam the configured error mailbox for that framework noise.
                 if (severity == AnoteLogSeverity.Error
                     && !alreadySent
                     && !string.IsNullOrEmpty(errorSignature)
-                    && !string.Equals(pageTag, "ErrorReport", StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(pageTag, "ErrorReport", StringComparison.OrdinalIgnoreCase)
+                    && !IsNonReportableFrameworkNoise(text))
                 {
                     QueueErrorEmailReport(errorSignature, errorKind, pageTag, text, now, writtenLine);
                 }
@@ -375,6 +378,15 @@ namespace SilentNotes.Workers
                 core = core.Substring(0, 400);
 
             return normalizedPage + "|" + core;
+        }
+
+        /// <summary>
+        /// True for known recoverable Blazor WebView framework faults that must not email.
+        /// </summary>
+        private static bool IsNonReportableFrameworkNoise(string text)
+        {
+            return !string.IsNullOrEmpty(text)
+                && text.IndexOf("unexpected acknowledgement for render batch", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool IsErrorAlreadySent(string signature)
