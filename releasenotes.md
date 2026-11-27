@@ -2,6 +2,15 @@
 
 Collected from [GitHub Releases](https://github.com/e34e4/anote/releases).
 
+## Version 1.3.135 (v1.3.135)
+
+Date: 2026-11-27 · Tag: `v1.3.135` · [GitHub](https://github.com/e34e4/anote/releases/tag/v1.3.135)
+
+• Abro bookmarks import now merges like linqs: adds new URLs and replaces an existing title when the imported name for the same URL is shorter.
+• Blazor sleep/resume render-batch desync is recovered quietly and no longer emails Crash/Error reports.
+
+---
+
 ## Version 1.3.132 (v1.3.132)
 
 Date: 2026-11-26 · Tag: `v1.3.132` · [GitHub](https://github.com/e34e4/anote/releases/tag/v1.3.132)
