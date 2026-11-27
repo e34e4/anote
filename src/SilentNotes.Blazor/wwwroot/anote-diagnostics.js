@@ -1,7 +1,11 @@
 /* Captures JS / Blazor errors for logcat and auto-reloads on known WebView desync. */
 (function () {
 	var TAG = "[aNoteDiag]";
-	var RENDER_BATCH_MARKER = "unexpected acknowledgement for render batch";
+	var RENDER_BATCH_MARKERS = [
+		"unexpected acknowledgement for render batch",
+		"cannot read properties of undefined (reading 'symbol()')",
+		"cannot read property 'symbol()' of undefined"
+	];
 	var RELOAD_COUNT_KEY = "anote_rb_autoreload_count";
 	var RELOAD_TS_KEY = "anote_rb_autoreload_ts";
 	var MAX_AUTO_RELOADS = 2;
@@ -25,7 +29,14 @@
 	}
 
 	function isRenderBatchDesync(text) {
-		return !!text && text.toLowerCase().indexOf(RENDER_BATCH_MARKER) !== -1;
+		if (!text)
+			return false;
+		var lower = text.toLowerCase();
+		for (var i = 0; i < RENDER_BATCH_MARKERS.length; i++) {
+			if (lower.indexOf(RENDER_BATCH_MARKERS[i]) !== -1)
+				return true;
+		}
+		return false;
 	}
 
 	function isErrorUiVisible() {

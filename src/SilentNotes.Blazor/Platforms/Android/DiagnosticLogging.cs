@@ -23,7 +23,6 @@ namespace SilentNotes.Platforms
         public const string WebViewTag = "aNoteWebView";
         public const string DotNetTag = "aNote";
 
-        private const string RenderBatchDesyncMarker = "unexpected acknowledgement for render batch";
         private static readonly object ReloadGate = new object();
         private static bool _installed;
         private static DateTime _lastReloadRequestUtc = DateTime.MinValue;
@@ -139,7 +138,7 @@ namespace SilentNotes.Platforms
         private static bool IsRenderBatchDesync(object exceptionOrText)
         {
             string text = exceptionOrText?.ToString() ?? string.Empty;
-            return text.IndexOf(RenderBatchDesyncMarker, StringComparison.OrdinalIgnoreCase) >= 0;
+            return AnoteFileLog.IsNonReportableFrameworkNoise(text);
         }
 
         private static void RequestReloadIfRenderBatchDesync(object exceptionOrText)

@@ -43,6 +43,18 @@
 		border: 1px solid rgba(255,255,255,0.06);
 		background: rgba(0,0,0,0.14);
 	}
+	.log-line-selected {
+		border-color: var(--mud-palette-primary);
+		background: rgba(56, 189, 248, 0.12);
+	}
+	.log-check {
+		flex: 0 0 auto;
+		width: 16px;
+		height: 16px;
+		margin-top: 2px;
+		accent-color: var(--mud-palette-primary);
+		cursor: pointer;
+	}
 	.log-meta {
 		flex: 0 0 auto;
 		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -102,7 +114,11 @@
 	<MudIconButton OnClick="@(() => Navigation.NavigateTo(BackRoute))" Icon="@IconService[IconNames.ArrowLeft]" Color="Color.Inherit" title="@LanguageService["back"]" Edge="Edge.Start" />
 	<MudText Typo="Typo.h6">@LanguageService["show_log"]</MudText>
 	<MudSpacer />
-	<MudIconButton Icon="@Icons.Material.Filled.Email" Color="Color.Inherit" title="@LanguageService["log_email_unsent"]" OnClick="EmailUnsentErrorsAsync" Disabled="@(_loading || _emailing)" />
+	<MudIconButton Icon="@Icons.Material.Filled.Email"
+		Color="@(_selectedLineIndices.Count > 0 ? Color.Primary : Color.Inherit)"
+		title="@(_selectedLineIndices.Count > 0 ? string.Format(LanguageService["log_email_selected"], _selectedLineIndices.Count) : LanguageService["log_email_unsent"])"
+		OnClick="EmailUnsentErrorsAsync"
+		Disabled="@(_loading || _emailing)" />
 	<MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Inherit" title="@LanguageService["log_refresh"]" OnClick="Refresh" Disabled="@(_loading || _emailing)" />
 	<MudIconButton Icon="@Icons.Material.Filled.Share" Color="Color.Inherit" title="@LanguageService["log_share"]" OnClick="ShareLogAsync" Disabled="@(_loading || _emailing)" />
 </MudAppBar>
@@ -122,6 +138,12 @@
 				}
 			</MudSelect>
 			<MudText Typo="Typo.caption">@string.Format(LanguageService["log_matches"], _visible.Count)</MudText>
+			@if (_selectedLineIndices.Count > 0)
+			{
+				<MudChip T="string" Size="Size.Small" Color="Color.Primary" OnClose="ClearSelection">
+					@string.Format(LanguageService["log_selected_count"], _selectedLineIndices.Count)
+				</MudChip>
+			}
 		</MudStack>
 
 		@if (_loading)
@@ -140,12 +162,15 @@
 				{
 					if (entry.IsDayHeader)
 					{
-						<div class="log-day">@entry.Day</div>
+						<div @key="entry.LineIndex" class="log-day">@entry.Day</div>
 					}
 					else
 					{
 						string sevCode = entry.SeverityCode;
-						<div class="@($"log-line log-{sevCode}")">
+						bool isSelected = _selectedLineIndices.Contains(entry.LineIndex);
+						<div @key="entry.LineIndex" class="@($"log-line log-{sevCode}{(isSelected ? " log-line-selected" : string.Empty)}")">
+							<input type="checkbox" class="log-check" checked="@isSelected"
+								@onchange="@(e => ToggleSelection(entry.LineIndex, e.Value is bool b && b))" />
 							<span class="log-meta">@(entry.Timestamp?.ToString("HH:mm:ss") ?? "--:--:--") [@sevCode]</span>
 							<span class="log-page">@entry.Page</span>
 							@if (entry.Severity == AnoteLogSeverity.Error)
@@ -174,6 +199,7 @@
 	private List<string> _pages = new();
 	private List<AnoteLogEntry> _all = new();
 	private List<AnoteLogEntry> _visible = new();
+	private readonly HashSet<int> _selectedLineIndices = new();
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)
 	{
@@ -207,6 +233,8 @@
 		{
 			_all = AnoteFileLog.ReadEntries().ToList();
 			_pages = AnoteFileLog.ListPages(_all).ToList();
+			var validIndices = new HashSet<int>(_all.Where(e => !e.IsDayHeader).Select(e => e.LineIndex));
+			_selectedLineIndices.RemoveWhere(idx => !validIndices.Contains(idx));
 			ApplyFilter(stateHasChanged: false);
 		}
 		finally
@@ -272,6 +300,19 @@
 		await SharingService.ShareFile(path, "text/plain");
 	}
 
+	private void ToggleSelection(int lineIndex, bool selected)
+	{
+		if (selected)
+			_selectedLineIndices.Add(lineIndex);
+		else
+			_selectedLineIndices.Remove(lineIndex);
+	}
+
+	private void ClearSelection()
+	{
+		_selectedLineIndices.Clear();
+	}
+
 	private async Task EmailUnsentErrorsAsync()
 	{
 		if (_emailing)
@@ -281,17 +322,28 @@
 		StateHasChanged();
 		try
 		{
-			AnoteFileLog.ErrorEmailFlushResult result = await AnoteFileLog.SendUnsentErrorEmailsAsync();
+			List<AnoteLogEntry> selected = _selectedLineIndices.Count > 0
+				? _all.Where(e => !e.IsDayHeader && _selectedLineIndices.Contains(e.LineIndex)).ToList()
+				: null;
+
+			AnoteFileLog.ErrorEmailFlushResult result = selected != null && selected.Count > 0
+				? await AnoteFileLog.SendSelectedErrorEmailsAsync(selected)
+				: await AnoteFileLog.SendUnsentErrorEmailsAsync();
+
 			if (result.CandidateCount == 0)
 			{
 				FeedbackService.ShowToast(LanguageService["log_email_unsent_none"]);
 			}
 			else if (result.SentCount > 0 && result.FailedCount == 0)
 			{
+				if (selected != null)
+					_selectedLineIndices.Clear();
 				FeedbackService.ShowToast(string.Format(LanguageService["log_email_unsent_ok"], result.SentCount));
 			}
 			else if (result.SentCount > 0)
 			{
+				if (selected != null)
+					_selectedLineIndices.Clear();
 				FeedbackService.ShowToast(string.Format(
 					LanguageService["log_email_unsent_partial"],
 					result.SentCount,

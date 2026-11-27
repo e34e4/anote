@@ -2,6 +2,16 @@
 
 Collected from [GitHub Releases](https://github.com/e34e4/anote/releases).
 
+## Version 1.3.136 (v1.3.136)
+
+Date: 2026-11-27 · Tag: `v1.3.136` · [GitHub](https://github.com/e34e4/anote/releases/tag/v1.3.136)
+
+• Log page: fixed Send Email resending errors that were already marked as sent (persists `emailed=1` across all matching log lines including legacy entries, and checks `anote_sent_errors.txt` when reading/sending).
+• Log page: added checkboxes on individual log messages so clicking Send Email sends only the checked messages when any are selected.
+• Diag / Blazor WebView: treat LogicalElement DOM desync (`Cannot read properties of undefined (reading 'Symbol()')` in `IpcReceiver.OnRenderCompleted`) as recoverable render-batch desync with automatic WebView reload instead of reporting it as a Crash email.
+
+---
+
 ## Version 1.3.135 (v1.3.135)
 
 Date: 2026-11-27 · Tag: `v1.3.135` · [GitHub](https://github.com/e34e4/anote/releases/tag/v1.3.135)

@@ -46,6 +46,9 @@ namespace SilentNotes.Workers
     /// <summary>One parsed line or day header from <c>/sdcard/anote/anote.log</c>.</summary>
     public sealed class AnoteLogEntry
     {
+        /// <summary>0-based line index within <c>anote.log</c> when read (unique per entry).</summary>
+        public int LineIndex { get; init; }
+
         public bool IsDayHeader { get; init; }
 
         public string Day { get; init; }
@@ -118,6 +121,8 @@ namespace SilentNotes.Workers
         private sealed class PendingErrorReport
         {
             public string Signature { get; init; }
+
+            public AnoteLogSeverity Severity { get; init; } = AnoteLogSeverity.Error;
 
             public AnoteErrorKind ErrorKind { get; init; }
 
@@ -382,11 +387,18 @@ namespace SilentNotes.Workers
 
         /// <summary>
         /// True for known recoverable Blazor WebView framework faults that must not email.
+        /// Covers both sleep/resume render-batch ack desync (dotnet/aspnetcore#68674) and
+        /// LogicalElement DOM desync (<c>Cannot read properties of undefined (reading 'Symbol()')</c>)
+        /// in <c>IpcReceiver.OnRenderCompleted</c>.
         /// </summary>
-        private static bool IsNonReportableFrameworkNoise(string text)
+        public static bool IsNonReportableFrameworkNoise(string text)
         {
-            return !string.IsNullOrEmpty(text)
-                && text.IndexOf("unexpected acknowledgement for render batch", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            return text.IndexOf("unexpected acknowledgement for render batch", StringComparison.OrdinalIgnoreCase) >= 0
+                || text.IndexOf("cannot read properties of undefined (reading 'symbol()')", StringComparison.OrdinalIgnoreCase) >= 0
+                || text.IndexOf("cannot read property 'symbol()' of undefined", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool IsErrorAlreadySent(string signature)
@@ -436,6 +448,7 @@ namespace SilentNotes.Workers
                 {
                     try
                     {
+                        AnotePaths.EnsureDirectories();
                         File.AppendAllText(AnotePaths.SentErrorsFile, signature + Environment.NewLine, Encoding.UTF8);
                     }
                     catch (Exception)
@@ -450,23 +463,16 @@ namespace SilentNotes.Workers
             if (relatedLines != null)
                 linesToMark.AddRange(relatedLines.Where(l => !string.IsNullOrEmpty(l)));
 
-            MarkLogLinesAsEmailed(linesToMark);
+            MarkLogLinesAsEmailed(linesToMark, signature);
         }
 
-        private static void MarkLogLinesAsEmailed(IEnumerable<string> originalLines)
+        private static void MarkLogLinesAsEmailed(IEnumerable<string> originalLines, string signature = null)
         {
-            var replacements = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (string originalLine in originalLines ?? Array.Empty<string>())
-            {
-                if (string.IsNullOrEmpty(originalLine) || !originalLine.Contains(" emailed=0] ", StringComparison.Ordinal))
-                    continue;
+            var exactTargets = new HashSet<string>(
+                (originalLines ?? Array.Empty<string>()).Where(l => !string.IsNullOrEmpty(l)),
+                StringComparer.Ordinal);
 
-                string updatedLine = originalLine.Replace(" emailed=0] ", " emailed=1] ");
-                if (!string.Equals(originalLine, updatedLine, StringComparison.Ordinal))
-                    replacements[originalLine] = updatedLine;
-            }
-
-            if (replacements.Count == 0)
+            if (exactTargets.Count == 0 && string.IsNullOrEmpty(signature))
                 return;
 
             try
@@ -481,10 +487,51 @@ namespace SilentNotes.Workers
                     bool changed = false;
                     for (int i = 0; i < lines.Length; i++)
                     {
-                        if (replacements.TryGetValue(lines[i], out string updated))
+                        string line = lines[i];
+                        if (string.IsNullOrEmpty(line))
+                            continue;
+
+                        bool isMatch = exactTargets.Contains(line);
+                        if (!isMatch && !string.IsNullOrEmpty(signature) && line.Contains(" E ", StringComparison.Ordinal))
                         {
-                            lines[i] = updated;
-                            changed = true;
+                            Match entryMatch = EntryRegex.Match(line.Trim());
+                            if (entryMatch.Success && entryMatch.Groups["sev"].Value == "E")
+                            {
+                                string page = entryMatch.Groups["page"].Value;
+                                string msg = entryMatch.Groups["msg"].Value;
+                                Match metaMatch = ErrorMetaRegex.Match(msg);
+                                if (metaMatch.Success)
+                                    msg = metaMatch.Groups["msg"].Value;
+                                if (string.Equals(BuildErrorSignature(page, msg), signature, StringComparison.Ordinal))
+                                    isMatch = true;
+                            }
+                        }
+
+                        if (!isMatch)
+                            continue;
+
+                        if (line.Contains(" emailed=0]", StringComparison.Ordinal))
+                        {
+                            string updated = line.Replace(" emailed=0]", " emailed=1]");
+                            if (!string.Equals(line, updated, StringComparison.Ordinal))
+                            {
+                                lines[i] = updated;
+                                changed = true;
+                            }
+                        }
+                        else if (!line.Contains(" emailed=1]", StringComparison.Ordinal))
+                        {
+                            // Legacy error line without [kind=... emailed=...]: inject metadata so sent status persists.
+                            Match entryMatch = EntryRegex.Match(line.Trim());
+                            if (entryMatch.Success && entryMatch.Groups["sev"].Value == "E")
+                            {
+                                string timePart = entryMatch.Groups["time"].Value;
+                                string page = entryMatch.Groups["page"].Value;
+                                string msg = entryMatch.Groups["msg"].Value;
+                                AnoteErrorKind kind = ClassifyError(page, msg);
+                                lines[i] = $"{timePart} E {page} [kind={kind} emailed=1] {msg}";
+                                changed = true;
+                            }
                         }
                     }
 
@@ -602,15 +649,19 @@ namespace SilentNotes.Workers
         /// <summary>
         /// Sends email reports for log entries that are still marked unsent and classified as
         /// <see cref="AnoteErrorKind.Crash"/> or any other Error-severity kind.
+        /// Skips entries already recorded as sent (either in <c>anote.log</c> or <c>anote_sent_errors.txt</c>)
+        /// and known non-reportable Blazor WebView framework noise.
         /// </summary>
         public static async Task<ErrorEmailFlushResult> SendUnsentErrorEmailsAsync()
         {
             IReadOnlyList<AnoteLogEntry> entries = ReadEntries();
-            // All Error-severity lines still marked emailed=0 (Crash and every other error kind).
+            // All Error-severity lines still unsent (neither emailed=1 nor recorded in SentErrorsFile).
             var candidates = entries
                 .Where(e => !e.IsDayHeader
                     && e.Severity == AnoteLogSeverity.Error
-                    && !e.EmailSent)
+                    && !e.EmailSent
+                    && !IsErrorAlreadySent(BuildErrorSignature(e.Page, e.Message))
+                    && !IsNonReportableFrameworkNoise(e.Message))
                 .ToList();
 
             if (candidates.Count == 0)
@@ -622,6 +673,33 @@ namespace SilentNotes.Workers
                 };
             }
 
+            return await SendLogEntryCandidatesAsync(candidates).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Sends email reports for explicitly selected log entries (regardless of prior sent status
+        /// or severity), and persists sent status for any Error-severity entries that succeed.
+        /// </summary>
+        public static async Task<ErrorEmailFlushResult> SendSelectedErrorEmailsAsync(IReadOnlyList<AnoteLogEntry> selectedEntries)
+        {
+            var candidates = (selectedEntries ?? Array.Empty<AnoteLogEntry>())
+                .Where(e => e != null && !e.IsDayHeader)
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                return new ErrorEmailFlushResult
+                {
+                    CandidateCount = 0,
+                    Detail = "No selected log messages.",
+                };
+            }
+
+            return await SendLogEntryCandidatesAsync(candidates).ConfigureAwait(false);
+        }
+
+        private static async Task<ErrorEmailFlushResult> SendLogEntryCandidatesAsync(List<AnoteLogEntry> candidates)
+        {
             string recipient = ResolveErrorReportRecipient();
             if (string.IsNullOrEmpty(recipient))
             {
@@ -683,6 +761,7 @@ namespace SilentNotes.Workers
                 var report = new PendingErrorReport
                 {
                     Signature = group.Key,
+                    Severity = sample.Severity,
                     ErrorKind = sample.ErrorKind,
                     PageTag = sample.Page,
                     Message = sample.Message,
@@ -696,7 +775,8 @@ namespace SilentNotes.Workers
                     bool ok = await TrySendErrorReportAsync(mailService, accounts, report, recipient).ConfigureAwait(false);
                     if (ok)
                     {
-                        RecordErrorAsSent(report.Signature, report.WrittenLine, report.RelatedLines);
+                        if (group.Any(e => e.Severity == AnoteLogSeverity.Error))
+                            RecordErrorAsSent(report.Signature, report.WrittenLine, report.RelatedLines);
                         sent++;
                     }
                     else
@@ -770,24 +850,28 @@ namespace SilentNotes.Workers
                 return false;
 
             string deviceName = ResolveDeviceName();
+            string kindLabel = item.ErrorKind != AnoteErrorKind.None
+                ? item.ErrorKind.ToString()
+                : item.Severity.ToString();
             string subject = string.Format(
                 CultureInfo.InvariantCulture,
-                "[aNote Error][{0}][{1}] {2}",
+                "[aNote {0}][{1}][{2}] {3}",
+                item.Severity == AnoteLogSeverity.Error ? "Error" : "Log",
                 deviceName,
-                item.ErrorKind,
+                kindLabel,
                 item.PageTag);
 
             var body = new StringBuilder();
-            body.AppendLine("aNote automatic error report");
+            body.AppendLine(item.Severity == AnoteLogSeverity.Error ? "aNote automatic error report" : "aNote log report");
             body.AppendLine("----------------------------");
             body.Append("Device: ").AppendLine(deviceName);
             body.Append("Time: ").AppendLine(item.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture));
-            body.Append("Error kind: ").AppendLine(item.ErrorKind.ToString());
+            body.Append(item.Severity == AnoteLogSeverity.Error ? "Error kind: " : "Severity: ").AppendLine(kindLabel);
             body.Append("Page / Feature: ").AppendLine(item.PageTag);
             if (item.RelatedLines != null && item.RelatedLines.Count > 1)
                 body.Append("Occurrences in log: ").AppendLine(item.RelatedLines.Count.ToString(CultureInfo.InvariantCulture));
             body.AppendLine();
-            body.AppendLine("Error message:");
+            body.AppendLine(item.Severity == AnoteLogSeverity.Error ? "Error message:" : "Log message:");
             body.AppendLine(item.Message);
 
             string lastError = null;
@@ -883,9 +967,11 @@ namespace SilentNotes.Workers
                 return Array.Empty<AnoteLogEntry>();
             }
 
+            int baseLineIndex = 0;
             if (maxLines > 0 && lines.Length > maxLines)
             {
                 int skip = lines.Length - maxLines;
+                baseLineIndex = skip;
                 var trimmed = new string[maxLines];
                 Array.Copy(lines, skip, trimmed, 0, maxLines);
                 lines = trimmed;
@@ -893,8 +979,10 @@ namespace SilentNotes.Workers
 
             string currentDay = null;
             var result = new List<AnoteLogEntry>(lines.Length);
-            foreach (string raw in lines)
+            for (int i = 0; i < lines.Length; i++)
             {
+                string raw = lines[i];
+                int lineIndex = baseLineIndex + i;
                 if (string.IsNullOrWhiteSpace(raw))
                     continue;
 
@@ -904,6 +992,7 @@ namespace SilentNotes.Workers
                     currentDay = dayMatch.Groups["day"].Value;
                     result.Add(new AnoteLogEntry
                     {
+                        LineIndex = lineIndex,
                         IsDayHeader = true,
                         Day = currentDay,
                         RawLine = raw,
@@ -947,8 +1036,16 @@ namespace SilentNotes.Workers
                         kind = ClassifyError(page, msg);
                     }
 
+                    if (sev == AnoteLogSeverity.Error && !emailSent)
+                    {
+                        string sig = BuildErrorSignature(page, msg);
+                        if (IsErrorAlreadySent(sig))
+                            emailSent = true;
+                    }
+
                     result.Add(new AnoteLogEntry
                     {
+                        LineIndex = lineIndex,
                         IsDayHeader = false,
                         Day = dayPart,
                         Timestamp = ts,
@@ -964,8 +1061,11 @@ namespace SilentNotes.Workers
 
                 // Legacy / free-form lines (e.g. old ytdlp.log style).
                 AnoteLogSeverity legacySev = GuessSeverity(raw);
+                bool legacySent = legacySev == AnoteLogSeverity.Error
+                    && IsErrorAlreadySent(BuildErrorSignature("Legacy", raw));
                 result.Add(new AnoteLogEntry
                 {
+                    LineIndex = lineIndex,
                     IsDayHeader = false,
                     Day = currentDay,
                     Severity = legacySev,
@@ -973,7 +1073,7 @@ namespace SilentNotes.Workers
                     Message = raw,
                     RawLine = raw,
                     ErrorKind = legacySev == AnoteLogSeverity.Error ? ClassifyError("Legacy", raw) : AnoteErrorKind.None,
-                    EmailSent = false,
+                    EmailSent = legacySent,
                 });
             }
 
