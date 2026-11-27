@@ -4,12 +4,14 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using SilentNotes.Models;
 using SilentNotes.Services;
@@ -95,12 +97,43 @@ namespace SilentNotes.Workers
         private static string _lastDayHeader;
         private static HashSet<string> _sentErrorKeys;
         private static readonly HashSet<string> InFlightErrorKeys = new HashSet<string>(StringComparer.Ordinal);
+        private static readonly ConcurrentQueue<PendingErrorReport> PendingReports = new ConcurrentQueue<PendingErrorReport>();
+        private static int _emailWorkerRunning;
 
         /// <summary>
         /// Optional platform hook returning the current device name (e.g. "Google Pixel 8").
         /// Falls back to <see cref="Environment.MachineName"/> when not configured.
         /// </summary>
         public static Func<string> DeviceNameProvider { get; set; }
+
+        /// <summary>Result of a manual flush of unsent Crash/Error log emails.</summary>
+        public sealed class ErrorEmailFlushResult
+        {
+            public int CandidateCount { get; init; }
+
+            public int SentCount { get; init; }
+
+            public int FailedCount { get; init; }
+
+            public string Detail { get; init; } = string.Empty;
+        }
+
+        private sealed class PendingErrorReport
+        {
+            public string Signature { get; init; }
+
+            public AnoteErrorKind ErrorKind { get; init; }
+
+            public string PageTag { get; init; }
+
+            public string Message { get; init; }
+
+            public DateTime Timestamp { get; init; }
+
+            public string WrittenLine { get; init; }
+
+            public IReadOnlyList<string> RelatedLines { get; init; }
+        }
 
         private static readonly Regex EntryRegex = new Regex(
             @"^(?<time>\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?)\s+(?<sev>[DIWE])\s+(?<page>[^\s]+)\s+(?<msg>.*)$",
@@ -170,7 +203,11 @@ namespace SilentNotes.Workers
                 DateTime now = DateTime.Now;
                 string day = now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
                 string time = now.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
-                string text = (message ?? string.Empty).Replace("\r\n", " | ").Replace('\n', ' ').Replace('\r', ' ');
+                // Normalize all newline styles to " | " so stack frames stay detectable for signatures.
+                string text = (message ?? string.Empty)
+                    .Replace("\r\n", "\n")
+                    .Replace('\r', '\n')
+                    .Replace("\n", " | ");
 
                 AnoteErrorKind errorKind = AnoteErrorKind.None;
                 bool alreadySent = false;
@@ -325,12 +362,18 @@ namespace SilentNotes.Workers
             string normalizedPage = NormalizePage(page).ToLowerInvariant();
             string core = (message ?? string.Empty).Trim();
 
-            // Strip flattened stack frames (" |    at ...") so identical errors with varying frames match.
+            // Strip flattened stack frames so identical errors with varying frames match.
             int stackIndex = core.IndexOf(" |    at ", StringComparison.Ordinal);
+            if (stackIndex < 0)
+                stackIndex = core.IndexOf("    at ", StringComparison.Ordinal);
             if (stackIndex > 0)
                 core = core.Substring(0, stackIndex);
 
             core = Regex.Replace(core, @"\s+", " ").Trim();
+            // Stabilize volatile counters common in Blazor WebView desync / native crashes.
+            core = Regex.Replace(core, @"\brender batch \d+", "render batch #", RegexOptions.IgnoreCase);
+            core = Regex.Replace(core, @"\bnext batch should be \d+", "next batch should be #", RegexOptions.IgnoreCase);
+            core = Regex.Replace(core, @"\b0x[0-9a-fA-F]+\b", "0x#");
             if (core.Length > 400)
                 core = core.Substring(0, 400);
 
@@ -372,7 +415,7 @@ namespace SilentNotes.Workers
             }
         }
 
-        private static void RecordErrorAsSent(string signature, string writtenLine)
+        private static void RecordErrorAsSent(string signature, string writtenLine, IEnumerable<string> relatedLines = null)
         {
             if (string.IsNullOrEmpty(signature))
                 return;
@@ -392,14 +435,29 @@ namespace SilentNotes.Workers
                 }
             }
 
+            var linesToMark = new List<string>();
             if (!string.IsNullOrEmpty(writtenLine))
-                MarkLogLineAsEmailed(writtenLine);
+                linesToMark.Add(writtenLine);
+            if (relatedLines != null)
+                linesToMark.AddRange(relatedLines.Where(l => !string.IsNullOrEmpty(l)));
+
+            MarkLogLinesAsEmailed(linesToMark);
         }
 
-        private static void MarkLogLineAsEmailed(string originalLine)
+        private static void MarkLogLinesAsEmailed(IEnumerable<string> originalLines)
         {
-            string updatedLine = originalLine.Replace(" emailed=0] ", " emailed=1] ");
-            if (string.Equals(originalLine, updatedLine, StringComparison.Ordinal))
+            var replacements = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (string originalLine in originalLines ?? Array.Empty<string>())
+            {
+                if (string.IsNullOrEmpty(originalLine) || !originalLine.Contains(" emailed=0] ", StringComparison.Ordinal))
+                    continue;
+
+                string updatedLine = originalLine.Replace(" emailed=0] ", " emailed=1] ");
+                if (!string.Equals(originalLine, updatedLine, StringComparison.Ordinal))
+                    replacements[originalLine] = updatedLine;
+            }
+
+            if (replacements.Count == 0)
                 return;
 
             try
@@ -412,13 +470,12 @@ namespace SilentNotes.Workers
 
                     string[] lines = File.ReadAllLines(path, Encoding.UTF8);
                     bool changed = false;
-                    for (int i = lines.Length - 1; i >= 0; i--)
+                    for (int i = 0; i < lines.Length; i++)
                     {
-                        if (string.Equals(lines[i], originalLine, StringComparison.Ordinal))
+                        if (replacements.TryGetValue(lines[i], out string updated))
                         {
-                            lines[i] = updatedLine;
+                            lines[i] = updated;
                             changed = true;
-                            break;
                         }
                     }
 
@@ -446,41 +503,252 @@ namespace SilentNotes.Workers
                     return;
             }
 
-            _ = Task.Run(async () =>
+            PendingReports.Enqueue(new PendingErrorReport
+            {
+                Signature = signature,
+                ErrorKind = errorKind,
+                PageTag = pageTag,
+                Message = message,
+                Timestamp = timestamp,
+                WrittenLine = writtenLine,
+            });
+            EnsureEmailWorker();
+        }
+
+        private static void EnsureEmailWorker()
+        {
+            if (Interlocked.CompareExchange(ref _emailWorkerRunning, 1, 0) != 0)
+                return;
+
+            _ = Task.Run(ProcessErrorEmailQueueAsync);
+        }
+
+        private static async Task ProcessErrorEmailQueueAsync()
+        {
+            try
+            {
+                IMailService mailService = null;
+                List<MailAccountModel> accounts = null;
+
+                while (PendingReports.TryDequeue(out PendingErrorReport item))
+                {
+                    try
+                    {
+                        if (mailService == null)
+                        {
+                            mailService = Ioc.Instance.GetService<IMailService>();
+                            if (mailService == null)
+                            {
+                                LogEmailIssue("IMailService unavailable; error email not sent.");
+                                continue;
+                            }
+
+                            // Load once per worker burst — mail store can be multi-MB with cached messages.
+                            MailStoreModel store = mailService.LoadStore();
+                            accounts = SelectSmtpAccounts(store);
+                            if (accounts.Count == 0)
+                            {
+                                LogEmailIssue("No SMTP mail account configured; error email not sent.");
+                                continue;
+                            }
+                        }
+
+                        if (accounts == null || accounts.Count == 0)
+                            continue;
+
+                        bool sent = await TrySendErrorReportAsync(mailService, accounts, item).ConfigureAwait(false);
+                        if (sent)
+                            RecordErrorAsSent(item.Signature, item.WrittenLine, item.RelatedLines);
+                        else
+                            LogEmailIssue("All SMTP accounts failed sending error report for " + item.PageTag + ".");
+                    }
+                    catch (Exception ex)
+                    {
+                        LogEmailIssue("Error email worker failed: " + ex.Message);
+                    }
+                    finally
+                    {
+                        lock (EmailGate)
+                        {
+                            InFlightErrorKeys.Remove(item.Signature);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _emailWorkerRunning, 0);
+                if (!PendingReports.IsEmpty)
+                    EnsureEmailWorker();
+            }
+        }
+
+        /// <summary>
+        /// Sends email reports for log entries that are still marked unsent and classified as
+        /// <see cref="AnoteErrorKind.Crash"/> or any other Error-severity kind.
+        /// </summary>
+        public static async Task<ErrorEmailFlushResult> SendUnsentErrorEmailsAsync()
+        {
+            IReadOnlyList<AnoteLogEntry> entries = ReadEntries();
+            // All Error-severity lines still marked emailed=0 (Crash and every other error kind).
+            var candidates = entries
+                .Where(e => !e.IsDayHeader
+                    && e.Severity == AnoteLogSeverity.Error
+                    && !e.EmailSent)
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                return new ErrorEmailFlushResult
+                {
+                    CandidateCount = 0,
+                    Detail = "No unsent Crash/Error events.",
+                };
+            }
+
+            var groups = candidates
+                .GroupBy(e => BuildErrorSignature(e.Page, e.Message), StringComparer.Ordinal)
+                .ToList();
+
+            IMailService mailService;
+            try
+            {
+                mailService = Ioc.Instance.GetService<IMailService>();
+            }
+            catch (Exception ex)
+            {
+                return new ErrorEmailFlushResult
+                {
+                    CandidateCount = candidates.Count,
+                    FailedCount = groups.Count,
+                    Detail = "IMailService unavailable: " + ex.Message,
+                };
+            }
+
+            if (mailService == null)
+            {
+                return new ErrorEmailFlushResult
+                {
+                    CandidateCount = candidates.Count,
+                    FailedCount = groups.Count,
+                    Detail = "IMailService unavailable.",
+                };
+            }
+
+            MailStoreModel store = mailService.LoadStore();
+            List<MailAccountModel> accounts = SelectSmtpAccounts(store);
+            if (accounts.Count == 0)
+            {
+                return new ErrorEmailFlushResult
+                {
+                    CandidateCount = candidates.Count,
+                    FailedCount = groups.Count,
+                    Detail = "No SMTP mail account configured.",
+                };
+            }
+
+            int sent = 0;
+            int failed = 0;
+            string lastError = null;
+            foreach (IGrouping<string, AnoteLogEntry> group in groups)
+            {
+                AnoteLogEntry sample = group.First();
+                var report = new PendingErrorReport
+                {
+                    Signature = group.Key,
+                    ErrorKind = sample.ErrorKind,
+                    PageTag = sample.Page,
+                    Message = sample.Message,
+                    Timestamp = sample.Timestamp ?? DateTime.Now,
+                    WrittenLine = sample.RawLine,
+                    RelatedLines = group.Select(e => e.RawLine).ToList(),
+                };
+
+                try
+                {
+                    bool ok = await TrySendErrorReportAsync(mailService, accounts, report).ConfigureAwait(false);
+                    if (ok)
+                    {
+                        RecordErrorAsSent(report.Signature, report.WrittenLine, report.RelatedLines);
+                        sent++;
+                    }
+                    else
+                    {
+                        failed++;
+                        lastError = "SMTP send failed for all accounts.";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    lastError = ex.Message;
+                }
+            }
+
+            string detail;
+            if (sent > 0 && failed == 0)
+                detail = "Sent " + sent + " error report(s).";
+            else if (sent == 0)
+                detail = lastError ?? "Failed to send error reports.";
+            else
+                detail = "Sent " + sent + ", failed " + failed + (string.IsNullOrEmpty(lastError) ? "." : ": " + lastError);
+
+            return new ErrorEmailFlushResult
+            {
+                CandidateCount = candidates.Count,
+                SentCount = sent,
+                FailedCount = failed,
+                Detail = detail,
+            };
+        }
+
+        private static List<MailAccountModel> SelectSmtpAccounts(MailStoreModel store)
+        {
+            return (store?.Accounts ?? Enumerable.Empty<MailAccountModel>())
+                .Where(a => a != null
+                    && !string.IsNullOrWhiteSpace(a.SmtpHost)
+                    && !string.IsNullOrWhiteSpace(a.EmailAddress))
+                // Prefer the report inbox account (often the most reliable SMTP on this device),
+                // then fall back through the remaining configured accounts.
+                .OrderByDescending(a => string.Equals(a.EmailAddress, ErrorReportRecipient, StringComparison.OrdinalIgnoreCase))
+                .ThenBy(a => a.EmailAddress, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static async Task<bool> TrySendErrorReportAsync(
+            IMailService mailService,
+            IReadOnlyList<MailAccountModel> accounts,
+            PendingErrorReport item)
+        {
+            if (mailService == null || accounts == null || accounts.Count == 0 || item == null)
+                return false;
+
+            string deviceName = ResolveDeviceName();
+            string subject = string.Format(
+                CultureInfo.InvariantCulture,
+                "[aNote Error][{0}][{1}] {2}",
+                deviceName,
+                item.ErrorKind,
+                item.PageTag);
+
+            var body = new StringBuilder();
+            body.AppendLine("aNote automatic error report");
+            body.AppendLine("----------------------------");
+            body.Append("Device: ").AppendLine(deviceName);
+            body.Append("Time: ").AppendLine(item.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture));
+            body.Append("Error kind: ").AppendLine(item.ErrorKind.ToString());
+            body.Append("Page / Feature: ").AppendLine(item.PageTag);
+            if (item.RelatedLines != null && item.RelatedLines.Count > 1)
+                body.Append("Occurrences in log: ").AppendLine(item.RelatedLines.Count.ToString(CultureInfo.InvariantCulture));
+            body.AppendLine();
+            body.AppendLine("Error message:");
+            body.AppendLine(item.Message);
+
+            string lastError = null;
+            foreach (MailAccountModel account in accounts)
             {
                 try
                 {
-                    IMailService mailService = Ioc.Instance.GetService<IMailService>();
-                    if (mailService == null)
-                        return;
-
-                    MailStoreModel store = mailService.LoadStore();
-                    MailAccountModel account = store?.Accounts?.FirstOrDefault(a =>
-                        a != null
-                        && !string.IsNullOrWhiteSpace(a.SmtpHost)
-                        && !string.IsNullOrWhiteSpace(a.EmailAddress));
-                    if (account == null)
-                        return;
-
-                    string deviceName = ResolveDeviceName();
-                    string subject = string.Format(
-                        CultureInfo.InvariantCulture,
-                        "[aNote Error][{0}][{1}] {2}",
-                        deviceName,
-                        errorKind,
-                        pageTag);
-
-                    var body = new StringBuilder();
-                    body.AppendLine("aNote automatic error report");
-                    body.AppendLine("----------------------------");
-                    body.Append("Device: ").AppendLine(deviceName);
-                    body.Append("Time: ").AppendLine(timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture));
-                    body.Append("Error kind: ").AppendLine(errorKind.ToString());
-                    body.Append("Page / Feature: ").AppendLine(pageTag);
-                    body.AppendLine();
-                    body.AppendLine("Error message:");
-                    body.AppendLine(message);
-
                     var mailMessage = new MailMessageModel
                     {
                         AccountId = account.Id,
@@ -497,22 +765,32 @@ namespace SilentNotes.Workers
 
                     MailOperationResult result = await mailService.SendMessageAsync(account, mailMessage).ConfigureAwait(false);
                     if (result != null && result.Success)
-                    {
-                        RecordErrorAsSent(signature, writtenLine);
-                    }
+                        return true;
+
+                    lastError = result?.ErrorMessage ?? "unknown SMTP error";
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    // Never log errors from the error reporter itself to avoid recursion.
+                    lastError = ex.Message;
                 }
-                finally
-                {
-                    lock (EmailGate)
-                    {
-                        InFlightErrorKeys.Remove(signature);
-                    }
-                }
-            });
+            }
+
+            if (!string.IsNullOrEmpty(lastError))
+                LogEmailIssue("SMTP send failed (" + item.PageTag + "): " + lastError);
+
+            return false;
+        }
+
+        private static void LogEmailIssue(string message)
+        {
+            try
+            {
+                // Warn-level so the reporter never re-enters the error-email pipeline.
+                Warn("ErrorReport", message);
+            }
+            catch (Exception)
+            {
+            }
         }
 
         private static string ResolveDeviceName()

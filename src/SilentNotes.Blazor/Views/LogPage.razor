@@ -102,8 +102,9 @@
 	<MudIconButton OnClick="@(() => Navigation.NavigateTo(BackRoute))" Icon="@IconService[IconNames.ArrowLeft]" Color="Color.Inherit" title="@LanguageService["back"]" Edge="Edge.Start" />
 	<MudText Typo="Typo.h6">@LanguageService["show_log"]</MudText>
 	<MudSpacer />
-	<MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Inherit" title="@LanguageService["log_refresh"]" OnClick="Refresh" Disabled="_loading" />
-	<MudIconButton Icon="@Icons.Material.Filled.Share" Color="Color.Inherit" title="@LanguageService["log_share"]" OnClick="ShareLogAsync" Disabled="_loading" />
+	<MudIconButton Icon="@Icons.Material.Filled.Email" Color="Color.Inherit" title="@LanguageService["log_email_unsent"]" OnClick="EmailUnsentErrorsAsync" Disabled="@(_loading || _emailing)" />
+	<MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Inherit" title="@LanguageService["log_refresh"]" OnClick="Refresh" Disabled="@(_loading || _emailing)" />
+	<MudIconButton Icon="@Icons.Material.Filled.Share" Color="Color.Inherit" title="@LanguageService["log_share"]" OnClick="ShareLogAsync" Disabled="@(_loading || _emailing)" />
 </MudAppBar>
 
 <MudMainContent>
@@ -167,6 +168,7 @@
 	private const string AllPagesValue = "";
 
 	private bool _loading;
+	private bool _emailing;
 	private bool _errorsOnly;
 	private string _pageFilter = AllPagesValue;
 	private List<string> _pages = new();
@@ -268,5 +270,50 @@
 		}
 
 		await SharingService.ShareFile(path, "text/plain");
+	}
+
+	private async Task EmailUnsentErrorsAsync()
+	{
+		if (_emailing)
+			return;
+
+		_emailing = true;
+		StateHasChanged();
+		try
+		{
+			AnoteFileLog.ErrorEmailFlushResult result = await AnoteFileLog.SendUnsentErrorEmailsAsync();
+			if (result.CandidateCount == 0)
+			{
+				FeedbackService.ShowToast(LanguageService["log_email_unsent_none"]);
+			}
+			else if (result.SentCount > 0 && result.FailedCount == 0)
+			{
+				FeedbackService.ShowToast(string.Format(LanguageService["log_email_unsent_ok"], result.SentCount));
+			}
+			else if (result.SentCount > 0)
+			{
+				FeedbackService.ShowToast(string.Format(
+					LanguageService["log_email_unsent_partial"],
+					result.SentCount,
+					result.FailedCount));
+			}
+			else
+			{
+				FeedbackService.ShowToast(string.Format(
+					LanguageService["log_email_unsent_fail"],
+					result.Detail ?? "unknown"));
+			}
+
+			Refresh();
+		}
+		catch (Exception ex)
+		{
+			FeedbackService.ShowToast(string.Format(LanguageService["log_email_unsent_fail"], ex.Message));
+		}
+		finally
+		{
+			_emailing = false;
+			StateHasChanged();
+		}
 	}
 }

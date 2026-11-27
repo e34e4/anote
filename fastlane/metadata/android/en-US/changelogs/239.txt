@@ -1,0 +1,1 @@
+Fixes automatic Crash/Error email reporting (serialized send, multi-account SMTP fallback, clearer failure logs) and adds a Log page button to email still-unsent Crash/Error events.
