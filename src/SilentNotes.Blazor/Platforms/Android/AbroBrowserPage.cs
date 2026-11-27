@@ -3956,15 +3956,15 @@ namespace SilentNotes.Platforms
             [Export("importFile")]
             public string ImportFile()
             {
+                // Return portable JSON only; the bookmarks page merges (add + shorter-name updates)
+                // then persist() writes the result — same flow as linqs/_f.html.
                 try
                 {
                     IAbroBookmarkStoreService store = TryGetBookmarkStoreService();
-                    if (store == null || !store.TryImportPortableFile())
+                    if (store == null || string.IsNullOrWhiteSpace(store.PortableFilePath)
+                        || !File.Exists(store.PortableFilePath))
                         return null;
-                    AbroBookmarkStoreModel model = store.LoadOrDefault();
-                    AbroBookmarkHtmlWriter.TryWrite(_page._bookmarksDir, model);
-                    _page.ScheduleBookmarkSync();
-                    return AbroBookmarkHtmlWriter.BuildPortableJson(model);
+                    return File.ReadAllText(store.PortableFilePath, Encoding.UTF8);
                 }
                 catch
                 {

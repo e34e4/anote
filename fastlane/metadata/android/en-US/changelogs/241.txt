@@ -1,0 +1,1 @@
+Abro bookmarks import now merges like linqs: adds new URLs and replaces an existing title when the imported name for the same URL is shorter.

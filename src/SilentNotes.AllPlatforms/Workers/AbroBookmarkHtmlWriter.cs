@@ -464,21 +464,73 @@ function exportPortable() {
   alert('Export bridge unavailable');
 }
 
+function mergeImportedBookmarks(parsedList) {
+  if (!parsedList.length) {
+    alert('No bookmark links found in that file.');
+    return;
+  }
+  const byUrl = new Map(allBookmarks.map(function (b) { return [b.url, b]; }));
+  let added = 0;
+  let skipped = 0;
+  let renamed = 0;
+  const newGroups = new Set();
+  for (let i = 0; i < parsedList.length; i++) {
+    const bm = parsedList[i];
+    const existing = byUrl.get(bm.url);
+    if (existing) {
+      const incomingName = String(bm.name || '').trim();
+      const oldName = String(existing.name || '').trim();
+      // Same URL: adopt imported name only when it is strictly shorter
+      if (incomingName && incomingName.length < oldName.length) {
+        existing.name = incomingName;
+        renamed++;
+      } else {
+        skipped++;
+      }
+      continue;
+    }
+    const entry = { name: bm.name, url: bm.url, group: bm.group || '' };
+    allBookmarks.push(entry);
+    byUrl.set(bm.url, entry);
+    added++;
+    if (bm.group) newGroups.add(bm.group);
+  }
+  let colorIdx = Object.keys(groups).length;
+  newGroups.forEach(function (g) {
+    if (!groups[g]) {
+      groups[g] = 'hsl(' + ((colorIdx * 47) % 360) + ', 52%, 42%)';
+      colorIdx++;
+    }
+  });
+  editingBookmarkUrl = null;
+  persist();
+  renderGroups();
+  updateMoveToTopButton();
+  filterBookmarks(searchInput.value);
+  alert(
+    'Imported ' + added + ' bookmark(s).\n' +
+    'Updated ' + renamed + ' name(s) to shorter titles.\n' +
+    'Skipped ' + skipped + ' duplicate(s) (same URL, name not shorter).'
+  );
+}
+
+function applyImportedJsonPayload(norm) {
+  // Merge groups from JSON (keep existing colors; add missing groups)
+  const incomingGroups = (norm && norm.groups) || {};
+  Object.keys(incomingGroups).forEach(function (name) {
+    if (!groups[name]) groups[name] = incomingGroups[name];
+  });
+  if (norm && typeof norm.isMoveToTopEnabled === 'boolean')
+    isMoveToTopEnabled = norm.isMoveToTopEnabled;
+  mergeImportedBookmarks((norm && norm.bookmarks) || []);
+}
+
 function importPortable() {
   if (hasBridge() && typeof window.AbroBm.importFile === 'function') {
     try {
       const json = window.AbroBm.importFile();
       if (!json) { alert('No /sdcard/anote/abro/bookmarks.json found'); return; }
-      const norm = normalizeBookmarkPayload(JSON.parse(json));
-      groups = norm.groups;
-      allBookmarks = norm.bookmarks;
-      isMoveToTopEnabled = norm.isMoveToTopEnabled;
-      editingBookmarkUrl = null;
-      persist();
-      renderGroups();
-      updateMoveToTopButton();
-      filterBookmarks(searchInput.value);
-      alert('Imported from /sdcard/anote/abro/bookmarks.json');
+      applyImportedJsonPayload(normalizeBookmarkPayload(JSON.parse(json)));
       return;
     } catch (e) {
       alert('Import failed: ' + e);
@@ -516,7 +568,10 @@ function handleBookmarkClick(e, url) {
     return false;
   e.preventDefault();
   e.stopPropagation();
+  // Clear search after opening a bookmark so the full list is restored
+  searchInput.value = '';
   moveBookmarkToTop(url);
+  filterBookmarks('');
   setTimeout(function () { openInNewTab(url); }, 10);
   return false;
 }

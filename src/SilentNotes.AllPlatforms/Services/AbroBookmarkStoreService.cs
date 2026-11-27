@@ -213,6 +213,94 @@ namespace SilentNotes.Services
         }
 
         /// <inheritdoc/>
+        public bool MergeFromPortableJson(string portableJson)
+        {
+            if (string.IsNullOrWhiteSpace(portableJson))
+                return false;
+
+            if (!AbroBookmarkHtmlWriter.TryParsePortable(portableJson, out AbroBookmarkStoreModel parsed) || parsed == null)
+                return false;
+
+            lock (_lock)
+            {
+                AbroBookmarkStoreModel local = LoadOrDefault();
+                bool changed = false;
+
+                // Keep existing group colors; add any missing groups from the import.
+                local.Groups ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (KeyValuePair<string, string> pair in parsed.Groups ?? new Dictionary<string, string>())
+                {
+                    if (string.IsNullOrWhiteSpace(pair.Key) || local.Groups.ContainsKey(pair.Key))
+                        continue;
+                    local.Groups[pair.Key] = string.IsNullOrWhiteSpace(pair.Value) ? "#2481cc" : pair.Value;
+                    changed = true;
+                }
+
+                if (local.IsMoveToTopEnabled != parsed.IsMoveToTopEnabled)
+                {
+                    local.IsMoveToTopEnabled = parsed.IsMoveToTopEnabled;
+                    changed = true;
+                }
+
+                var byUrl = new Dictionary<string, AbroBookmarkItemModel>(StringComparer.OrdinalIgnoreCase);
+                foreach (AbroBookmarkItemModel item in local.Items)
+                {
+                    if (string.IsNullOrWhiteSpace(item.Url) || byUrl.ContainsKey(item.Url))
+                        continue;
+                    byUrl[item.Url] = item;
+                }
+
+                int colorIdx = local.Groups.Count;
+                foreach (AbroBookmarkItemModel incoming in parsed.Items ?? new List<AbroBookmarkItemModel>())
+                {
+                    if (string.IsNullOrWhiteSpace(incoming.Url))
+                        continue;
+
+                    string url = incoming.Url.Trim();
+                    string incomingName = (incoming.Title ?? string.Empty).Trim();
+                    if (byUrl.TryGetValue(url, out AbroBookmarkItemModel existing))
+                    {
+                        string oldName = (existing.Title ?? string.Empty).Trim();
+                        // Same URL: adopt imported name only when it is strictly shorter.
+                        if (!string.IsNullOrEmpty(incomingName) && incomingName.Length < oldName.Length)
+                        {
+                            existing.Title = incomingName;
+                            existing.ModifiedAt = DateTime.UtcNow;
+                            changed = true;
+                        }
+                        continue;
+                    }
+
+                    var entry = new AbroBookmarkItemModel
+                    {
+                        Url = url,
+                        Title = string.IsNullOrEmpty(incomingName) ? url : incomingName,
+                        Group = incoming.Group ?? string.Empty,
+                        ModifiedAt = DateTime.UtcNow,
+                    };
+                    local.Items.Add(entry);
+                    byUrl[url] = entry;
+                    changed = true;
+
+                    string groupName = (entry.Group ?? string.Empty).Trim();
+                    if (!string.IsNullOrEmpty(groupName) && !local.Groups.ContainsKey(groupName))
+                    {
+                        local.Groups[groupName] = string.Format(
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            "hsl({0}, 52%, 42%)",
+                            (colorIdx * 47) % 360);
+                        colorIdx++;
+                    }
+                }
+
+                if (!changed)
+                    return true;
+
+                return TrySaveUnlocked(local);
+            }
+        }
+
+        /// <inheritdoc/>
         public bool TryExportPortableFile()
         {
             lock (_lock)
@@ -230,7 +318,7 @@ namespace SilentNotes.Services
                 if (!File.Exists(PortableFilePath))
                     return false;
                 string json = File.ReadAllText(PortableFilePath, Encoding.UTF8);
-                return ReplaceFromPortableJson(json);
+                return MergeFromPortableJson(json);
             }
             catch
             {

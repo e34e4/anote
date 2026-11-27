@@ -36,10 +36,17 @@ namespace SilentNotes.Services
         /// </summary>
         bool ReplaceFromPortableJson(string portableJson);
 
+        /// <summary>
+        /// Merges a linqs-style portable JSON payload into the local store:
+        /// adds new URLs, keeps existing group colors, and replaces an existing
+        /// title when the imported name for the same URL is strictly shorter.
+        /// </summary>
+        bool MergeFromPortableJson(string portableJson);
+
         /// <summary>Exports the current store as linqs-style JSON to the portable Abro bookmarks file.</summary>
         bool TryExportPortableFile();
 
-        /// <summary>Imports linqs-style JSON from the portable Abro bookmarks file.</summary>
+        /// <summary>Merges linqs-style JSON from the portable Abro bookmarks file into the local store.</summary>
         bool TryImportPortableFile();
 
         /// <summary>Gets the absolute path of the portable export file.</summary>
