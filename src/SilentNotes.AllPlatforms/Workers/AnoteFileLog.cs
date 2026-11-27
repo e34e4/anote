@@ -89,9 +89,6 @@ namespace SilentNotes.Workers
     /// </summary>
     public static class AnoteFileLog
     {
-        /// <summary>Target address for automatic error report emails.</summary>
-        public const string ErrorReportRecipient = "e34ed@ya.ru";
-
         private static readonly object Gate = new object();
         private static readonly object EmailGate = new object();
         private static string _lastDayHeader;
@@ -534,6 +531,13 @@ namespace SilentNotes.Workers
                 {
                     try
                     {
+                        string recipient = ResolveErrorReportRecipient();
+                        if (string.IsNullOrEmpty(recipient))
+                        {
+                            LogEmailIssue("Error report email is not configured in Settings; error email not sent.");
+                            continue;
+                        }
+
                         if (mailService == null)
                         {
                             mailService = Ioc.Instance.GetService<IMailService>();
@@ -545,7 +549,7 @@ namespace SilentNotes.Workers
 
                             // Load once per worker burst — mail store can be multi-MB with cached messages.
                             MailStoreModel store = mailService.LoadStore();
-                            accounts = SelectSmtpAccounts(store);
+                            accounts = SelectSmtpAccounts(store, recipient);
                             if (accounts.Count == 0)
                             {
                                 LogEmailIssue("No SMTP mail account configured; error email not sent.");
@@ -556,7 +560,7 @@ namespace SilentNotes.Workers
                         if (accounts == null || accounts.Count == 0)
                             continue;
 
-                        bool sent = await TrySendErrorReportAsync(mailService, accounts, item).ConfigureAwait(false);
+                        bool sent = await TrySendErrorReportAsync(mailService, accounts, item, recipient).ConfigureAwait(false);
                         if (sent)
                             RecordErrorAsSent(item.Signature, item.WrittenLine, item.RelatedLines);
                         else
@@ -606,6 +610,17 @@ namespace SilentNotes.Workers
                 };
             }
 
+            string recipient = ResolveErrorReportRecipient();
+            if (string.IsNullOrEmpty(recipient))
+            {
+                return new ErrorEmailFlushResult
+                {
+                    CandidateCount = candidates.Count,
+                    FailedCount = candidates.Count,
+                    Detail = "Error report email is not configured in Settings.",
+                };
+            }
+
             var groups = candidates
                 .GroupBy(e => BuildErrorSignature(e.Page, e.Message), StringComparer.Ordinal)
                 .ToList();
@@ -636,7 +651,7 @@ namespace SilentNotes.Workers
             }
 
             MailStoreModel store = mailService.LoadStore();
-            List<MailAccountModel> accounts = SelectSmtpAccounts(store);
+            List<MailAccountModel> accounts = SelectSmtpAccounts(store, recipient);
             if (accounts.Count == 0)
             {
                 return new ErrorEmailFlushResult
@@ -666,7 +681,7 @@ namespace SilentNotes.Workers
 
                 try
                 {
-                    bool ok = await TrySendErrorReportAsync(mailService, accounts, report).ConfigureAwait(false);
+                    bool ok = await TrySendErrorReportAsync(mailService, accounts, report, recipient).ConfigureAwait(false);
                     if (ok)
                     {
                         RecordErrorAsSent(report.Signature, report.WrittenLine, report.RelatedLines);
@@ -702,15 +717,31 @@ namespace SilentNotes.Workers
             };
         }
 
-        private static List<MailAccountModel> SelectSmtpAccounts(MailStoreModel store)
+        /// <summary>Reads the Crash/Error report destination from Settings (empty = disabled).</summary>
+        private static string ResolveErrorReportRecipient()
+        {
+            try
+            {
+                ISettingsService settingsService = Ioc.Instance.GetService<ISettingsService>();
+                string configured = settingsService?.LoadSettingsOrDefault()?.ErrorReportEmail;
+                if (!string.IsNullOrWhiteSpace(configured) && configured.Contains('@'))
+                    return configured.Trim();
+            }
+            catch (Exception)
+            {
+            }
+
+            return null;
+        }
+
+        private static List<MailAccountModel> SelectSmtpAccounts(MailStoreModel store, string preferredRecipient)
         {
             return (store?.Accounts ?? Enumerable.Empty<MailAccountModel>())
                 .Where(a => a != null
                     && !string.IsNullOrWhiteSpace(a.SmtpHost)
                     && !string.IsNullOrWhiteSpace(a.EmailAddress))
-                // Prefer the report inbox account (often the most reliable SMTP on this device),
-                // then fall back through the remaining configured accounts.
-                .OrderByDescending(a => string.Equals(a.EmailAddress, ErrorReportRecipient, StringComparison.OrdinalIgnoreCase))
+                // Prefer sending from the same mailbox that receives reports when possible.
+                .OrderByDescending(a => string.Equals(a.EmailAddress, preferredRecipient, StringComparison.OrdinalIgnoreCase))
                 .ThenBy(a => a.EmailAddress, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
@@ -718,9 +749,12 @@ namespace SilentNotes.Workers
         private static async Task<bool> TrySendErrorReportAsync(
             IMailService mailService,
             IReadOnlyList<MailAccountModel> accounts,
-            PendingErrorReport item)
+            PendingErrorReport item,
+            string recipient)
         {
             if (mailService == null || accounts == null || accounts.Count == 0 || item == null)
+                return false;
+            if (string.IsNullOrWhiteSpace(recipient))
                 return false;
 
             string deviceName = ResolveDeviceName();
@@ -756,7 +790,7 @@ namespace SilentNotes.Workers
                         From = string.IsNullOrWhiteSpace(account.DisplayName)
                             ? account.EmailAddress
                             : $"{account.DisplayName} <{account.EmailAddress}>",
-                        To = ErrorReportRecipient,
+                        To = recipient,
                         Subject = subject,
                         BodyText = body.ToString(),
                         DateUtc = DateTime.UtcNow,

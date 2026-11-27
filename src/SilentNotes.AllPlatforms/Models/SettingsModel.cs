@@ -129,6 +129,7 @@ namespace SilentNotes.Models
             ReaderEditorFontDisplayName = string.Empty;
             CloudFileLocations = new List<CloudFileLocationModel>();
             Socks5Enabled = false;
+            ErrorReportEmail = string.Empty;
             Socks5Host = string.Empty;
             Socks5Port = 1080;
             Socks5Username = string.Empty;
@@ -877,6 +878,13 @@ namespace SilentNotes.Models
         [XmlArray("cloud_file_locations")]
         [XmlArrayItem("location")]
         public List<CloudFileLocationModel> CloudFileLocations { get; set; }
+
+        /// <summary>
+        /// Gets or sets the email address that receives automatic Crash/Error report emails.
+        /// Empty disables automatic error emails.
+        /// </summary>
+        [XmlElement("error_report_email")]
+        public string ErrorReportEmail { get; set; }
 
         /// <summary>Gets or sets a value indicating whether SOCKS5 proxy is enabled.</summary>
         [XmlElement("socks5_enabled")]

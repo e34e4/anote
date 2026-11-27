@@ -49,6 +49,7 @@ namespace SilentNotes.ViewModels
         private readonly INativeBrowserService _nativeBrowserService;
         private readonly IAssistantService _assistantService;
         private readonly IMediaToolsService _mediaToolsService;
+        private readonly IMailService _mailService;
         private readonly SliderStepConverter _fontSizeConverter;
         private readonly SliderStepConverter _noteMaxHeightConverter;
         private string _defaultFontFamilyLabel;
@@ -80,7 +81,8 @@ namespace SilentNotes.ViewModels
             IPasswordVaultSyncService passwordVaultSyncService = null,
             IClipboardWebdavSyncService clipboardWebdavSyncService = null,
             IAssistantService assistantService = null,
-            IMediaToolsService mediaToolsService = null)
+            IMediaToolsService mediaToolsService = null,
+            IMailService mailService = null)
         {
             Language = languageService;
             _settingsService = settingsService;
@@ -99,8 +101,10 @@ namespace SilentNotes.ViewModels
             _nativeBrowserService = nativeBrowserService;
             _assistantService = assistantService;
             _mediaToolsService = mediaToolsService;
+            _mailService = mailService;
             Model = _settingsService.LoadSettingsOrDefault();
             Modifications = new ModificationDetector(() => GetModificationFingerprint(Model));
+            ErrorReportEmailOptions = BuildErrorReportEmailOptions();
 
             _fontSizeConverter = new SliderStepConverter(ReferenceFontSize, 1.0);
             _noteMaxHeightConverter = new SliderStepConverter(ReferenceNoteMaxSize, 20.0);
@@ -458,6 +462,7 @@ namespace SilentNotes.ViewModels
                 string.GetHashCode(settings.Socks5Username),
                 string.GetHashCode(settings.Socks5Password),
                 settings.AiUseProxy.GetHashCode(),
+                string.GetHashCode(settings.ErrorReportEmail),
                 GetAutomationRulesFingerprint(settings.AutomationRules),
             });
         }
@@ -1220,6 +1225,55 @@ namespace SilentNotes.ViewModels
         {
             get { return Model.VirusTotalAutoScan; }
             set { SetProperty(Model.VirusTotalAutoScan, value, (bool v) => Model.VirusTotalAutoScan = v); }
+        }
+
+        /// <summary>
+        /// Gets selectable Crash/Error report destination addresses (empty = disabled),
+        /// filled from configured Mail accounts plus the currently saved value.
+        /// </summary>
+        public List<string> ErrorReportEmailOptions { get; private set; }
+
+        /// <summary>
+        /// Gets or sets the destination email for automatic Crash/Error reports.
+        /// Empty disables automatic error emails.
+        /// </summary>
+        public string ErrorReportEmail
+        {
+            get { return Model.ErrorReportEmail ?? string.Empty; }
+            set { SetProperty(Model.ErrorReportEmail ?? string.Empty, value ?? string.Empty, (string v) => Model.ErrorReportEmail = v ?? string.Empty); }
+        }
+
+        private List<string> BuildErrorReportEmailOptions()
+        {
+            var options = new List<string> { string.Empty };
+            try
+            {
+                MailStoreModel store = _mailService?.LoadStore();
+                if (store?.Accounts != null)
+                {
+                    foreach (MailAccountModel account in store.Accounts)
+                    {
+                        string email = account?.EmailAddress?.Trim();
+                        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+                            continue;
+                        if (!options.Exists(e => string.Equals(e, email, StringComparison.OrdinalIgnoreCase)))
+                            options.Add(email);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            string current = Model?.ErrorReportEmail?.Trim();
+            if (!string.IsNullOrWhiteSpace(current)
+                && current.Contains('@')
+                && !options.Exists(e => string.Equals(e, current, StringComparison.OrdinalIgnoreCase)))
+            {
+                options.Add(current);
+            }
+
+            return options;
         }
 
         /// <summary>Gets or sets a value indicating whether the SOCKS5 proxy is enabled.</summary>

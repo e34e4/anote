@@ -1,0 +1,1 @@
+Crash/Error report destination is now chosen in Settings (from your Mail accounts) instead of a fixed address; leave it Disabled to stop automatic error emails.

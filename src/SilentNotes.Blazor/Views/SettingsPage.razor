@@ -26,6 +26,7 @@
 @inject IAssistantService AssistantService
 @inject ISynchronizationService SynchronizationService
 @inject IMediaToolsService MediaToolsService
+@inject IMailService MailService
 @inject IJSRuntime JSRuntime
 @inject INavigationService Navigation
 
@@ -565,6 +566,23 @@
 					</MudPaper>
 				</div>
 
+				@* Crash / Error report email *@
+				<div><MudIcon Icon="@Icons.Material.Filled.BugReport" Color="Color.Secondary" /></div>
+				<div>
+					<MudText Typo="Typo.subtitle2" Class="mb-2">@LanguageService["settings_error_report_title"]</MudText>
+					<MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">@LanguageService["settings_error_report_hint"]</MudText>
+					<MudSelect T="string" @bind-Value="ViewModel.ErrorReportEmail"
+						Label="@LanguageService["settings_error_report_email"]"
+						Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+						@foreach (string emailOption in ViewModel.ErrorReportEmailOptions)
+						{
+							<MudSelectItem T="string" Value="@emailOption">
+								@(string.IsNullOrEmpty(emailOption) ? LanguageService["settings_error_report_disabled"] : emailOption)
+							</MudSelectItem>
+						}
+					</MudSelect>
+				</div>
+
 				@* SOCKS5 proxy *@
 				<div><MudIcon Icon="@Icons.Material.Filled.VpnKey" Color="Color.Secondary" /></div>
 				<div>
@@ -839,7 +857,7 @@
 
 	protected override void OnInitialized()
 	{
-		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService, NativeBrowserService, PasswordVaultSyncService, ClipboardWebdavSyncService, AssistantService, MediaToolsService);
+		ViewModel = new SettingsViewModel(SettingsService, LanguageService, EnvironmentService, SynchronizationService, ThemeService, FeedbackService, MessengerService, FontService, CloudStorageClientFactory, FilePickerService, BookySyncService, DeviceSmsService, DevicePhoneService, NativeBrowserService, PasswordVaultSyncService, ClipboardWebdavSyncService, AssistantService, MediaToolsService, MailService);
 	}
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)
